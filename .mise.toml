@@ -1,0 +1,6 @@
+[tools]
+node = "22"
+
+[env]
+# Load .env file automatically
+_.file = ".env"
