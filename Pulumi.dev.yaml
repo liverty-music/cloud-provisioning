@@ -1,3 +1,5 @@
+environment:
+  - cloud-provisioning/dev
 config:
-  gcp:project: pannpers-scaffold-dev
-  gcp:region: asia-northeast2
+  # cloud-provisioning:github:
+  #   owner: liverty-music

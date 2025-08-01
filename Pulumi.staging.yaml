@@ -1,3 +1,0 @@
-config:
-  gcp:project: pannpers-scaffold-staging
-  gcp:region: asia-northeast2
