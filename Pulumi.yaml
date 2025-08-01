@@ -1,0 +1,10 @@
+name: public-cloud-scaffold
+description: A scaffold for Infrastructure as Code (IaC) using Pulumi to manage Google Cloud Platform resources.
+runtime:
+  name: nodejs
+  options:
+    packagemanager: npm
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: gcp-typescript
