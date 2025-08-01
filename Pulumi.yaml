@@ -1,5 +1,5 @@
-name: public-cloud-scaffold
-description: A scaffold for Infrastructure as Code (IaC) using Pulumi to manage Google Cloud Platform resources.
+name: cloud-provisioning
+description: Cloud resources, such as GCP, GitHub, etc. provisioned by Pulumi.
 runtime:
   name: nodejs
   options:

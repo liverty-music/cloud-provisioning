@@ -1,5 +1,3 @@
-export const FOLDER_NAME = 'scaffold'
-
 export const DEFAULT_REGION = 'asia-northeast2'
 export const DEFAULT_ZONE = 'asia-northeast2-a'
 
