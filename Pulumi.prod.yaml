@@ -1,5 +1,5 @@
 environment:
-  - cloud-provisioning/prod
+  - liverty-music/prod
 config:
   gcp:project: liverty-music-prod
 

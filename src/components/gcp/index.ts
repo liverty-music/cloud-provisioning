@@ -117,7 +117,7 @@ export class GcpComponent extends pulumi.ComponentResource {
       {
         location: dataStore.location,
         dataStoreId: dataStore.dataStoreId,
-        providedUriPattern: 'https://www.uverworld.jp/*',
+        providedUriPattern: 'www.uverworld.jp/*',
         type: 'INCLUDE',
         exactMatch: false,
         project: this.project.projectId,

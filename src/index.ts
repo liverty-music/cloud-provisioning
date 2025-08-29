@@ -6,7 +6,19 @@ import { GcpComponent, GcpConfig } from './components/gcp/index.js'
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'
 
-const config = new pulumi.Config('cloud-provisioning')
+// const organizationId = process.env.GCP_ORGANIZATION_ID
+// if (!organizationId) {
+//   throw new Error('The GCP_ORGANIZATION_ID environment variable must be set.')
+// }
+
+// const billingAccount = process.env.GCP_BILLING_ACCOUNT
+// if (!billingAccount) {
+//   throw new Error('The GCP_BILLING_ACCOUNT environment variable must be set.')
+// }
+
+// const envConfig = getEnvironmentConfig('pannpers-scaffold')
+
+const config = new pulumi.Config('liverty-music')
 const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
 const bufConfig = config.requireObject('buf') as BufConfig
