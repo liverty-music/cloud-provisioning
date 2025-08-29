@@ -11,6 +11,11 @@ export const REQUIRED_APIS = [
   'logging.googleapis.com',
   'monitoring.googleapis.com',
   'cloudtrace.googleapis.com',
+  'discoveryengine.googleapis.com',
+  'geminicloudassist.googleapis.com', // required for Gemini Cloud Assist
+  'cloudasset.googleapis.com', // recommended for Gemini Cloud Assist
+  'recommender.googleapis.com', // recommended for Gemini Cloud Assist
+  'aiplatform.googleapis.com',
 ]
 
 export const ENVIRONMENT_CONFIGS = {
