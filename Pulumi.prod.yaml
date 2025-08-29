@@ -1,5 +1,5 @@
 environment:
   - cloud-provisioning/prod
 config:
-  # cloud-provisioning:github:
-  #   owner: liverty-music
+  gcp:project: liverty-music-prod
+
