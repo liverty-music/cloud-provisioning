@@ -1,4 +1,4 @@
-name: cloud-provisioning
+name: liverty-music
 description: Cloud resources, such as GCP, GitHub, etc. provisioned by Pulumi.
 runtime:
   name: nodejs

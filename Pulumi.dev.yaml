@@ -1,4 +1,4 @@
 environment:
-  - cloud-provisioning/dev
+  - liverty-music/dev
 config:
   gcp:project: liverty-music-dev
