@@ -1,6 +1,28 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 
+// Configuration constants moved from config module.
+const DEFAULT_REGION = 'asia-northeast2'
+const DEFAULT_ZONE = 'asia-northeast2-a'
+
+const REQUIRED_APIS = [
+  'cloudresourcemanager.googleapis.com',
+  'serviceusage.googleapis.com',
+  'iam.googleapis.com',
+  'cloudbilling.googleapis.com',
+  'compute.googleapis.com',
+  'storage.googleapis.com',
+  'logging.googleapis.com',
+  'monitoring.googleapis.com',
+  'cloudtrace.googleapis.com',
+  'discoveryengine.googleapis.com',
+  'geminicloudassist.googleapis.com', // Required for Gemini Cloud Assist.
+  'cloudasset.googleapis.com', // Recommended for Gemini Cloud Assist.
+  'recommender.googleapis.com', // Recommended for Gemini Cloud Assist.
+  'aiplatform.googleapis.com',
+  'securitycenter.googleapis.com', // Correct endpoint for Security Command Center.
+]
+
 export interface GcpConfig {
   organizationId: string
   billingAccount: string
@@ -11,7 +33,8 @@ export interface GcpComponentArgs {
   displayName: string
   environment: 'dev' | 'staging' | 'prod'
   gcpConfig: GcpConfig
-  enabledApis: readonly string[]
+  region?: string
+  zone?: string
 }
 
 export class GcpComponent extends pulumi.ComponentResource {
@@ -20,15 +43,72 @@ export class GcpComponent extends pulumi.ComponentResource {
   public readonly enabledServices: gcp.projects.Service[]
   public readonly uverworldDataStore: gcp.discoveryengine.DataStore
   public readonly uverworldSearchEngine: gcp.discoveryengine.SearchEngine
+  public readonly environmentConfig: {
+    environment: 'dev' | 'staging' | 'prod'
+    projectId: string
+    region: string
+    zone?: string
+    enabledApis: string[]
+  }
 
   constructor(args: GcpComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('GCP', 'gcp', {}, opts)
 
-    const { brandId, displayName, environment, gcpConfig, enabledApis } = args
+    const { brandId, displayName, environment, gcpConfig, region, zone } = args
 
-    // Create organization folder
+    // Initialize environment configuration.
+    this.environmentConfig = this.createEnvironmentConfig(brandId, environment, region, zone)
+
+    // Create organization folder.
+    this.folder = this.createOrganizationFolder(brandId, displayName, environment, gcpConfig)
+
+    // Create project.
+    this.project = this.createProject(brandId, displayName, environment, gcpConfig)
+
+    // Enable APIs.
+    this.enabledServices = this.enableApis()
+
+    // Create Uverworld data store and search engine.
+    const { dataStore, searchEngine } = this.createUverworldDataStore()
+    this.uverworldDataStore = dataStore
+    this.uverworldSearchEngine = searchEngine
+
+    // Register outputs.
+    this.registerOutputs({
+      folder: this.folder,
+      project: this.project,
+      enabledServices: this.enabledServices,
+      uverworldDataStore: this.uverworldDataStore,
+      uverworldSearchEngine: this.uverworldSearchEngine,
+      environmentConfig: this.environmentConfig,
+    })
+  }
+
+  private createEnvironmentConfig(
+    brandId: string,
+    environment: 'dev' | 'staging' | 'prod',
+    region?: string,
+    zone?: string
+  ) {
+    const config = new pulumi.Config()
+
+    return {
+      environment: environment,
+      projectId: `${brandId}-${environment}`,
+      region: region || config.get('region') || DEFAULT_REGION,
+      zone: zone || config.get('zone'),
+      enabledApis: [...REQUIRED_APIS],
+    }
+  }
+
+  private createOrganizationFolder(
+    brandId: string,
+    displayName: string,
+    environment: 'dev' | 'staging' | 'prod',
+    gcpConfig: GcpConfig
+  ): gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder> {
     if (environment === 'prod') {
-      this.folder = new gcp.organizations.Folder(brandId, {
+      return new gcp.organizations.Folder(brandId, {
         displayName: displayName,
         parent: `organizations/${gcpConfig.organizationId}`,
       })
@@ -37,26 +117,32 @@ export class GcpComponent extends pulumi.ComponentResource {
       // This requires the prod stack to export its folder.
       const org = pulumi.getOrganization()
       const project = pulumi.getProject()
-      // Construct the fully qualified name of the prod stack
+      // Construct the fully qualified name of the prod stack.
       const prodStackRef = new pulumi.StackReference(`${org}/${project}/prod`)
       const folderOutput = prodStackRef.requireOutput('folder')
 
-      // Use Output.all to properly handle the async folder ID
-      this.folder = pulumi
+      // Use Output.all to properly handle the async folder ID.
+      return pulumi
         .output(folderOutput)
         .apply(folder => gcp.organizations.Folder.get(brandId, folder.id))
     }
+  }
 
-    // Common labels for resources
+  private createProject(
+    brandId: string,
+    displayName: string,
+    environment: 'dev' | 'staging' | 'prod',
+    gcpConfig: GcpConfig
+  ): gcp.organizations.Project {
+    // Common labels for resources.
     const commonLabels = {
       environment: environment,
     }
 
-    // Create project
-    this.project = new gcp.organizations.Project(
+    return new gcp.organizations.Project(
       `${brandId}`,
       {
-        projectId: `${brandId}-${environment}`,
+        projectId: this.environmentConfig.projectId,
         name: `${displayName} -${environment}-`,
         folderId: pulumi.output(this.folder).apply(folder => folder.folderId),
         billingAccount: gcpConfig.billingAccount,
@@ -65,9 +151,10 @@ export class GcpComponent extends pulumi.ComponentResource {
       },
       { dependsOn: [this.folder] }
     )
+  }
 
-    // Enable APIs
-    this.enabledServices = enabledApis.map(api => {
+  private enableApis(): gcp.projects.Service[] {
+    return this.environmentConfig.enabledApis.map(api => {
       const serviceName = api.replace(/\.googleapis\.com$/, '').replace(/\./g, '-')
       return new gcp.projects.Service(
         serviceName,
@@ -78,19 +165,6 @@ export class GcpComponent extends pulumi.ComponentResource {
         },
         { dependsOn: [this.project] }
       )
-    })
-
-    const { dataStore, searchEngine } = this.createUverworldDataStore()
-    this.uverworldDataStore = dataStore
-    this.uverworldSearchEngine = searchEngine
-
-    // Register outputs
-    this.registerOutputs({
-      folder: this.folder,
-      project: this.project,
-      enabledServices: this.enabledServices,
-      uverworldDataStore: this.uverworldDataStore,
-      uverworldSearchEngine: this.uverworldSearchEngine,
     })
   }
 
@@ -111,7 +185,7 @@ export class GcpComponent extends pulumi.ComponentResource {
       { dependsOn: this.enabledServices }
     )
 
-    // Set the target site for the data store to crawl
+    // Set the target site for the data store to crawl.
     new gcp.discoveryengine.TargetSite(
       'uverworld-target-site',
       {
@@ -125,7 +199,7 @@ export class GcpComponent extends pulumi.ComponentResource {
       { dependsOn: [dataStore] }
     )
 
-    // Create a search engine for the UVERworld website
+    // Create a search engine for the UVERworld website.
     const searchEngine = new gcp.discoveryengine.SearchEngine(
       'uverworld-search-engine',
       {
@@ -147,3 +221,6 @@ export class GcpComponent extends pulumi.ComponentResource {
     return { dataStore, searchEngine }
   }
 }
+
+// Export configuration utilities for external use if needed.
+export { DEFAULT_REGION, DEFAULT_ZONE, REQUIRED_APIS }
