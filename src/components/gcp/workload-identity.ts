@@ -78,6 +78,7 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
         role: 'roles/iam.workloadIdentityUser',
         members: [
           pulumi.interpolate`principalSet://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${this.pool.workloadIdentityPoolId}/attribute.sub/pulumi:environments:org:${this.PULUMI_ORG}:env:*`,
+          pulumi.interpolate`principalSet://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${this.pool.workloadIdentityPoolId}/attribute.sub/pulumi:deploy:org:${this.PULUMI_ORG}:*`,
         ],
       },
       { parent: this, dependsOn: [this.serviceAccount, this.pool] }
