@@ -47,7 +47,7 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
         attributeMapping: {
           'google.subject': 'assertion.sub',
         },
-        attributeCondition: `assertion.sub.startsWith('pulumi:deploy:org:${this.PULUMI_ORG}:') || assertion.sub.startsWith('pulumi:environments:org:${this.PULUMI_ORG}:')`,
+        attributeCondition: `assertion.sub.startsWith('pulumi:deploy:org:${this.PULUMI_ORG}:')`,
         oidc: {
           issuerUri: this.PULUMI_OIDC_ISSUER,
           allowedAudiences: [this.PULUMI_ORG],
@@ -77,7 +77,6 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
         serviceAccountId: this.serviceAccount.name,
         role: 'roles/iam.workloadIdentityUser',
         members: [
-          pulumi.interpolate`principalSet://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${this.pool.workloadIdentityPoolId}/attribute.sub/pulumi:environments:org:${this.PULUMI_ORG}:env:*`,
           pulumi.interpolate`principalSet://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${this.pool.workloadIdentityPoolId}/attribute.sub/pulumi:deploy:org:${this.PULUMI_ORG}:*`,
         ],
       },
