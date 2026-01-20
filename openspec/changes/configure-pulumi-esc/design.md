@@ -21,9 +21,10 @@ To achieve secure, managed deployments, we must first establish trust between Pu
 
 - **Decision: Trigger via Pulumi GitHub App**
   - Use the official Pulumi GitHub App to trigger managed deployments on PRs and merges.
-  - **PR Workflow**: `dev` stack will auto-deploy (`up`) to allow immediate testing; `prod` stack will only `preview`.
-  - **Merge Workflow**: `prod` stack will deploy (`up`) upon merging to `main`.
-  - Rationale: High-velocity testing in `dev` while maintaining safety gates for `prod`.
+  - **PR Workflow**: Both `dev` and `prod` stacks will `preview`.
+  - **Merge Workflow**: `dev` stack will deploy (`up`) upon merging to `main`.
+  - **Prod Deployment**: `prod` stack requires manual `up` via Dashboard or CLI.
+  - Rationale: Simplifies automation while retaining explicit control over production.
 
 ## Risks / Trade-offs
 
