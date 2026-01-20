@@ -50,7 +50,7 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
         attributeCondition: `assertion.sub.startsWith('pulumi:environments:org:${this.PULUMI_ORG}:env:')`,
         oidc: {
           issuerUri: this.PULUMI_OIDC_ISSUER,
-          allowedAudiences: [`gcp:${this.PULUMI_ORG}`],
+          allowedAudiences: [this.PULUMI_ORG],
         },
       },
       { parent: this, dependsOn: [this.pool] }
