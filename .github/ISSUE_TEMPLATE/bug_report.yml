@@ -1,0 +1,28 @@
+name: '🐛 Infrastructure Bug / Drift'
+description: 'Report an issue or state drift'
+title: 'Bug: [Short description]'
+labels: ['bug']
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 'Description'
+      description: 'What is wrong? Drift detected? Deployment failed?'
+    validations:
+      required: true
+  - type: dropdown
+    id: stack
+    attributes:
+      label: 'Affected Stack'
+      options:
+        - Dev
+        - Prod
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 'Pulumi Error Output'
+      description: 'Paste the relevant logs from pulumi up/preview'
+      render: shell
