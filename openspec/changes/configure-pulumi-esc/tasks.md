@@ -22,7 +22,7 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Trigger PR: Verify `dev` and `prod` stacks both run `preview`.
+- [/] 3.1 Trigger PR: Verify `dev` and `prod` stacks both run `preview`.
 - [ ] 3.2 Verify preview results are commented in the PR.
 - [ ] 3.3 Merge PR: Verify `dev` stack runs `up`.
 - [ ] 3.4 Manually trigger `up` for `prod` via Dashboard.
