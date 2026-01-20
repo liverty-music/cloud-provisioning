@@ -44,12 +44,13 @@ The deployment process MUST use Pulumi Cloud Deployments' native OIDC integratio
 
 ### Requirement: Automated PR Flow
 
-Pulumi Cloud MUST trigger specific actions for `dev` and `prod` stacks when a Pull Request is opened or updated.
+Pulumi Cloud MUST trigger `preview` for both `dev` and `prod` stacks when a Pull Request is opened or updated.
 
-#### Scenario: Dev Auto-Deploy on PR
+#### Scenario: Dev Preview on PR
 
 - **WHEN** a developer opens or updates a Pull Request targeting `main`
-- **THEN** Pulumi Cloud Deployments MUST automatically trigger an `up` for the `dev` stack.
+- **THEN** Pulumi Cloud Deployments MUST automatically trigger a `preview` for the `dev` stack.
+- **AND** the results MUST be posted as a comment on the GitHub PR.
 
 #### Scenario: Prod Preview on PR
 
@@ -57,11 +58,20 @@ Pulumi Cloud MUST trigger specific actions for `dev` and `prod` stacks when a Pu
 - **THEN** Pulumi Cloud Deployments MUST automatically trigger a `preview` for the `prod` stack.
 - **AND** the results MUST be posted as a comment on the GitHub PR.
 
-### Requirement: Automated Merge Flow
+### Requirement: Automated Merge Flow (Dev)
 
-Pulumi Cloud MUST automatically apply changes to the production environment when code is merged into the `main` branch.
+Pulumi Cloud MUST automatically apply changes to the `dev` environment when code is merged into the `main` branch.
 
-#### Scenario: Prod Deploy on Merge
+#### Scenario: Dev Deploy on Merge
 
 - **WHEN** a Pull Request is merged into the `main` branch
-- **THEN** Pulumi Cloud Deployments MUST automatically trigger an `up` for the `prod` stack.
+- **THEN** Pulumi Cloud Deployments MUST automatically trigger an `up` for the `dev` stack.
+
+### Requirement: Manual Deployment Flow (Prod)
+
+The `prod` stack MUST only be updated via manual action in the Pulumi Cloud Dashboard or CLI.
+
+#### Scenario: Prod Manual Deploy
+
+- **WHEN** an operator triggers a deployment from the Pulumi Cloud Dashboard or via `pulumi up -s prod` CLI.
+- **THEN** Pulumi Cloud Deployments applies the changes to the `prod` stack.
