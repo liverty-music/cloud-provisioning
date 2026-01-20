@@ -6,6 +6,7 @@ export interface IdentityComponentArgs {
   environment: Environment
   projectId: pulumi.Input<string>
   projectNumber: pulumi.Input<string>
+  folderId: pulumi.Input<string>
 }
 
 export class WorkloadIdentityFederation extends pulumi.ComponentResource {
@@ -20,7 +21,7 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
   constructor(args: IdentityComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:WorkloadIdentityFederation', 'WorkloadIdentityFederation', args, opts)
 
-    const { environment, projectId, projectNumber } = args
+    const { environment, projectId, projectNumber, folderId } = args
 
     // 1. Create Workload Identity Pool (per environment)
     // This pool is for ALL external providers.
@@ -89,6 +90,17 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
       {
         project: projectId,
         role: 'roles/owner',
+        member: pulumi.interpolate`serviceAccount:${this.serviceAccount.email}`,
+      },
+      { parent: this, dependsOn: [this.serviceAccount] }
+    )
+
+    // 6. Grant folderViewer role to the service account on the folder
+    new gcp.folder.IAMMember(
+      `pulumi-cloud-folder-viewer`,
+      {
+        folder: folderId,
+        role: 'roles/resourcemanager.folderViewer',
         member: pulumi.interpolate`serviceAccount:${this.serviceAccount.email}`,
       },
       { parent: this, dependsOn: [this.serviceAccount] }
