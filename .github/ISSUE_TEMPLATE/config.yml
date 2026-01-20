@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Project README
+    url: https://github.com/liverty-music/cloud-provisioning/blob/main/README.md
+    about: Please check the documentation for general information before creating an issue.
