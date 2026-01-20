@@ -1,0 +1,38 @@
+name: '🚀 New Infrastructure Request'
+description: 'Request new resources or infrastructure changes'
+title: 'Infra: [Short description]'
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 'Goal & Motivation'
+      description: 'What are we building and why?'
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 'Target Environment'
+      options:
+        - Dev
+        - Prod
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: cloud-provider
+    attributes:
+      label: 'Cloud Provider Resources'
+      description: 'List the AWS/GCP resources needed. PLEASE INCLUDE OFFICIAL DOCUMENTATION LINKS.'
+      placeholder: |
+        e.g.
+        - GCP Cloud Storage: https://cloud.google.com/storage/docs
+        - AWS S3: https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 'Acceptance Criteria'
+      description: 'How do we know this is done?'
