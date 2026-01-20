@@ -48,6 +48,7 @@ new WorkloadIdentityFederation({
   environment: env,
   projectId: gcpComponent.project.projectId,
   projectNumber: gcpComponent.project.number,
+  folderId: pulumi.output(gcpComponent.folder).apply(f => f.folderId),
 })
 
 // Export resources for backwards compatibility and stack outputs
