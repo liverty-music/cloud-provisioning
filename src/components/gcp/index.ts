@@ -38,12 +38,12 @@ export interface GcpComponentArgs {
   zone?: string
 }
 
-export class GcpComponent extends pulumi.ComponentResource {
+export class GcpProjectBasis extends pulumi.ComponentResource {
   public readonly folder: gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder>
   public readonly project: gcp.organizations.Project
   public readonly enabledServices: gcp.projects.Service[]
-  public readonly uverworldDataStore: gcp.discoveryengine.DataStore
-  public readonly uverworldSearchEngine: gcp.discoveryengine.SearchEngine
+  // public readonly uverworldDataStore: gcp.discoveryengine.DataStore
+  // public readonly uverworldSearchEngine: gcp.discoveryengine.SearchEngine
   public readonly environmentConfig: {
     environment: 'dev' | 'staging' | 'prod'
     projectId: string
@@ -53,7 +53,7 @@ export class GcpComponent extends pulumi.ComponentResource {
   }
 
   constructor(args: GcpComponentArgs, opts?: pulumi.ComponentResourceOptions) {
-    super('GCP', 'gcp', {}, opts)
+    super('gcp:liverty-music:GcpProjectBasis', 'GcpProjectBasis', {}, opts)
 
     const { brandId, displayName, environment, gcpConfig, region, zone } = args
 
@@ -69,18 +69,11 @@ export class GcpComponent extends pulumi.ComponentResource {
     // Enable APIs.
     this.enabledServices = this.enableApis()
 
-    // Create Uverworld data store and search engine.
-    const { dataStore, searchEngine } = this.createUverworldDataStore()
-    this.uverworldDataStore = dataStore
-    this.uverworldSearchEngine = searchEngine
-
     // Register outputs.
     this.registerOutputs({
       folder: this.folder,
       project: this.project,
       enabledServices: this.enabledServices,
-      uverworldDataStore: this.uverworldDataStore,
-      uverworldSearchEngine: this.uverworldSearchEngine,
       environmentConfig: this.environmentConfig,
     })
   }
@@ -167,70 +160,6 @@ export class GcpComponent extends pulumi.ComponentResource {
         { dependsOn: [this.project] }
       )
     })
-  }
-
-  private createUverworldDataStore() {
-    const webSiteStore = new gcp.discoveryengine.DataStore(
-      'official-artist-site',
-      {
-        location: 'global',
-        dataStoreId: 'official-artist-site',
-        displayName: 'Official Artist Site',
-        industryVertical: 'GENERIC',
-        contentConfig: 'PUBLIC_WEBSITE',
-        solutionTypes: ['SOLUTION_TYPE_SEARCH'],
-        createAdvancedSiteSearch: true, // Required for Extractive Segments
-        skipDefaultSchemaCreation: false,
-        project: this.project.projectId,
-      },
-      { dependsOn: this.enabledServices }
-    )
-
-    // Set the target site for the data store to crawl.
-    new gcp.discoveryengine.TargetSite(
-      'uverworld-target-site',
-      {
-        location: webSiteStore.location,
-        dataStoreId: webSiteStore.dataStoreId,
-        providedUriPattern: 'www.uverworld.jp/*',
-        type: 'INCLUDE',
-        exactMatch: false,
-        project: this.project.projectId,
-      },
-      { dependsOn: [webSiteStore] }
-    )
-
-    // Create a search engine for official artist website.
-    const searchEngine = new gcp.discoveryengine.SearchEngine(
-      'artist-site-search',
-      {
-        engineId: 'artist-site-search',
-        location: webSiteStore.location,
-        collectionId: 'default_collection',
-        displayName: 'Official Artist Site Search',
-        industryVertical: 'GENERIC',
-        dataStoreIds: [webSiteStore.dataStoreId],
-        searchEngineConfig: {
-          searchTier: 'SEARCH_TIER_ENTERPRISE',
-          searchAddOns: ['SEARCH_ADD_ON_LLM'], // enable generative AI integration
-        },
-        project: this.project.projectId,
-      },
-      { dependsOn: [webSiteStore] }
-    )
-
-    // Grant Vertex AI Service Agent permission to read Discovery Engine
-    new gcp.projects.IAMMember(
-      'vertex-ai-discoveryengine-viewer',
-      {
-        project: this.project.projectId,
-        role: 'roles/discoveryengine.viewer',
-        member: pulumi.interpolate`serviceAccount:service-${this.project.number}@gcp-sa-aiplatform.iam.gserviceaccount.com`,
-      },
-      { dependsOn: [this.project] }
-    )
-
-    return { dataStore: webSiteStore, searchEngine }
   }
 }
 
