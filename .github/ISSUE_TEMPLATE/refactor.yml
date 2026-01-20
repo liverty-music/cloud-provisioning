@@ -1,0 +1,20 @@
+name: '🔧 Refactoring / State Migration'
+description: 'Propose a refactor or state manipulation'
+title: 'Refactor: [Short description]'
+labels: ['maintenance']
+body:
+  - type: textarea
+    id: scope
+    attributes:
+      label: 'Scope'
+      description: 'What resources are being moved, renamed, or imported?'
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: 'State Manipulation Risks'
+      description: 'Does this require `pulumi state mv` or `pulumi import`? What is the rollback plan?'
+      placeholder: 'Requires `pulumi state mv old_name new_name`...'
+    validations:
+      required: true
