@@ -21,6 +21,7 @@ const REQUIRED_APIS = [
   'recommender.googleapis.com', // Recommended for Gemini Cloud Assist.
   'aiplatform.googleapis.com',
   'securitycenter.googleapis.com', // Correct endpoint for Security Command Center.
+  'dataform.googleapis.com',
 ]
 
 export interface GcpConfig {
@@ -169,16 +170,16 @@ export class GcpComponent extends pulumi.ComponentResource {
   }
 
   private createUverworldDataStore() {
-    const dataStore = new gcp.discoveryengine.DataStore(
-      'uverworld-live-schedule-data-store',
+    const webSiteStore = new gcp.discoveryengine.DataStore(
+      'official-artist-site',
       {
         location: 'global',
-        dataStoreId: 'uverworld-live-schedule-data-store',
-        displayName: 'UVERworld Live Schedule Data Store',
+        dataStoreId: 'official-artist-site',
+        displayName: 'Official Artist Site',
         industryVertical: 'GENERIC',
         contentConfig: 'PUBLIC_WEBSITE',
         solutionTypes: ['SOLUTION_TYPE_SEARCH'],
-        createAdvancedSiteSearch: false,
+        createAdvancedSiteSearch: true, // Required for Extractive Segments
         skipDefaultSchemaCreation: false,
         project: this.project.projectId,
       },
@@ -189,36 +190,47 @@ export class GcpComponent extends pulumi.ComponentResource {
     new gcp.discoveryengine.TargetSite(
       'uverworld-target-site',
       {
-        location: dataStore.location,
-        dataStoreId: dataStore.dataStoreId,
+        location: webSiteStore.location,
+        dataStoreId: webSiteStore.dataStoreId,
         providedUriPattern: 'www.uverworld.jp/*',
         type: 'INCLUDE',
         exactMatch: false,
         project: this.project.projectId,
       },
-      { dependsOn: [dataStore] }
+      { dependsOn: [webSiteStore] }
     )
 
-    // Create a search engine for the UVERworld website.
+    // Create a search engine for official artist website.
     const searchEngine = new gcp.discoveryengine.SearchEngine(
-      'uverworld-search-engine',
+      'artist-site-search',
       {
-        engineId: 'uverworld-search-engine',
-        location: dataStore.location,
+        engineId: 'artist-site-search',
+        location: webSiteStore.location,
         collectionId: 'default_collection',
-        displayName: 'UVERworld Live Schedule Search',
+        displayName: 'Official Artist Site Search',
         industryVertical: 'GENERIC',
-        dataStoreIds: [dataStore.dataStoreId],
+        dataStoreIds: [webSiteStore.dataStoreId],
         searchEngineConfig: {
-          searchTier: 'SEARCH_TIER_STANDARD',
-          searchAddOns: ['SEARCH_ADD_ON_LLM'],
+          searchTier: 'SEARCH_TIER_ENTERPRISE',
+          searchAddOns: ['SEARCH_ADD_ON_LLM'], // enable generative AI integration
         },
         project: this.project.projectId,
       },
-      { dependsOn: [dataStore] }
+      { dependsOn: [webSiteStore] }
     )
 
-    return { dataStore, searchEngine }
+    // Grant Vertex AI Service Agent permission to read Discovery Engine
+    new gcp.projects.IAMMember(
+      'vertex-ai-discoveryengine-viewer',
+      {
+        project: this.project.projectId,
+        role: 'roles/discoveryengine.viewer',
+        member: pulumi.interpolate`serviceAccount:service-${this.project.number}@gcp-sa-aiplatform.iam.gserviceaccount.com`,
+      },
+      { dependsOn: [this.project] }
+    )
+
+    return { dataStore: webSiteStore, searchEngine }
   }
 }
 
