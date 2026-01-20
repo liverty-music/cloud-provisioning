@@ -22,6 +22,7 @@ export enum RepositoryName {
   CLOUD_PROVISIONING = 'cloud-provisioning',
   SCHEMA = 'schema',
   BACKEND = 'backend',
+  FRONTEND = 'frontend',
 }
 
 export class GitHubComponent extends pulumi.ComponentResource {
@@ -106,10 +107,21 @@ export class GitHubComponent extends pulumi.ComponentResource {
       { provider: this.provider }
     )
 
+    const frontendRepo = new github.Repository(
+      RepositoryName.FRONTEND,
+      {
+        ...defaultRepositoryArgs,
+        name: RepositoryName.FRONTEND,
+        description: 'Frontend',
+      },
+      { provider: this.provider }
+    )
+
     this.repositories = {
       [RepositoryName.CLOUD_PROVISIONING]: cloudProvisioningRepo,
       [RepositoryName.SCHEMA]: schemaRepo,
       [RepositoryName.BACKEND]: backendRepo,
+      [RepositoryName.FRONTEND]: frontendRepo,
     }
 
     // Create secrets
