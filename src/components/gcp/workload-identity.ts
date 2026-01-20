@@ -47,7 +47,7 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
         attributeMapping: {
           'google.subject': 'assertion.sub',
         },
-        attributeCondition: `assertion.sub.startsWith('pulumi:environments:org:${this.PULUMI_ORG}:env:')`,
+        attributeCondition: `assertion.sub.startsWith('pulumi:deploy:org:${this.PULUMI_ORG}:') || assertion.sub.startsWith('pulumi:environments:org:${this.PULUMI_ORG}:')`,
         oidc: {
           issuerUri: this.PULUMI_OIDC_ISSUER,
           allowedAudiences: [this.PULUMI_ORG],
