@@ -20,7 +20,7 @@ export interface GitHubComponentArgs {
 
 export enum RepositoryName {
   CLOUD_PROVISIONING = 'cloud-provisioning',
-  SCHEMA = 'schema',
+  SPECIFICATION = 'specification',
   BACKEND = 'backend',
   FRONTEND = 'frontend',
 }
@@ -79,12 +79,12 @@ export class GitHubComponent extends pulumi.ComponentResource {
       { provider: this.provider }
     )
 
-    const schemaRepo = new github.Repository(
-      RepositoryName.SCHEMA,
+    const specificationRepo = new github.Repository(
+      RepositoryName.SPECIFICATION,
       {
         ...defaultRepositoryArgs,
-        name: RepositoryName.SCHEMA,
-        description: 'Schema',
+        name: RepositoryName.SPECIFICATION,
+        description: 'Specification',
         template: {
           owner: githubConfig.owner,
           repository: 'protobuf-scaffold',
@@ -119,7 +119,7 @@ export class GitHubComponent extends pulumi.ComponentResource {
 
     this.repositories = {
       [RepositoryName.CLOUD_PROVISIONING]: cloudProvisioningRepo,
-      [RepositoryName.SCHEMA]: schemaRepo,
+      [RepositoryName.SPECIFICATION]: specificationRepo,
       [RepositoryName.BACKEND]: backendRepo,
       [RepositoryName.FRONTEND]: frontendRepo,
     }
@@ -128,7 +128,7 @@ export class GitHubComponent extends pulumi.ComponentResource {
     const bufTokenSecret = new github.ActionsSecret(
       'buf-token',
       {
-        repository: RepositoryName.SCHEMA,
+        repository: RepositoryName.SPECIFICATION,
         secretName: 'BUF_TOKEN',
         plaintextValue: bufConfig.token,
       },
