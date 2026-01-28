@@ -17,9 +17,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Run Gemini CLI Review
-        uses: google-github-actions/run-gemini-cli@v0.1.17
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          command: review
-          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '20'
+
+      - name: Install Gemini CLI
+        run: npm install -g @google/gemini-cli
+
+      - name: Run Gemini CLI Review
+        run: gemini review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

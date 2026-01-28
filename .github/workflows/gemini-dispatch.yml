@@ -19,7 +19,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Gemini CLI
-        uses: google-github-actions/run-gemini-cli@v0.1.17
+        id: gemini
+        uses: google-github-actions/run-gemini-cli@v0.1.19
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ github.event.comment.body }}
+
+      - name: Comment Response
+        if: steps.gemini.outputs.summary != ''
+        run: gh issue comment ${{ github.event.issue.number || github.event.pull_request.number }} --body "${{ steps.gemini.outputs.summary }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
