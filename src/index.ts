@@ -23,7 +23,10 @@ if (env === 'prod') {
   new GitHubComponent({
     brandId,
     displayName,
-    githubConfig,
+    githubConfig: {
+      ...githubConfig,
+      geminiApiKey: gcpConfig.geminiApiKey,
+    },
     bufConfig,
   })
 }

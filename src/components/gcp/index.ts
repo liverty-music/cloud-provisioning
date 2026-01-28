@@ -27,6 +27,7 @@ const REQUIRED_APIS = [
 export interface GcpConfig {
   organizationId: string
   billingAccount: string
+  geminiApiKey?: string
 }
 
 export interface GcpComponentArgs {
@@ -42,8 +43,6 @@ export class GcpProjectBasis extends pulumi.ComponentResource {
   public readonly folder: gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder>
   public readonly project: gcp.organizations.Project
   public readonly enabledServices: gcp.projects.Service[]
-  // public readonly uverworldDataStore: gcp.discoveryengine.DataStore
-  // public readonly uverworldSearchEngine: gcp.discoveryengine.SearchEngine
   public readonly environmentConfig: {
     environment: 'dev' | 'staging' | 'prod'
     projectId: string
