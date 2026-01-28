@@ -27,6 +27,7 @@ const REQUIRED_APIS = [
 export interface GcpConfig {
   organizationId: string
   billingAccount: string
+  geminiApiKey?: string
 }
 
 export interface GcpComponentArgs {

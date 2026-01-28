@@ -5,6 +5,7 @@ export interface GitHubConfig {
   owner: string
   token: string
   billingEmail: string
+  geminiApiKey?: string
 }
 
 export interface BufConfig {
@@ -136,6 +137,19 @@ export class GitHubComponent extends pulumi.ComponentResource {
     )
 
     this.secrets = [bufTokenSecret]
+
+    if (githubConfig.geminiApiKey) {
+      const geminiApiKeySecret = new github.ActionsSecret(
+        'gemini-api-key',
+        {
+          repository: RepositoryName.BACKEND,
+          secretName: 'GEMINI_API_KEY',
+          plaintextValue: githubConfig.geminiApiKey,
+        },
+        { provider: this.provider }
+      )
+      this.secrets.push(geminiApiKeySecret)
+    }
 
     // Register outputs
     this.registerOutputs({
