@@ -30,7 +30,7 @@ export class GitHubComponent extends pulumi.ComponentResource {
   public readonly provider: github.Provider
   public readonly organizationSettings: github.OrganizationSettings
   public readonly repositories: Record<RepositoryName, github.Repository>
-  public readonly secrets: github.ActionsSecret[]
+  public readonly secrets: (github.ActionsSecret | github.ActionsOrganizationSecret)[]
 
   constructor(args: GitHubComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('GitHub', 'github', {}, opts)
@@ -139,11 +139,11 @@ export class GitHubComponent extends pulumi.ComponentResource {
     this.secrets = [bufTokenSecret]
 
     if (githubConfig.geminiApiKey) {
-      const geminiApiKeySecret = new github.ActionsSecret(
+      const geminiApiKeySecret = new github.ActionsOrganizationSecret(
         'gemini-api-key',
         {
-          repository: RepositoryName.BACKEND,
           secretName: 'GEMINI_API_KEY',
+          visibility: 'all',
           plaintextValue: githubConfig.geminiApiKey,
         },
         { provider: this.provider }
