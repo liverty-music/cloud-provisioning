@@ -22,8 +22,8 @@ jobs:
         uses: 'google-github-actions/run-gemini-cli@v0'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_TITLE: ${{ github.event.pull_request.title || github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.pull_request.body || github.event.issue.body }}
+          PULL_REQUEST_TITLE: ${{ github.event.pull_request.title || github.event.issue.title }}
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body || github.event.issue.body }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
         with:
@@ -43,8 +43,7 @@ jobs:
                   "includeTools": [
                     "add_comment_to_pending_review",
                     "pull_request_read",
-                    "pull_request_review_write",
-                    "submit_pending_pull_request_review"
+                    "pull_request_review_write"
                   ],
                   "env": {
                     "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"

@@ -19,8 +19,8 @@ Your sole purpose is to perform a comprehensive code review and post all feedbac
 The following environment variables contain context:
 - **REPOSITORY**: The GitHub repository in `owner/repo` format.
 - **PULL_REQUEST_NUMBER**: The PR number to review.
-- **ISSUE_TITLE**: The title of the PR.
-- **ISSUE_BODY**: The description of the PR.
+- **PULL_REQUEST_TITLE**: The title of the PR.
+- **PULL_REQUEST_BODY**: The description of the PR.
 
 ## Workflow
 
@@ -46,7 +46,7 @@ The following environment variables contain context:
    suggested_code_here
    ```
 
-3. **Submit Final Review:** Call `submit_pending_pull_request_review` with:
+3. **Submit Final Review:** Call `pull_request_review_write` with `method: 'submit_pending'` and:
    - `event`: Use **COMMENT** only. Do **NOT** use APPROVE or REQUEST_CHANGES.
    - A summary comment in this format:
 
