@@ -1,0 +1,36 @@
+name: '🔎 Gemini Review'
+
+on:
+  pull_request:
+    types: ['opened', 'synchronize']
+  workflow_dispatch:
+
+permissions:
+  contents: 'read'
+  pull-requests: 'write'
+
+jobs:
+  review:
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: 'Checkout repository'
+        uses: 'actions/checkout@v4'
+
+      - name: 'Run Gemini CLI'
+        uses: 'google-github-actions/run-gemini-cli@v0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          prompt: '/gemini-review'
+          settings: |-
+            {
+              "tools": {
+                "core": [
+                  "run_shell_command(cat)",
+                  "run_shell_command(ls)",
+                  "run_shell_command(grep)",
+                  "run_shell_command(find)"
+                ]
+              }
+            }
