@@ -1,0 +1,67 @@
+name: '🚀 Gemini Invoke'
+
+on:
+  workflow_call:
+    inputs:
+      prompt:
+        description: 'The prompt to pass to the Gemini model'
+        type: 'string'
+        required: true
+      additional_context:
+        description: 'Optional additional context to pass to the Gemini model'
+        type: 'string'
+        required: false
+        default: ''
+    secrets:
+      GEMINI_API_KEY:
+        required: true
+
+permissions:
+  contents: 'read'
+  issues: 'write'
+  pull-requests: 'write'
+
+jobs:
+  invoke:
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: 'Checkout repository'
+        uses: 'actions/checkout@v4'
+
+      - name: 'Run Gemini CLI'
+        uses: 'google-github-actions/run-gemini-cli@v0.1.19'
+        with:
+          gemini_api_key: '${{ secrets.GEMINI_API_KEY }}'
+          prompt: '${{ inputs.prompt }}'
+          additional_context: '${{ inputs.additional_context }}'
+          settings: |-
+            {
+              "mcpServers": {
+                "github": {
+                  "command": "docker",
+                  "args": [
+                    "run",
+                    "-i",
+                    "--rm",
+                    "-e",
+                    "GITHUB_PERSONAL_ACCESS_TOKEN",
+                    "ghcr.io/github/github-mcp-server:v0.27.0"
+                  ],
+                  "env": {
+                    "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+                  }
+                }
+              },
+              "tools": {
+                "core": [
+                  "run_shell_command(cat)",
+                  "run_shell_command(echo)",
+                  "run_shell_command(grep)",
+                  "run_shell_command(head)",
+                  "run_shell_command(tail)",
+                  "run_shell_command(find)"
+                ]
+              }
+            }
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN || github.token }}'
