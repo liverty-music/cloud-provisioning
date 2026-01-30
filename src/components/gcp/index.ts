@@ -22,6 +22,8 @@ const REQUIRED_APIS = [
   'aiplatform.googleapis.com',
   'securitycenter.googleapis.com', // Correct endpoint for Security Command Center.
   'dataform.googleapis.com',
+  'sqladmin.googleapis.com',
+  'servicenetworking.googleapis.com',
 ]
 
 export interface GcpConfig {

@@ -3,6 +3,7 @@ import { GitHubComponent, GitHubConfig, BufConfig } from './components/github/in
 import { GcpProjectBasis, GcpConfig } from './components/gcp/index.js'
 import { WorkloadIdentityFederation } from './components/gcp/workload-identity.js'
 import { ConcertDataStore } from './components/gcp/concert-data-store.js'
+import { CloudSqlInstance } from './components/gcp/database.js'
 
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'
@@ -45,6 +46,13 @@ new ConcertDataStore({
   enabledServices: gcpComponent.enabledServices,
 })
 
+const database = new CloudSqlInstance('backend-sql', {
+  projectId: gcpComponent.project.projectId,
+  region: gcpComponent.environmentConfig.region,
+  environment: env,
+  enabledServices: gcpComponent.enabledServices,
+})
+
 // Create Workload Identity Federation for Pulumi Deployments and other providers
 // const workloadIdentityFederation = new WorkloadIdentityFederation({
 new WorkloadIdentityFederation({
@@ -57,5 +65,7 @@ new WorkloadIdentityFederation({
 // Export resources for backwards compatibility and stack outputs
 export const folder = gcpComponent.folder
 export const project = gcpComponent.project
+export const dbConnectionName = database.instance.connectionName
+export const dbPscServiceAttachment = database.instance.pscServiceAttachmentLink
 // export const enabledServices = gcpComponent.enabledServices
 // export const pulumiCloudServiceAccountEmail = workloadIdentityFederation.serviceAccountEmail
