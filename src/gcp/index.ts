@@ -63,16 +63,6 @@ export class Gcp {
       'Liverty Music Backend Application Service Account'
     )
 
-    // Bind Workload Identity (allow GKE KSA to impersonate GSA)
-    // principal://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}
-    new gcp.serviceaccount.IAMBinding(`${backendApp}-wif-binding`, {
-      serviceAccountId: backendAppSA.name,
-      role: 'roles/iam.workloadIdentityUser',
-      members: [
-        pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
-      ],
-    })
-
     // 3. Network (VPC, Subnets, NAT) - Osaka
     const network = new NetworkComponent('network', {
       region: Regions.Osaka,
@@ -100,7 +90,21 @@ export class Gcp {
       masterCidr: osakaConfig.masterCidr,
     })
 
-    // 6. Cloud SQL Instance (Postgres)
+    // 6. Bind Workload Identity (allow GKE KSA to impersonate GSA)
+    // Requires GKE API (enabled in KubernetesComponent)
+    new gcp.serviceaccount.IAMBinding(
+      `${backendApp}-wif-binding`,
+      {
+        serviceAccountId: backendAppSA.name,
+        role: 'roles/iam.workloadIdentityUser',
+        members: [
+          pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
+        ],
+      },
+      { dependsOn: [kubernetes] }
+    )
+
+    // 7. Cloud SQL Instance (Postgres)
     new PostgresComponent('postgres', {
       projectId: this.project.projectId,
       region: Regions.Osaka,
@@ -113,7 +117,7 @@ export class Gcp {
       appServiceAccountEmail: backendAppSA.email,
     })
 
-    // 7. Workload Identity Federation
+    // 8. Workload Identity Federation
     new WorkloadIdentityComponent({
       environment,
       projectId: this.project.projectId,
