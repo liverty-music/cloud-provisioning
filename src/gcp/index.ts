@@ -93,15 +93,12 @@ export class Gcp {
     // 6. Bind Workload Identity (allow GKE KSA to impersonate GSA)
     // Requires GKE API (enabled in KubernetesComponent)
     new gcp.serviceaccount.IAMBinding(
-
-
-        `${backendApp}-wif-binding`,
-        {
-          serviceAccountId: backendAppSA.name,
-          role: 'roles/iam.workloadIdentityUser',
-          members: [
-
-         pulumi.interpolate`princ
+      `${backendApp}-wif-binding`,
+      {
+        serviceAccountId: backendAppSA.name,
+        role: 'roles/iam.workloadIdentityUser',
+        members: [
+          pulumi.interpolate`princ
     ipal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
         ],
       },
