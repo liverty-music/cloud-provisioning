@@ -117,7 +117,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
           insightsConfig: {
             queryInsightsEnabled: true,
             recordApplicationTags: true,
-            recordClientAddress: true,
+            recordClientAddress: false,
           },
           databaseFlags: [
             { name: 'cloudsql.iam_authentication', value: 'on' },
