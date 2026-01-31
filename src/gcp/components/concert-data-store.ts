@@ -41,7 +41,7 @@ export class ConcertDataStore extends pulumi.ComponentResource {
         skipDefaultSchemaCreation: false,
         project: projectId,
       },
-      { ignoreChanges: ['advancedSiteSearchConfig'] }
+      { ignoreChanges: ['advancedSiteSearchConfig'], dependsOn: enabledApis }
     )
 
     // Set the target site for the data store to crawl.
