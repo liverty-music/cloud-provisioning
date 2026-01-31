@@ -1,27 +1,32 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as gcp from '@pulumi/gcp'
+import { ApiService } from '../services/api.js'
 
 export interface ConcertDataStoreArgs {
   projectId: pulumi.Input<string>
   projectNumber: pulumi.Input<string>
   region: pulumi.Input<string>
-  enabledServices: pulumi.Input<gcp.projects.Service>[]
 }
 
 export class ConcertDataStore extends pulumi.ComponentResource {
   constructor(args: ConcertDataStoreArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:ConcertDataStore', 'ConcertDataStore', args, opts)
 
-    const { projectId, projectNumber, region, enabledServices } = args
+    const { projectId, projectNumber } = args
 
-    this.createUverworldDataStore(projectId, projectNumber, region, enabledServices)
+    const apiService = new ApiService(projectId)
+    const enabledApis = apiService.enableApis([
+      'discoveryengine.googleapis.com', // Required for Discovery Engine
+      'aiplatform.googleapis.com', // Required for AI Platform
+    ])
+
+    this.createUverworldDataStore(projectId, projectNumber, enabledApis)
   }
 
   private createUverworldDataStore(
     projectId: pulumi.Input<string>,
     projectNumber: pulumi.Input<string>,
-    region: pulumi.Input<string>,
-    enabledServices: pulumi.Input<gcp.projects.Service>[]
+    enabledApis: pulumi.Input<gcp.projects.Service>[]
   ) {
     const webSiteStore = new gcp.discoveryengine.DataStore(
       'official-artist-site',
@@ -36,7 +41,7 @@ export class ConcertDataStore extends pulumi.ComponentResource {
         skipDefaultSchemaCreation: false,
         project: projectId,
       },
-      { dependsOn: enabledServices, ignoreChanges: ['advancedSiteSearchConfig'] }
+      { ignoreChanges: ['advancedSiteSearchConfig'] }
     )
 
     // Set the target site for the data store to crawl.
@@ -50,7 +55,7 @@ export class ConcertDataStore extends pulumi.ComponentResource {
         exactMatch: false,
         project: projectId,
       },
-      { dependsOn: [webSiteStore] }
+      { dependsOn: enabledApis }
     )
 
     // Create a search engine for official artist website.

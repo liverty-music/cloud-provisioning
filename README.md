@@ -5,6 +5,7 @@ Liverty Music's cloud infrastructure provisioning using Pulumi and TypeScript. T
 ## Overview
 
 This project provisions and manages cloud resources for Liverty Music, including:
+
 - GitHub organization settings and repository management
 - GCP organizational resources (folders, projects, and services)
 - Multi-environment support (dev/prod) with proper configuration management
@@ -18,10 +19,12 @@ This project provisions and manages cloud resources for Liverty Music, including
 ## Resources Created
 
 ### GitHub Resources
+
 - **Organization Settings** (`github.OrganizationSettings`) - GitHub organization configuration
 - **Repositories** (`github.Repository`) - Managed repositories with templates
 
 ### GCP Resources
+
 - **Organization Folder** (`gcp.organizations.Folder`) - Organizational folder for project grouping
 - **GCP Project** (`gcp.organizations.Project`) - Environment-specific projects with billing
 - **Enabled Services** (`gcp.projects.Service`) - Required GCP APIs for each environment
@@ -45,17 +48,20 @@ This project provisions and manages cloud resources for Liverty Music, including
 ## Getting Started
 
 1. **Clone this repository:**
+
    ```bash
    git clone <repository-url>
    cd cloud-provisioning
    ```
 
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 3. **Initialize Pulumi stacks:**
+
    ```bash
    # Create and configure each environment
    pulumi stack init dev
@@ -99,9 +105,10 @@ Configuration and secrets are managed through Pulumi ESC (Environment, Secrets, 
 - **Environment-specific Settings**: Different configurations for dev and prod environments
 
 The stack configuration files (`Pulumi.{dev,prod}.yaml`) reference ESC environments using the format:
+
 ```yaml
 environment:
-  - cloud-provisioning/dev  # or cloud-provisioning/prod
+  - cloud-provisioning/dev # or cloud-provisioning/prod
 ```
 
 This provides secure, centralized configuration management with dynamic secrets and proper access controls.
@@ -109,6 +116,7 @@ This provides secure, centralized configuration management with dynamic secrets 
 ### Stack Management
 
 Switch between environments:
+
 ```bash
 pulumi stack select dev       # Development environment
 pulumi stack select prod      # Production environment
@@ -144,17 +152,18 @@ This project currently manages:
 - **GitHub Repositories**: Automated repository creation with templates:
   - `cloud-provisioning` - This infrastructure repository
   - `schema` - Protocol buffer schemas repository
-- **GCP Organization Folder**: Organizational structure for Liverty Music projects  
+- **GCP Organization Folder**: Organizational structure for Liverty Music projects
 - **GCP Projects**: Environment-specific projects (dev/prod) with proper billing
 - **GCP Services**: Automated API enablement for required services
 
+- **Network Resources**: Custom VPC (`liverty-music`), Subnets (Osaka), Cloud NAT
+- **Compute Resources**: GKE Autopilot Cluster (`osaka-region`) with Private Nodes
+- **Storage/Database**: Cloud SQL PostgreSQL 18 with Private Service Connect (PSC) & Cloud DNS
+
 ## Future Enhancements
 
-- **Infrastructure components** in the `src/components/` directories
-- **Networking resources** (VPCs, subnets, firewall rules)
-- **Compute resources** (GCE instances, GKE clusters)  
-- **Storage solutions** (Cloud Storage, Cloud SQL)
-- **Security policies** (IAM roles, service accounts)
+- **Security policies** (Refined IAM roles, service accounts)
+- **CI/CD Pipelines** (GitHub Actions integration with WIF)
 
 ## Resources
 
@@ -166,6 +175,7 @@ This project currently manages:
 ## Getting Help
 
 If you run into issues or have questions, check out:
+
 - Pulumi Documentation: https://www.pulumi.com/docs/
 - Community Slack: https://slack.pulumi.com/
 - GitHub Issues: https://github.com/pulumi/pulumi/issues
