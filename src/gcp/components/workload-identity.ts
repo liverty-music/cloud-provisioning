@@ -2,14 +2,14 @@ import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import { Environment } from '../../index.js'
 
-export interface IdentityComponentArgs {
+export interface WorkloadIdentityComponentArgs {
   environment: Environment
   projectId: pulumi.Input<string>
   projectNumber: pulumi.Input<string>
   folderId: pulumi.Input<string>
 }
 
-export class WorkloadIdentityFederation extends pulumi.ComponentResource {
+export class WorkloadIdentityComponent extends pulumi.ComponentResource {
   public readonly pool: gcp.iam.WorkloadIdentityPool
   public readonly provider: gcp.iam.WorkloadIdentityPoolProvider
   public readonly serviceAccount: gcp.serviceaccount.Account
@@ -18,7 +18,7 @@ export class WorkloadIdentityFederation extends pulumi.ComponentResource {
   private readonly PULUMI_ORG = 'pannpers'
   private readonly PULUMI_OIDC_ISSUER = 'https://api.pulumi.com/oidc'
 
-  constructor(args: IdentityComponentArgs, opts?: pulumi.ComponentResourceOptions) {
+  constructor(args: WorkloadIdentityComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:WorkloadIdentityFederation', 'WorkloadIdentityFederation', args, opts)
 
     const { environment, projectId, projectNumber, folderId } = args

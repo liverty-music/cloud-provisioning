@@ -1,0 +1,123 @@
+import * as pulumi from '@pulumi/pulumi'
+import * as gcp from '@pulumi/gcp'
+import { ProjectComponent, GcpConfig } from './components/project.js'
+import { IamService } from './services/iam.js'
+import { WorkloadIdentityComponent } from './components/workload-identity.js'
+import { ConcertDataStore } from './components/concert-data-store.js'
+import { NetworkComponent } from './components/network.js'
+import { KubernetesComponent } from './components/kubernetes.js'
+import { PostgresComponent } from './components/postgres.js'
+import { RegionNames, Regions } from './region.js'
+
+export interface GcpArgs {
+  brandId: string
+  displayName: string
+  environment: 'dev' | 'staging' | 'prod'
+  gcpConfig: GcpConfig
+}
+
+export const NetworkConfig = {
+  Osaka: {
+    // Primary range for GKE Nodes + PSC Endpoints
+    subnetCidr: '10.10.0.0/20',
+    // Secondary ranges for GKE
+    podsCidr: '10.20.0.0/16',
+    servicesCidr: '10.30.0.0/20',
+    // GKE Control Plane CIDR
+    masterCidr: '172.16.0.0/28',
+    // Target IP for Cloud SQL PSC Endpoint
+    postgresPscIp: '10.10.10.10',
+  },
+} as const
+
+/**
+ * Gcp orchestrates all GCP resources.
+ * It is a plain class (not a ComponentResource) to keep the resource URNs flat.
+ */
+export class Gcp {
+  public readonly folder: gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder>
+  public readonly project: gcp.organizations.Project
+
+  constructor(args: GcpArgs) {
+    const { brandId, displayName, environment, gcpConfig } = args
+
+    // 1. Project and Folders
+    const projectBasis = new ProjectComponent({
+      brandId,
+      displayName,
+      environment,
+      gcpConfig,
+    })
+    this.folder = projectBasis.folder
+    this.project = projectBasis.project
+
+    const lm = 'liverty-music'
+    const backendApp = 'backend-app'
+    const namespace = 'backend'
+
+    // 2. Identity Management (GSA + Workload Identity)
+    const iamSvc = new IamService(this.project.projectId)
+    const backendAppSA = iamSvc.createServiceAccount(
+      `${lm}-${backendApp}`,
+      backendApp,
+      'Liverty Music Backend Application Service Account'
+    )
+
+    // Bind Workload Identity (allow GKE KSA to impersonate GSA)
+    // principal://iam.googleapis.com/projects/${projectNumber}/locations/global/workloadIdentityPools/${projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}
+    new gcp.serviceaccount.IAMBinding(`${backendApp}-wif-binding`, {
+      serviceAccountId: backendAppSA.name,
+      role: 'roles/iam.workloadIdentityUser',
+      members: [
+        pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
+      ],
+    })
+
+    // 3. Network (VPC, Subnets, NAT) - Osaka
+    const network = new NetworkComponent('network', {
+      region: Regions.Osaka,
+      regionName: RegionNames.Osaka,
+    })
+
+    // 4. Concert Data Store (Vertex AI Search)
+    new ConcertDataStore({
+      projectId: this.project.projectId,
+      projectNumber: this.project.number,
+      region: Regions.Osaka,
+    })
+
+    // 5. GKE Autopilot Cluster
+    const osakaConfig = NetworkConfig.Osaka
+    const kubernetes = new KubernetesComponent('kubernetes-cluster', {
+      environment,
+      region: Regions.Osaka,
+      regionName: RegionNames.Osaka,
+      networkId: network.network.id,
+      subnetCidr: osakaConfig.subnetCidr,
+      podsCidr: osakaConfig.podsCidr,
+      servicesCidr: osakaConfig.servicesCidr,
+      masterCidr: osakaConfig.masterCidr,
+    })
+
+    // 6. Cloud SQL Instance (Postgres)
+    new PostgresComponent('postgres', {
+      projectId: this.project.projectId,
+      region: Regions.Osaka,
+      regionName: RegionNames.Osaka,
+      environment,
+      subnetId: kubernetes.subnet.id,
+      networkId: network.network.id,
+      pscEndpointIp: osakaConfig.postgresPscIp,
+      dnsZoneName: network.pscZone.name,
+      appServiceAccountEmail: backendAppSA.email,
+    })
+
+    // 7. Workload Identity Federation
+    new WorkloadIdentityComponent({
+      environment,
+      projectId: this.project.projectId,
+      projectNumber: this.project.number,
+      folderId: pulumi.output(this.folder).apply(f => f.folderId),
+    })
+  }
+}
