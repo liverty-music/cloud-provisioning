@@ -102,11 +102,6 @@ export class KubernetesComponent extends pulumi.ComponentResource {
         costManagementConfig: {
           enabled: true,
         },
-        nodePoolAutoConfig: {
-          resourceManagerTags: {
-            environment,
-          },
-        },
       },
       { parent: this, dependsOn: enabledApis }
     )
