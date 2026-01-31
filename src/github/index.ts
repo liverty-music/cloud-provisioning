@@ -63,6 +63,9 @@ export class GitHubComponent extends pulumi.ComponentResource {
       hasIssues: true,
       deleteBranchOnMerge: true,
       vulnerabilityAlerts: true,
+      allowMergeCommit: true,
+      allowSquashMerge: false,
+      allowRebaseMerge: false,
     }
 
     // Create repositories

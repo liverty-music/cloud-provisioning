@@ -89,6 +89,7 @@ export class Gcp {
     // 5. GKE Autopilot Cluster
     const osakaConfig = NetworkConfig.Osaka
     const kubernetes = new KubernetesComponent('kubernetes-cluster', {
+      projectId: this.project.projectId,
       environment,
       region: Regions.Osaka,
       regionName: RegionNames.Osaka,
