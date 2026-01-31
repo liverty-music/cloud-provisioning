@@ -22,6 +22,7 @@ export type GoogleApis =
   | 'sqladmin.googleapis.com'
   | 'servicenetworking.googleapis.com'
   | 'container.googleapis.com'
+  | 'dns.googleapis.com'
 
 export class ApiService {
   constructor(private projectId: pulumi.Input<string>) {}
