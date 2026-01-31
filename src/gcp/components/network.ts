@@ -1,10 +1,12 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as gcp from '@pulumi/gcp'
-import { Region, RegionName } from '../region'
+import { Region, RegionName } from '../region.js'
+import { ApiService } from '../services/api.js'
 
 export interface NetworkComponentArgs {
   region: Region
   regionName: RegionName
+  projectId: pulumi.Input<string>
 }
 
 export class NetworkComponent extends pulumi.ComponentResource {
@@ -16,7 +18,10 @@ export class NetworkComponent extends pulumi.ComponentResource {
   constructor(name: string, args: NetworkComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:NetworkComponent', name, args, opts)
 
-    const { region, regionName } = args
+    const { region, regionName, projectId } = args
+
+    const apiService = new ApiService(projectId)
+    const enabledApis = apiService.enableApis(['dns.googleapis.com'], this)
 
     // 1. VPC Network (Custom Mode)
     // Global VPC Network is unique per project.
@@ -42,7 +47,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
           networks: [{ networkUrl: this.network.id }],
         },
       },
-      { parent: this }
+      { parent: this, dependsOn: enabledApis }
     )
 
     // 3. Cloud Router (for NAT)
