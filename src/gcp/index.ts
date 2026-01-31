@@ -67,6 +67,7 @@ export class Gcp {
     const network = new NetworkComponent('network', {
       region: Regions.Osaka,
       regionName: RegionNames.Osaka,
+      projectId: this.project.projectId,
     })
 
     // 4. Concert Data Store (Vertex AI Search)
