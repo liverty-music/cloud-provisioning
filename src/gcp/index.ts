@@ -98,8 +98,7 @@ export class Gcp {
         serviceAccountId: backendAppSA.name,
         role: 'roles/iam.workloadIdentityUser',
         members: [
-          pulumi.interpolate`princ
-    ipal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
+          pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
         ],
       },
       { dependsOn: [kubernetes] }
