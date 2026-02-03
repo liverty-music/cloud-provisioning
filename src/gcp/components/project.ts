@@ -31,7 +31,7 @@ export class ProjectComponent extends pulumi.ComponentResource {
     this.project = this.createProject(brandId, displayName, environment, gcpConfig)
 
     // Enable APIs.
-    const apiService = new ApiService(this.project.projectId)
+    const apiService = new ApiService(this.project)
     apiService.enableApis([
       'cloudresourcemanager.googleapis.com', // Required for folder creation.
       'serviceusage.googleapis.com', // Required for API enablement.
@@ -46,6 +46,7 @@ export class ProjectComponent extends pulumi.ComponentResource {
       'geminicloudassist.googleapis.com', // Required for Gemini Cloud Assist.
       'cloudasset.googleapis.com', // Recommended for Gemini Cloud Assist.
       'recommender.googleapis.com', // Recommended for Gemini Cloud Assist.
+      'artifactregistry.googleapis.com', // Required for container images.
     ])
 
     // Register outputs.
