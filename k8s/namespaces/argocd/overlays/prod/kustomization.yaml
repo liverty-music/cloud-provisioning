@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+patches:
+# Enable HA for Prod
+- patch: |-
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: argocd-cmd-params-cm
+    data:
+      server.insecure: "false" # Enforce secure communication in Prod
+  target:
+    kind: ConfigMap
+    name: argocd-cmd-params-cm
+# Example scaling for HA
+- patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: argocd-server
+    spec:
+      replicas: 2
+  target:
+    kind: Deployment
+    name: argocd-server
