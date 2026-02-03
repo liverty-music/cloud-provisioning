@@ -1,6 +1,7 @@
 import { ValueOf } from '../lib/lib.js'
 
 export const Regions = {
+  Asia: 'asia',
   Tokyo: 'asia-northeast1',
   Osaka: 'asia-northeast2',
 } as const

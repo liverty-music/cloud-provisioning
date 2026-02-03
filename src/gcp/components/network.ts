@@ -6,7 +6,7 @@ import { ApiService } from '../services/api.js'
 export interface NetworkComponentArgs {
   region: Region
   regionName: RegionName
-  projectId: pulumi.Input<string>
+  project: gcp.organizations.Project
 }
 
 export class NetworkComponent extends pulumi.ComponentResource {
@@ -18,9 +18,9 @@ export class NetworkComponent extends pulumi.ComponentResource {
   constructor(name: string, args: NetworkComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:NetworkComponent', name, args, opts)
 
-    const { region, regionName, projectId } = args
+    const { region, regionName, project } = args
 
-    const apiService = new ApiService(projectId)
+    const apiService = new ApiService(project)
     const enabledApis = apiService.enableApis(['dns.googleapis.com'], this)
 
     // 1. VPC Network (Custom Mode)

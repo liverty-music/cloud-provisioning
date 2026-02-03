@@ -4,7 +4,7 @@ import { Roles, IamService } from '../services/iam.js'
 import { ApiService } from '../services/api.js'
 
 export interface PostgresComponentArgs {
-  projectId: pulumi.Input<string>
+  project: gcp.organizations.Project
   region: pulumi.Input<string>
   regionName: pulumi.Input<string>
   environment: 'dev' | 'staging' | 'prod'
@@ -51,7 +51,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
     super('gcp:liverty-music:PostgresComponent', name, args, opts)
 
     const {
-      projectId,
+      project,
       region,
       regionName,
       environment,
@@ -64,16 +64,16 @@ export class PostgresComponent extends pulumi.ComponentResource {
 
     const backendApp = 'backend-app'
 
-    const apiService = new ApiService(projectId)
+    const apiService = new ApiService(project)
     const enabledApis = apiService.enableApis([
       'sqladmin.googleapis.com', // Required for Cloud SQL
       'servicenetworking.googleapis.com', // Required for PSC
     ])
 
-    const iamSvc = new IamService(projectId)
+    const iamSvc = new IamService(project)
 
     // 1. Grant necessary roles to the provided service account
-    iamSvc.bindRoles([Roles.CloudSql.InstanceUser], backendApp, appServiceAccountEmail, this)
+    iamSvc.bindProjectRoles([Roles.CloudSql.InstanceUser], backendApp, appServiceAccountEmail, this)
 
     // 2. Provision Cloud SQL Instance (Producer)
     const postgresDbName = `postgres-${regionName}`
@@ -81,7 +81,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
       postgresDbName,
       {
         name: postgresDbName,
-        project: projectId,
+        project: project.projectId,
         region: region,
         databaseVersion: 'POSTGRES_18',
         deletionProtection: environment !== 'dev',
@@ -110,7 +110,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
             pscConfigs: [
               {
                 pscEnabled: true,
-                allowedConsumerProjects: [projectId],
+                allowedConsumerProjects: [project.projectId],
               },
             ],
           },
@@ -179,7 +179,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
       backendApp,
       {
         name: backendApp,
-        project: projectId,
+        project: project.projectId,
         instance: this.instance.name,
         charset: 'UTF8',
         collation: 'en_US.UTF8',
@@ -196,7 +196,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
       backendApp,
       {
         name: iamUserName,
-        project: projectId,
+        project: project.projectId,
         instance: this.instance.name,
         type: 'CLOUD_IAM_SERVICE_ACCOUNT',
       },
