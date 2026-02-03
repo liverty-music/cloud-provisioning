@@ -1,8 +1,11 @@
 # deployment-infrastructure Specification
 
 ## Purpose
+
 TBD - created by archiving change configure-pulumi-esc. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Workload Identity Federation (WIF)
 
 The infrastructure MUST establish a Workload Identity Pool specifically for external OIDC providers to allow keyless authentication from Pulumi Cloud.
@@ -76,6 +79,13 @@ The `prod` stack MUST only be updated via manual action in the Pulumi Cloud Dash
 
 #### Scenario: Prod Manual Deploy
 
-- **WHEN** an operator triggers a deployment from the Pulumi Cloud Dashboard or via `pulumi up -s prod` CLI.
 - **THEN** Pulumi Cloud Deployments applies the changes to the `prod` stack.
 
+### Requirement: Dedicated CD Namespace
+
+The cluster SHALL support a dedicated namespace for Continuous Delivery tooling.
+
+#### Scenario: Namespace Existence
+
+- **WHEN** listing namespaces
+- **THEN** a namespace named `argocd` (or configured equivalent) is present
