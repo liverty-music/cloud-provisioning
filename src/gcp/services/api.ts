@@ -23,9 +23,10 @@ export type GoogleApis =
   | 'servicenetworking.googleapis.com'
   | 'container.googleapis.com'
   | 'dns.googleapis.com'
+  | 'artifactregistry.googleapis.com'
 
 export class ApiService {
-  constructor(private projectId: pulumi.Input<string>) {}
+  constructor(private project: gcp.organizations.Project) {}
 
   enableApis(apis: GoogleApis[], parent?: pulumi.Resource): gcp.projects.Service[] {
     return apis.map(api => {
@@ -33,7 +34,7 @@ export class ApiService {
       return new gcp.projects.Service(
         apiName,
         {
-          project: this.projectId,
+          project: this.project.projectId,
           service: api,
           disableOnDestroy: true,
         },
