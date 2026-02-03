@@ -1,3 +1,6 @@
 
 [env]
 GOOGLE_CLOUD_QUOTA_PROJECT = "liverty-music-dev"
+
+[tools]
+kustomize = "latest"
