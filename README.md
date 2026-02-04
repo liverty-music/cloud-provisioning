@@ -169,13 +169,13 @@ This project currently manages:
 
 ### ArgoCD UI
 
-To access the ArgoCD UI, use port-forwarding:
+To access the ArgoCD UI, use port-forwarding to the HTTP port (since it runs in insecure mode):
 
 ```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+kubectl port-forward svc/argocd-server -n argocd 8080:80
 ```
 
-Then visit [https://localhost:8080](https://localhost:8080).
+Then visit [http://localhost:8080](http://localhost:8080).
 
 - **Username**: `admin`
 - **Password**: Get the initial password by running:
