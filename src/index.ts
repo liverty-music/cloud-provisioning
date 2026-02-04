@@ -5,6 +5,7 @@ import {
   BufConfig,
   GitHubRepositoryComponent,
   RepositoryName,
+  Environment,
 } from './github/index.js'
 import { Gcp } from './gcp/index.js'
 import { GcpConfig } from './gcp/components/project.js'
@@ -17,7 +18,6 @@ const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
 const bufConfig = config.requireObject('buf') as BufConfig
 
-export type Environment = 'dev' | 'staging' | 'prod'
 const env = pulumi.getStack() as Environment
 
 // 1. GitHub Organization Configuration (Prod Only)
@@ -42,20 +42,11 @@ const gcp = new Gcp({
 })
 
 // 3. GitHub Repository Environments (All Environments)
-// Map stack name to environment name
-const environmentNameMap: Record<Environment, 'development' | 'production' | 'staging'> = {
-  dev: 'development',
-  prod: 'production',
-  staging: 'staging',
-}
-
-const githubEnvironmentName = environmentNameMap[env]
-
 new GitHubRepositoryComponent({
   brandId,
   githubConfig,
   repositoryName: RepositoryName.BACKEND,
-  environment: githubEnvironmentName,
+  environment: env,
   variables: {
     REGION: gcp.region,
     PROJECT_ID: gcp.projectId,
@@ -68,4 +59,4 @@ new GitHubRepositoryComponent({
 export const folder = gcp.folder
 export const project = gcp.project
 // Export for debug/reference
-export const githubEnv = githubEnvironmentName
+export const githubEnv = env

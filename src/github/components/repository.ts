@@ -1,12 +1,12 @@
 import * as github from '@pulumi/github'
 import * as pulumi from '@pulumi/pulumi'
-import { GitHubConfig, RepositoryName, EnvironmentName } from '../config.js'
+import { GitHubConfig, RepositoryName, Environment } from '../config.js'
 
 export interface GitHubRepositoryComponentArgs {
   brandId: string
   githubConfig: GitHubConfig
   repositoryName: RepositoryName
-  environment: EnvironmentName
+  environment: Environment
   variables: Record<string, pulumi.Input<string>>
   secrets?: Record<string, pulumi.Input<string>>
 }
