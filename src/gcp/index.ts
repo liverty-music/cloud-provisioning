@@ -82,46 +82,7 @@ export class Gcp {
       region: Regions.Osaka,
     })
 
-    // 5. GKE Autopilot Cluster
-    const osakaConfig = NetworkConfig.Osaka
-    const kubernetes = new KubernetesComponent('kubernetes-cluster', {
-      project: this.project,
-      environment,
-      region: Regions.Osaka,
-      regionName: RegionNames.Osaka,
-      networkId: network.network.id,
-      subnetCidr: osakaConfig.subnetCidr,
-      podsCidr: osakaConfig.podsCidr,
-      servicesCidr: osakaConfig.servicesCidr,
-      masterCidr: osakaConfig.masterCidr,
-    })
-
-    // 6. Bind Workload Identity (allow GKE KSA to impersonate GSA)
-    // Requires GKE API (enabled in KubernetesComponent)
-    new gcp.serviceaccount.IAMMember(
-      `${backendApp}-wif-binding`,
-      {
-        serviceAccountId: backendAppSA.name,
-        role: 'roles/iam.workloadIdentityUser',
-        member: pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
-      },
-      { dependsOn: [kubernetes] }
-    )
-
-    // 7. Cloud SQL Instance (Postgres)
-    new PostgresComponent('postgres', {
-      project: this.project,
-      region: Regions.Osaka,
-      regionName: RegionNames.Osaka,
-      environment,
-      subnetId: kubernetes.subnet.id,
-      networkId: network.network.id,
-      pscEndpointIp: osakaConfig.postgresPscIp,
-      dnsZoneName: network.pscZone.name,
-      appServiceAccountEmail: backendAppSA.email,
-    })
-
-    // 8. Artifact Registry
+    // 4. Artifact Registry
     const artifactRegistry = new gcp.artifactregistry.Repository(
       'github-backend-repository',
       {
@@ -143,14 +104,20 @@ export class Gcp {
       artifactRegistry
     )
 
-    // Grant gke-node service account permission to pull images
-    iamSvc.bindArtifactRegistryReader(
-      'gke-node-sa-reader',
-      kubernetes.nodeServiceAccountEmail,
+    // 5. GKE Autopilot Cluster
+    const osakaConfig = NetworkConfig.Osaka
+    const kubernetes = new KubernetesComponent('kubernetes-cluster', {
+      project: this.project,
+      environment,
+      region: Regions.Osaka,
+      regionName: RegionNames.Osaka,
+      networkId: network.network.id,
+      subnetCidr: osakaConfig.subnetCidr,
+      podsCidr: osakaConfig.podsCidr,
+      servicesCidr: osakaConfig.servicesCidr,
+      masterCidr: osakaConfig.masterCidr,
       artifactRegistry,
-      Regions.Osaka,
-      artifactRegistry
-    )
+    })
 
     // 9. Workload Identity Federation
     const wif = new WorkloadIdentityComponent({

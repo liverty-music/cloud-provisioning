@@ -22,6 +22,11 @@ export interface KubernetesComponentArgs {
   podsCidr: pulumi.Input<string>
   servicesCidr: pulumi.Input<string>
   masterCidr: string
+
+  /**
+   * The Artifact Registry repository to grant pull access to.
+   */
+  artifactRegistry: gcp.artifactregistry.Repository
 }
 
 export class KubernetesComponent extends pulumi.ComponentResource {
@@ -42,6 +47,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
       podsCidr,
       servicesCidr,
       masterCidr,
+      artifactRegistry,
     } = args
 
     const apiService = new ApiService(project)
@@ -68,6 +74,15 @@ export class KubernetesComponent extends pulumi.ComponentResource {
       ],
       `gke-node-sa-${regionName}`,
       gkeNodeSa.email,
+      this
+    )
+
+    // Grant permission to pull from Artifact Registry
+    iamSvc.bindArtifactRegistryReader(
+      `gke-node-sa-${regionName}`,
+      gkeNodeSa.email,
+      artifactRegistry,
+      region,
       this
     )
 
