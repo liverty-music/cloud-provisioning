@@ -14,7 +14,7 @@ commonLabels:
 images:
 - name: backend-server
   newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
-  newTag: latest
+  newTag: main
 
 configMapGenerator:
 - name: backend-config

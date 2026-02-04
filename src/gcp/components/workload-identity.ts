@@ -13,6 +13,7 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
   public readonly pool: gcp.iam.WorkloadIdentityPool
   public readonly provider: gcp.iam.WorkloadIdentityPoolProvider
   public readonly githubProvider: gcp.iam.WorkloadIdentityPoolProvider
+  public readonly githubActionsSA: gcp.serviceaccount.Account
 
   private readonly iamService: IamService
   private readonly PULUMI_ORG = 'pannpers'
@@ -110,7 +111,7 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 
     // 7. GitHub Actions CI/CD Service Account
     const githubActionsSAName = 'github-actions'
-    const githubActionsSA = this.iamService.createServiceAccount(
+    this.githubActionsSA = this.iamService.createServiceAccount(
       githubActionsSAName,
       githubActionsSAName,
       'GitHub Actions Service Account',
@@ -122,7 +123,7 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
     this.iamService.bindProjectRoles(
       [Roles.ArtifactRegistry.Writer],
       githubActionsSAName,
-      githubActionsSA.email,
+      this.githubActionsSA.email,
       this
     )
 
@@ -130,7 +131,7 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
     this.iamService.bindWifUser(
       githubActionsSAName,
       `attribute.repository/liverty-music/backend`,
-      githubActionsSA,
+      this.githubActionsSA,
       this.pool,
       this
     )

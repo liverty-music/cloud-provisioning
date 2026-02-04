@@ -68,7 +68,6 @@ export class Gcp {
       'Liverty Music Backend Application Service Account',
       'Service account for backend application'
     )
-    this.githubActionsSAEmail = backendAppSA.email
 
     // 3. Network (VPC, Subnets, NAT) - Osaka
     const network = new NetworkComponent('network', {
@@ -142,5 +141,6 @@ export class Gcp {
       project: this.project,
     })
     this.githubWorkloadIdentityProvider = wif.githubProvider.name
+    this.githubActionsSAEmail = wif.githubActionsSA.email
   }
 }

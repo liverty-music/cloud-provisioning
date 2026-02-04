@@ -11,7 +11,7 @@ spec:
       serviceAccountName: backend-app
       containers:
       - name: server
-        image: server
+        image: backend-server
         ports:
         - containerPort: 8080
           name: http

@@ -43,10 +43,16 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
       {
         repository: repositoryName,
         environment: environment,
-        deploymentBranchPolicy: {
-          protectedBranches: false,
-          customBranchPolicies: true,
-        },
+        deploymentBranchPolicy:
+          environment === 'dev'
+            ? {
+                protectedBranches: false,
+                customBranchPolicies: true,
+              }
+            : {
+                protectedBranches: true,
+                customBranchPolicies: false,
+              },
       },
       { provider, parent: this }
     )
