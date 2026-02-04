@@ -100,10 +100,6 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
         ...defaultRepositoryArgs,
         name: RepositoryName.FRONTEND,
         description: 'Frontend',
-        template: {
-          owner: githubConfig.owner,
-          repository: 'web-frontend-scaffold',
-        },
       },
       { provider: this.provider, parent: this }
     )

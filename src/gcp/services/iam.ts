@@ -12,6 +12,16 @@ export const Roles = {
   CloudSql: {
     InstanceUser: 'roles/cloudsql.instanceUser',
   },
+  Logging: {
+    LogWriter: 'roles/logging.logWriter',
+  },
+  Monitoring: {
+    MetricWriter: 'roles/monitoring.metricWriter',
+    Viewer: 'roles/monitoring.viewer',
+  },
+  Stackdriver: {
+    ResourceMetadataWriter: 'roles/stackdriver.resourceMetadata.writer',
+  },
   ArtifactRegistry: {
     Reader: 'roles/artifactregistry.reader',
     Writer: 'roles/artifactregistry.writer',

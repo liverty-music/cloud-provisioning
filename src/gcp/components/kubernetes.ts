@@ -2,6 +2,7 @@ import * as pulumi from '@pulumi/pulumi'
 import * as gcp from '@pulumi/gcp'
 import { Region, RegionName } from '../region.js'
 import { ApiService } from '../services/api.js'
+import { IamService, Roles } from '../services/iam.js'
 
 export interface KubernetesComponentArgs {
   project: gcp.organizations.Project
@@ -47,35 +48,28 @@ export class KubernetesComponent extends pulumi.ComponentResource {
     const enabledApis = apiService.enableApis(['container.googleapis.com'], this)
 
     // 1. Dedicated Service Account for GKE Nodes
-    const gkeNodeSa = new gcp.serviceaccount.Account(
+    const iamSvc = new IamService(project)
+    const gkeNodeSa = iamSvc.createServiceAccount(
       `gke-node-sa-${regionName}`,
-      {
-        accountId: `gke-node-${regionName}`,
-        displayName: `GKE Node Service Account (${regionName})`,
-      },
-      { parent: this }
+      `gke-node-${regionName}`,
+      `GKE Node Service Account (${regionName})`,
+      'Service Account for GKE Autopilot Nodes',
+      this
     )
     this.nodeServiceAccountEmail = gkeNodeSa.email
 
     // Grant standard GKE node roles
-    const nodeRoles = [
-      'roles/logging.logWriter',
-      'roles/monitoring.metricWriter',
-      'roles/monitoring.viewer',
-      'roles/stackdriver.resourceMetadata.writer',
-    ]
-
-    for (const role of nodeRoles) {
-      new gcp.projects.IAMMember(
-        `gke-node-sa-${regionName}-${role}`,
-        {
-          project: project.projectId,
-          role: role,
-          member: pulumi.interpolate`serviceAccount:${gkeNodeSa.email}`,
-        },
-        { parent: this }
-      )
-    }
+    iamSvc.bindProjectRoles(
+      [
+        Roles.Logging.LogWriter,
+        Roles.Monitoring.MetricWriter,
+        Roles.Monitoring.Viewer,
+        Roles.Stackdriver.ResourceMetadataWriter,
+      ],
+      `gke-node-sa-${regionName}`,
+      gkeNodeSa.email,
+      this
+    )
 
     // 2. Dedicated Subnet for GKE
     this.subnet = new gcp.compute.Subnetwork(
