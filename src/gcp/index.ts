@@ -143,6 +143,15 @@ export class Gcp {
       artifactRegistry
     )
 
+    // Grant default compute service account permission to pull images (required for GKE nodes)
+    iamSvc.bindArtifactRegistryReader(
+      'default-compute-sa',
+      pulumi.interpolate`${this.project.number}-compute@developer.gserviceaccount.com`,
+      artifactRegistry,
+      Regions.Osaka,
+      artifactRegistry
+    )
+
     // 9. Workload Identity Federation
     const wif = new WorkloadIdentityComponent({
       environment,
