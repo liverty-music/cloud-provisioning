@@ -37,6 +37,10 @@ export const NetworkConfig = {
 export class Gcp {
   public readonly folder: gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder>
   public readonly project: gcp.organizations.Project
+  public readonly projectId: pulumi.Output<string>
+  public readonly region: string = Regions.Osaka
+  public readonly githubActionsSAEmail: pulumi.Output<string>
+  public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
 
   constructor(args: GcpArgs) {
     const { brandId, displayName, environment, gcpConfig } = args
@@ -50,37 +54,38 @@ export class Gcp {
     })
     this.folder = projectBasis.folder
     this.project = projectBasis.project
+    this.projectId = this.project.projectId
 
     const lm = 'liverty-music'
     const backendApp = 'backend-app'
     const namespace = 'backend'
 
     // 2. Identity Management (GSA + Workload Identity)
-    const iamSvc = new IamService(this.project.projectId)
+    const iamSvc = new IamService(this.project)
     const backendAppSA = iamSvc.createServiceAccount(
       `${lm}-${backendApp}`,
       backendApp,
-      'Liverty Music Backend Application Service Account'
+      'Liverty Music Backend Application Service Account',
+      'Service account for backend application'
     )
 
     // 3. Network (VPC, Subnets, NAT) - Osaka
     const network = new NetworkComponent('network', {
       region: Regions.Osaka,
       regionName: RegionNames.Osaka,
-      projectId: this.project.projectId,
+      project: this.project,
     })
 
     // 4. Concert Data Store (Vertex AI Search)
     new ConcertDataStore({
-      projectId: this.project.projectId,
-      projectNumber: this.project.number,
+      project: this.project,
       region: Regions.Osaka,
     })
 
     // 5. GKE Autopilot Cluster
     const osakaConfig = NetworkConfig.Osaka
     const kubernetes = new KubernetesComponent('kubernetes-cluster', {
-      projectId: this.project.projectId,
+      project: this.project,
       environment,
       region: Regions.Osaka,
       regionName: RegionNames.Osaka,
@@ -93,21 +98,19 @@ export class Gcp {
 
     // 6. Bind Workload Identity (allow GKE KSA to impersonate GSA)
     // Requires GKE API (enabled in KubernetesComponent)
-    new gcp.serviceaccount.IAMBinding(
+    new gcp.serviceaccount.IAMMember(
       `${backendApp}-wif-binding`,
       {
         serviceAccountId: backendAppSA.name,
         role: 'roles/iam.workloadIdentityUser',
-        members: [
-          pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
-        ],
+        member: pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
       },
       { dependsOn: [kubernetes] }
     )
 
     // 7. Cloud SQL Instance (Postgres)
     new PostgresComponent('postgres', {
-      projectId: this.project.projectId,
+      project: this.project,
       region: Regions.Osaka,
       regionName: RegionNames.Osaka,
       environment,
@@ -118,12 +121,26 @@ export class Gcp {
       appServiceAccountEmail: backendAppSA.email,
     })
 
-    // 8. Workload Identity Federation
-    new WorkloadIdentityComponent({
+    // 8. Artifact Registry
+    new gcp.artifactregistry.Repository(
+      'github-backend-repository',
+      {
+        repositoryId: 'backend',
+        location: Regions.Osaka,
+        format: 'DOCKER',
+        project: this.project.projectId,
+        description: 'Docker repository for GitHub Backend Repository',
+      },
+      { parent: this.project }
+    )
+
+    // 9. Workload Identity Federation
+    const wif = new WorkloadIdentityComponent({
       environment,
-      projectId: this.project.projectId,
-      projectNumber: this.project.number,
-      folderId: pulumi.output(this.folder).apply(f => f.folderId),
+      folder: this.folder,
+      project: this.project,
     })
+    this.githubWorkloadIdentityProvider = wif.githubProvider.name
+    this.githubActionsSAEmail = wif.githubActionsSA.email
   }
 }

@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- backend-app/deployment.yaml
+- backend-app/service.yaml
+- backend-app/serviceaccount.yaml
+
+namespace: backend
+
+commonLabels:
+  app: backend
+
+images:
+- name: backend-server
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
+  newTag: main
+
+configMapGenerator:
+- name: backend-config
+  envs:
+  - backend-app/config.env

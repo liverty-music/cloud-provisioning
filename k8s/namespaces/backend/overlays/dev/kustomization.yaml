@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+namespace: backend
+
+patches:
+- target:
+    kind: ServiceAccount
+    name: backend-app
+  patch: |-
+    - op: replace
+      path: /metadata/annotations/iam.gke.io~1gcp-service-account
+      value: backend-app@liverty-music-dev.iam.gserviceaccount.com
+
+configMapGenerator:
+- name: backend-config
+  behavior: merge
+  envs:
+  - backend-app/config.env
+

@@ -4,7 +4,7 @@ import { Region, RegionName } from '../region.js'
 import { ApiService } from '../services/api.js'
 
 export interface KubernetesComponentArgs {
-  projectId: pulumi.Input<string>
+  project: gcp.organizations.Project
   environment: 'dev' | 'staging' | 'prod'
   region: Region
   regionName: RegionName
@@ -31,7 +31,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
     super('gcp:liverty-music:KubernetesComponent', name, args, opts)
 
     const {
-      projectId,
+      project,
       environment,
       region,
       regionName,
@@ -42,7 +42,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
       masterCidr,
     } = args
 
-    const apiService = new ApiService(projectId)
+    const apiService = new ApiService(project)
     const enabledApis = apiService.enableApis(['container.googleapis.com'], this)
 
     // 1. Dedicated Subnet for GKE
