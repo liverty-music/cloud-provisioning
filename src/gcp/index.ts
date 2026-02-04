@@ -122,7 +122,7 @@ export class Gcp {
     })
 
     // 8. Artifact Registry
-    new gcp.artifactregistry.Repository(
+    const artifactRegistry = new gcp.artifactregistry.Repository(
       'github-backend-repository',
       {
         repositoryId: 'backend',
@@ -132,6 +132,15 @@ export class Gcp {
         description: 'Docker repository for GitHub Backend Repository',
       },
       { parent: this.project }
+    )
+
+    // Grant backend-app SA permission to pull images from Artifact Registry
+    iamSvc.bindArtifactRegistryReader(
+      backendApp,
+      backendAppSA.email,
+      artifactRegistry,
+      Regions.Osaka,
+      artifactRegistry
     )
 
     // 9. Workload Identity Federation
