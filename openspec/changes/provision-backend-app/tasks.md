@@ -16,7 +16,7 @@
 - [x] 3.1 Create GitHub Actions workflow (`.github/workflows/deploy.yaml`) in `backend` repository.
 - [x] 3.2 Configure workflow to authenticate via WIF (using provider defined in step 1).
 - [x] 3.3 Configure workflow to build and push container image to Google Artifact Registry.
-- [ ] 3.4 Process a merge to `main` to trigger and verify the pipeline.
+- [x] 3.4 Process a merge to `main` to trigger and verify the pipeline.
 
 ## 4. Verification
 
