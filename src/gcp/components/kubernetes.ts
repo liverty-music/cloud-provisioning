@@ -26,6 +26,7 @@ export interface KubernetesComponentArgs {
 export class KubernetesComponent extends pulumi.ComponentResource {
   public readonly cluster: gcp.container.Cluster
   public readonly subnet: gcp.compute.Subnetwork
+  public readonly nodeServiceAccountEmail: pulumi.Output<string>
 
   constructor(name: string, args: KubernetesComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:KubernetesComponent', name, args, opts)
@@ -45,7 +46,38 @@ export class KubernetesComponent extends pulumi.ComponentResource {
     const apiService = new ApiService(project)
     const enabledApis = apiService.enableApis(['container.googleapis.com'], this)
 
-    // 1. Dedicated Subnet for GKE
+    // 1. Dedicated Service Account for GKE Nodes
+    const gkeNodeSa = new gcp.serviceaccount.Account(
+      `gke-node-sa-${regionName}`,
+      {
+        accountId: `gke-node-${regionName}`,
+        displayName: `GKE Node Service Account (${regionName})`,
+      },
+      { parent: this }
+    )
+    this.nodeServiceAccountEmail = gkeNodeSa.email
+
+    // Grant standard GKE node roles
+    const nodeRoles = [
+      'roles/logging.logWriter',
+      'roles/monitoring.metricWriter',
+      'roles/monitoring.viewer',
+      'roles/stackdriver.resourceMetadata.writer',
+    ]
+
+    for (const role of nodeRoles) {
+      new gcp.projects.IAMMember(
+        `gke-node-sa-${regionName}-${role}`,
+        {
+          project: project.projectId,
+          role: role,
+          member: pulumi.interpolate`serviceAccount:${gkeNodeSa.email}`,
+        },
+        { parent: this }
+      )
+    }
+
+    // 2. Dedicated Subnet for GKE
     this.subnet = new gcp.compute.Subnetwork(
       `cluster-subnet-${regionName}`,
       {
@@ -68,7 +100,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
       { parent: this }
     )
 
-    // 2. GKE Autopilot Cluster
+    // 3. GKE Autopilot Cluster
     this.cluster = new gcp.container.Cluster(
       `cluster-${regionName}`,
       {
@@ -79,6 +111,13 @@ export class KubernetesComponent extends pulumi.ComponentResource {
         network: networkId,
         subnetwork: this.subnet.id,
         datapathProvider: 'ADVANCED_DATAPATH', // Dataplane V2 (default for Autopilot)
+
+        // Use custom service account for nodes (Autopilot)
+        clusterAutoscaling: {
+          autoProvisioningDefaults: {
+            serviceAccount: gkeNodeSa.email,
+          },
+        },
 
         // Networking
         ipAllocationPolicy: {
@@ -110,6 +149,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
       clusterName: this.cluster.name,
       clusterEndpoint: this.cluster.endpoint,
       subnetId: this.subnet.id,
+      nodeServiceAccountEmail: this.nodeServiceAccountEmail,
     })
   }
 }

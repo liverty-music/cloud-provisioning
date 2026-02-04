@@ -143,6 +143,15 @@ export class Gcp {
       artifactRegistry
     )
 
+    // Grant gke-node service account permission to pull images
+    iamSvc.bindArtifactRegistryReader(
+      'gke-node-sa-reader',
+      kubernetes.nodeServiceAccountEmail,
+      artifactRegistry,
+      Regions.Osaka,
+      artifactRegistry
+    )
+
     // 9. Workload Identity Federation
     const wif = new WorkloadIdentityComponent({
       environment,
