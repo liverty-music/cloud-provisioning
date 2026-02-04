@@ -19,4 +19,4 @@ images:
 configMapGenerator:
 - name: backend-config
   envs:
-  - config.env
+  - backend-app/config.env

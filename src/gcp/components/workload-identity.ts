@@ -1,6 +1,6 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
-import { Environment } from '../../index.js'
+import { Environment } from '../../config.js'
 import { IamService, Roles } from '../services/iam.js'
 
 export interface WorkloadIdentityComponentArgs {

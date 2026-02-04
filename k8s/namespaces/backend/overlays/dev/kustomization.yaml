@@ -19,7 +19,7 @@ configMapGenerator:
 - name: backend-config
   behavior: merge
   envs:
-  - config.env
+  - backend-app/config.env
 
 secretGenerator:
 - name: backend-secrets

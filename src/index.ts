@@ -5,10 +5,10 @@ import {
   BufConfig,
   GitHubRepositoryComponent,
   RepositoryName,
-  Environment,
 } from './github/index.js'
 import { Gcp } from './gcp/index.js'
 import { GcpConfig } from './gcp/components/project.js'
+import { Environment } from './config.js'
 
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'

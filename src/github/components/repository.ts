@@ -1,6 +1,7 @@
 import * as github from '@pulumi/github'
 import * as pulumi from '@pulumi/pulumi'
-import { GitHubConfig, RepositoryName, Environment } from '../config.js'
+import { GitHubConfig, RepositoryName } from '../config.js'
+import { Environment } from '../../config.js'
 
 export interface GitHubRepositoryComponentArgs {
   brandId: string
@@ -38,7 +39,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 
     // Create Environment
     this.environment = new github.RepositoryEnvironment(
-      `${repositoryName}-${environment}`,
+      `${repositoryName}`,
       {
         repository: repositoryName,
         environment: environment,
@@ -54,7 +55,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
     for (const [key, value] of Object.entries(variables)) {
       this.variables.push(
         new github.ActionsEnvironmentVariable(
-          `${repositoryName}-${environment}-${key}`,
+          `${repositoryName}-env-${key}`,
           {
             repository: repositoryName,
             environment: this.environment.environment,
@@ -71,7 +72,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
       for (const [key, value] of Object.entries(secrets)) {
         this.secrets.push(
           new github.ActionsEnvironmentSecret(
-            `${repositoryName}-${environment}-${key}-secret`,
+            `${repositoryName}-secret-${key}`,
             {
               repository: repositoryName,
               environment: this.environment.environment,
