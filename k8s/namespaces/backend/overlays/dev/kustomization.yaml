@@ -21,7 +21,3 @@ configMapGenerator:
   envs:
   - backend-app/config.env
 
-secretGenerator:
-- name: backend-secrets
-  literals:
-  - DATABASE_PASSWORD="placeholder-use-iam-token-plugin-if-possible"
