@@ -16,4 +16,4 @@ export enum RepositoryName {
   FRONTEND = 'frontend',
 }
 
-export type EnvironmentName = 'development' | 'production' | 'staging'
+export type Environment = 'dev' | 'prod' | 'staging'
