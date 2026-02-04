@@ -58,7 +58,6 @@ export class Gcp {
 
     const lm = 'liverty-music'
     const backendApp = 'backend-app'
-    const namespace = 'backend'
 
     // 2. Identity Management (GSA + Workload Identity)
     const iamSvc = new IamService(this.project)
@@ -117,6 +116,32 @@ export class Gcp {
       servicesCidr: osakaConfig.servicesCidr,
       masterCidr: osakaConfig.masterCidr,
       artifactRegistry,
+    })
+
+    // 6. Bind Workload Identity (allow GKE KSA to impersonate GSA)
+    // Requires GKE API (enabled in KubernetesComponent)
+    const namespace = 'backend'
+    new gcp.serviceaccount.IAMMember(
+      `${backendApp}-wif-binding`,
+      {
+        serviceAccountId: backendAppSA.name,
+        role: 'roles/iam.workloadIdentityUser',
+        member: pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
+      },
+      { dependsOn: [kubernetes] }
+    )
+
+    // 7. Cloud SQL Instance (Postgres)
+    new PostgresComponent('postgres', {
+      project: this.project,
+      region: Regions.Osaka,
+      regionName: RegionNames.Osaka,
+      environment,
+      subnetId: kubernetes.subnet.id,
+      networkId: network.network.id,
+      pscEndpointIp: osakaConfig.postgresPscIp,
+      dnsZoneName: network.pscZone.name,
+      appServiceAccountEmail: backendAppSA.email,
     })
 
     // 9. Workload Identity Federation
