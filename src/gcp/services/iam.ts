@@ -13,6 +13,7 @@ export const Roles = {
     InstanceUser: 'roles/cloudsql.instanceUser',
   },
   ArtifactRegistry: {
+    Reader: 'roles/artifactregistry.reader',
     Writer: 'roles/artifactregistry.writer',
   },
 } as const
@@ -94,6 +95,26 @@ export class IamService {
         serviceAccountId: sa.name,
         role: 'roles/iam.workloadIdentityUser',
         member: pulumi.interpolate`principalSet://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${pool.workloadIdentityPoolId}/${externalMember}`,
+      },
+      { parent }
+    )
+  }
+
+  bindArtifactRegistryReader(
+    name: string,
+    saEmail: pulumi.Input<string>,
+    repository: gcp.artifactregistry.Repository,
+    location: string,
+    parent?: pulumi.Resource
+  ) {
+    return new gcp.artifactregistry.RepositoryIamMember(
+      `${name}-x-artifact-registry-reader`,
+      {
+        repository: repository.name,
+        location,
+        project: this.project.projectId,
+        role: Roles.ArtifactRegistry.Reader,
+        member: pulumi.interpolate`serviceAccount:${saEmail}`,
       },
       { parent }
     )
