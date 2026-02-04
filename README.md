@@ -165,6 +165,24 @@ This project currently manages:
 - **Security policies** (Refined IAM roles, service accounts)
 - **CI/CD Pipelines** (GitHub Actions integration with WIF)
 
+## Accessing Infrastructure
+
+### ArgoCD UI
+
+To access the ArgoCD UI, use port-forwarding:
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+Then visit [https://localhost:8080](https://localhost:8080).
+
+- **Username**: `admin`
+- **Password**: Get the initial password by running:
+  ```bash
+  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+  ```
+
 ## Resources
 
 - [Pulumi ESC Documentation](https://www.pulumi.com/docs/esc/)

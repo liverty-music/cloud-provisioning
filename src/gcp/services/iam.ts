@@ -108,7 +108,7 @@ export class IamService {
     parent?: pulumi.Resource
   ) {
     return new gcp.artifactregistry.RepositoryIamMember(
-      `${name}-artifact-registry-reader`,
+      `${name}-x-artifact-registry-reader`,
       {
         repository: repository.name,
         location,
