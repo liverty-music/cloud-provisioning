@@ -37,6 +37,10 @@ export const NetworkConfig = {
 export class Gcp {
   public readonly folder: gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder>
   public readonly project: gcp.organizations.Project
+  public readonly projectId: pulumi.Output<string>
+  public readonly region: string = Regions.Osaka
+  public readonly githubActionsSAEmail: pulumi.Output<string>
+  public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
 
   constructor(args: GcpArgs) {
     const { brandId, displayName, environment, gcpConfig } = args
@@ -50,6 +54,7 @@ export class Gcp {
     })
     this.folder = projectBasis.folder
     this.project = projectBasis.project
+    this.projectId = this.project.projectId
 
     const lm = 'liverty-music'
     const backendApp = 'backend-app'
@@ -63,6 +68,7 @@ export class Gcp {
       'Liverty Music Backend Application Service Account',
       'Service account for backend application'
     )
+    this.githubActionsSAEmail = backendAppSA.email
 
     // 3. Network (VPC, Subnets, NAT) - Osaka
     const network = new NetworkComponent('network', {
@@ -130,10 +136,11 @@ export class Gcp {
     )
 
     // 9. Workload Identity Federation
-    new WorkloadIdentityComponent({
+    const wif = new WorkloadIdentityComponent({
       environment,
       folder: this.folder,
       project: this.project,
     })
+    this.githubWorkloadIdentityProvider = wif.githubProvider.name
   }
 }
