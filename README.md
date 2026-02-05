@@ -165,13 +165,48 @@ This project currently manages:
 - **Security policies** (Refined IAM roles, service accounts)
 - **CI/CD Pipelines** (GitHub Actions integration with WIF)
 
+## Kubernetes & ArgoCD Bootstrap
+
+When setting up a fresh cluster (e.g., `cluster-osaka`), follow these steps to bootstrap the environment.
+
+### 1. Authenticate to the Cluster
+
+```bash
+gcloud container clusters get-credentials cluster-osaka --region asia-northeast2 --project liverty-music-dev
+```
+
+### 2. Create Namespaces
+
+Create the required namespaces (`argocd`, `backend`):
+
+```bash
+kubectl apply -f k8s/cluster/namespaces.yaml
+```
+
+### 3. Install ArgoCD
+
+Install ArgoCD using Kustomize with Helm support. This uses the `dev` overlay by default.
+
+```bash
+kubectl kustomize --enable-helm k8s/namespaces/argocd/overlays/dev | kubectl apply --server-side --force-conflicts -f -
+```
+
+### 4. Apply Root Application
+
+Bootstrap the "App of Apps" pattern by applying the Root Application:
+
+```bash
+kubectl apply -f k8s/namespaces/argocd/base/root-app.yaml
+```
+
 ## Accessing Infrastructure
 
 ### ArgoCD UI
 
-To access the ArgoCD UI, use port-forwarding to the HTTP port (since it runs in insecure mode):
+To access the ArgoCD UI, use port-forwarding:
 
 ```bash
+# Forward to the HTTP port (80)
 kubectl port-forward svc/argocd-server -n argocd 8080:80
 ```
 
