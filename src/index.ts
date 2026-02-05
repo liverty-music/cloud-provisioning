@@ -7,7 +7,7 @@ import {
   RepositoryName,
 } from './github/index.js'
 import { Gcp } from './gcp/index.js'
-import { ZitadelResources as Zitadel, ZitadelConfig } from './zitadel/index.js'
+import { FrontendComponent as Zitadel, ZitadelConfig } from './zitadel/index.js'
 import { GcpConfig } from './gcp/components/project.js'
 import { Environment } from './config.js'
 
@@ -36,7 +36,12 @@ if (env === 'prod') {
 }
 
 // 4. Zitadel Identity
-new Zitadel('liverty-music', zitadelConfig)
+if (env === 'dev') {
+  new Zitadel('liverty-music', {
+    env,
+    config: zitadelConfig,
+  })
+}
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
