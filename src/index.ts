@@ -7,6 +7,7 @@ import {
   RepositoryName,
 } from './github/index.js'
 import { Gcp } from './gcp/index.js'
+import { ZitadelResources as Zitadel, ZitadelConfig } from './zitadel/index.js'
 import { GcpConfig } from './gcp/components/project.js'
 import { Environment } from './config.js'
 
@@ -17,6 +18,7 @@ const config = new pulumi.Config('liverty-music')
 const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
 const bufConfig = config.requireObject('buf') as BufConfig
+const zitadelConfig = config.requireObject('zitadel') as ZitadelConfig
 
 const env = pulumi.getStack() as Environment
 
@@ -32,6 +34,9 @@ if (env === 'prod') {
     bufConfig,
   })
 }
+
+// 4. Zitadel Identity
+new Zitadel('liverty-music', zitadelConfig)
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
