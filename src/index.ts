@@ -7,7 +7,7 @@ import {
   RepositoryName,
 } from './github/index.js'
 import { Gcp } from './gcp/index.js'
-import { FrontendComponent as Zitadel, ZitadelConfig } from './zitadel/index.js'
+import { setupZitadel, ZitadelConfig } from './zitadel/index.js'
 import { GcpConfig } from './gcp/components/project.js'
 import { Environment } from './config.js'
 
@@ -37,7 +37,7 @@ if (env === 'prod') {
 
 // 4. Zitadel Identity
 if (env === 'dev') {
-  new Zitadel('liverty-music', {
+  setupZitadel('liverty-music', {
     env,
     config: zitadelConfig,
   })
