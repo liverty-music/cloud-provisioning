@@ -1,5 +1,5 @@
 import * as zitadel from '@pulumiverse/zitadel'
-import { FrontendComponent, FrontendComponentArgs } from './components/frontend.js'
+import { FrontendComponent } from './components/frontend.js'
 import { Environment } from '../config.js'
 
 export * from './components/frontend.js'
@@ -10,46 +10,47 @@ export interface ZitadelConfig {
   pulumiJwtProfileJson: string
 }
 
-export interface SetupZitadelArgs {
+export interface ZitadelArgs {
   env: Environment
   config: ZitadelConfig
 }
 
 /**
- * setupZitadel initializes the core Zitadel infrastructure resources (Provider and Project)
- * and the FrontendComponent for OIDC/Login settings.
- *
- * This follows the requested pattern of managing global resources directly while
- * encapsulating application-specific settings in components.
+ * Zitadel orchestrates all Zitadel identity resources.
  */
-export function setupZitadel(name: string, args: SetupZitadelArgs) {
-  const { env, config } = args
+export class Zitadel {
+  public readonly provider: zitadel.Provider
+  public readonly project: zitadel.Project
+  public readonly frontend: FrontendComponent
 
-  const provider = new zitadel.Provider(`${name}-provider`, {
-    domain: config.domain,
-    jwtProfileJson: config.pulumiJwtProfileJson,
-  })
+  constructor(name: string, args: ZitadelArgs) {
+    const { env, config } = args
 
-  const project = new zitadel.Project(
-    name,
-    {
-      name: name,
+    this.provider = new zitadel.Provider(`${name}-provider`, {
+      domain: config.domain,
+      jwtProfileJson: config.pulumiJwtProfileJson,
+    })
+
+    this.project = new zitadel.Project(
+      name,
+      {
+        name: name,
+        orgId: config.orgId,
+        // Minimal role settings for initial setup
+        projectRoleAssertion: false,
+        projectRoleCheck: false,
+        hasProjectCheck: false,
+        // Enforce this project's policies instead of organization default
+        privateLabelingSetting: 'PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY',
+      },
+      { provider: this.provider }
+    )
+
+    this.frontend = new FrontendComponent(name, {
+      env,
       orgId: config.orgId,
-      privateLabelingSetting: 'PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY',
-    },
-    { provider }
-  )
-
-  const frontend = new FrontendComponent(name, {
-    env,
-    orgId: config.orgId,
-    projectId: project.id,
-    provider,
-  })
-
-  return {
-    provider,
-    project,
-    frontend,
+      projectId: this.project.id,
+      provider: this.provider,
+    })
   }
 }
