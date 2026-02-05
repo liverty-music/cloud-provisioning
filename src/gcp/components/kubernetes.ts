@@ -145,7 +145,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
         name: `cluster-${regionName}`,
         location: region,
         enableAutopilot: true,
-        deletionProtection: false,
+        deletionProtection: environment !== 'dev',
         network: networkId,
         subnetwork: this.subnet.id,
         datapathProvider: 'ADVANCED_DATAPATH', // Dataplane V2 (default for Autopilot)
