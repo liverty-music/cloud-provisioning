@@ -10,40 +10,12 @@ helmCharts:
   releaseName: argocd
   namespace: argocd
   includeCRDs: true
-  valuesInline:
-    server:
-      service:
-        type: ClusterIP
-      extraArgs:
-      - --insecure
-    # Enable HA components but allow overlays to scale them
-    redis:
-      enabled: true
-    controller:
-      enableStatefulSet: true
+  valuesFile: values.yaml
 
 patches:
 - target:
-    kind: Deployment
+    kind: (Deployment|StatefulSet|Job)
+    namespace: argocd
   patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: all
-    spec:
-      template:
-        spec:
-          nodeSelector:
-            cloud.google.com/compute-class: "autopilot-spot"
-- target:
-    kind: StatefulSet
-  patch: |-
-    apiVersion: apps/v1
-    kind: StatefulSet
-    metadata:
-      name: all
-    spec:
-      template:
-        spec:
-          nodeSelector:
-            cloud.google.com/compute-class: "autopilot-spot"
+    - op: remove
+      path: /spec/template/spec/nodeSelector/kubernetes.io~1os

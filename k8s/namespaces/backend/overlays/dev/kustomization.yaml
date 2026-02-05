@@ -16,7 +16,7 @@ patches:
       value: backend-app@liverty-music-dev.iam.gserviceaccount.com
 
 configMapGenerator:
-- name: backend-config
+- name: server-config
   behavior: merge
   envs:
   - backend-app/config.env

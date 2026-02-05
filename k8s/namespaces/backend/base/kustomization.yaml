@@ -8,8 +8,10 @@ resources:
 
 namespace: backend
 
-commonLabels:
-  app: backend
+labels:
+- includeSelectors: true
+  pairs:
+    app: backend
 
 images:
 - name: backend-server
@@ -31,6 +33,6 @@ patches:
             cloud.google.com/compute-class: "autopilot-spot"
 
 configMapGenerator:
-- name: backend-config
+- name: server-config
   envs:
   - backend-app/config.env

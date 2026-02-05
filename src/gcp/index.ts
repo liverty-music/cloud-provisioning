@@ -82,35 +82,33 @@ export class Gcp {
       { parent: this.project }
     )
 
-    if (environment === 'dev') {
-      // 5. GKE Autopilot Cluster
-      const osakaConfig = NetworkConfig.Osaka
-      const kubernetes = new KubernetesComponent('kubernetes-cluster', {
-        project: this.project,
-        environment,
-        region: Regions.Osaka,
-        regionName: RegionNames.Osaka,
-        networkId: network.network.id,
-        subnetCidr: osakaConfig.subnetCidr,
-        podsCidr: osakaConfig.podsCidr,
-        servicesCidr: osakaConfig.servicesCidr,
-        masterCidr: osakaConfig.masterCidr,
-        artifactRegistry,
-      })
+    // 5. GKE Autopilot Cluster
+    const osakaConfig = NetworkConfig.Osaka
+    const kubernetes = new KubernetesComponent('kubernetes-cluster', {
+      project: this.project,
+      environment,
+      region: Regions.Osaka,
+      regionName: RegionNames.Osaka,
+      networkId: network.network.id,
+      subnetCidr: osakaConfig.subnetCidr,
+      podsCidr: osakaConfig.podsCidr,
+      servicesCidr: osakaConfig.servicesCidr,
+      masterCidr: osakaConfig.masterCidr,
+      artifactRegistry,
+    })
 
-      // 6. Cloud SQL Instance (Postgres)
-      new PostgresComponent('postgres', {
-        project: this.project,
-        region: Regions.Osaka,
-        regionName: RegionNames.Osaka,
-        environment,
-        subnetId: kubernetes.subnet.id,
-        networkId: network.network.id,
-        pscEndpointIp: osakaConfig.postgresPscIp,
-        dnsZoneName: network.pscZone.name,
-        appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
-      })
-    }
+    // 6. Cloud SQL Instance (Postgres)
+    new PostgresComponent('postgres', {
+      project: this.project,
+      region: Regions.Osaka,
+      regionName: RegionNames.Osaka,
+      environment,
+      subnetId: kubernetes.subnet.id,
+      networkId: network.network.id,
+      pscEndpointIp: osakaConfig.postgresPscIp,
+      dnsZoneName: network.sqlZone.name,
+      appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
+    })
 
     // 7. Workload Identity Federation
     const wif = new WorkloadIdentityComponent({
