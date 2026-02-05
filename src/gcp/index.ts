@@ -1,9 +1,8 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as gcp from '@pulumi/gcp'
 import { ProjectComponent, GcpConfig } from './components/project.js'
-import { IamService } from './services/iam.js'
 import { WorkloadIdentityComponent } from './components/workload-identity.js'
-import { ConcertDataStore } from './components/concert-data-store.js'
+// import { ConcertDataStore } from './components/concert-data-store.js'
 import { NetworkComponent } from './components/network.js'
 import { KubernetesComponent } from './components/kubernetes.js'
 import { PostgresComponent } from './components/postgres.js'
@@ -56,19 +55,7 @@ export class Gcp {
     this.project = projectBasis.project
     this.projectId = this.project.projectId
 
-    const lm = 'liverty-music'
-    const backendApp = 'backend-app'
-    const namespace = 'backend'
-
     // 2. Identity Management (GSA + Workload Identity)
-    const iamSvc = new IamService(this.project)
-    const backendAppSA = iamSvc.createServiceAccount(
-      `${lm}-${backendApp}`,
-      backendApp,
-      'Liverty Music Backend Application Service Account',
-      'Service account for backend application'
-    )
-
     // 3. Network (VPC, Subnets, NAT) - Osaka
     const network = new NetworkComponent('network', {
       region: Regions.Osaka,
@@ -77,51 +64,12 @@ export class Gcp {
     })
 
     // 4. Concert Data Store (Vertex AI Search)
-    new ConcertDataStore({
-      project: this.project,
-      region: Regions.Osaka,
-    })
+    // new ConcertDataStore({
+    //   project: this.project,
+    //   region: Regions.Osaka,
+    // })
 
-    // 5. GKE Autopilot Cluster
-    const osakaConfig = NetworkConfig.Osaka
-    const kubernetes = new KubernetesComponent('kubernetes-cluster', {
-      project: this.project,
-      environment,
-      region: Regions.Osaka,
-      regionName: RegionNames.Osaka,
-      networkId: network.network.id,
-      subnetCidr: osakaConfig.subnetCidr,
-      podsCidr: osakaConfig.podsCidr,
-      servicesCidr: osakaConfig.servicesCidr,
-      masterCidr: osakaConfig.masterCidr,
-    })
-
-    // 6. Bind Workload Identity (allow GKE KSA to impersonate GSA)
-    // Requires GKE API (enabled in KubernetesComponent)
-    new gcp.serviceaccount.IAMMember(
-      `${backendApp}-wif-binding`,
-      {
-        serviceAccountId: backendAppSA.name,
-        role: 'roles/iam.workloadIdentityUser',
-        member: pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${backendApp}`,
-      },
-      { dependsOn: [kubernetes] }
-    )
-
-    // 7. Cloud SQL Instance (Postgres)
-    new PostgresComponent('postgres', {
-      project: this.project,
-      region: Regions.Osaka,
-      regionName: RegionNames.Osaka,
-      environment,
-      subnetId: kubernetes.subnet.id,
-      networkId: network.network.id,
-      pscEndpointIp: osakaConfig.postgresPscIp,
-      dnsZoneName: network.pscZone.name,
-      appServiceAccountEmail: backendAppSA.email,
-    })
-
-    // 8. Artifact Registry
+    // 4. Artifact Registry
     const artifactRegistry = new gcp.artifactregistry.Repository(
       'github-backend-repository',
       {
@@ -134,16 +82,37 @@ export class Gcp {
       { parent: this.project }
     )
 
-    // Grant backend-app SA permission to pull images from Artifact Registry
-    iamSvc.bindArtifactRegistryReader(
-      backendApp,
-      backendAppSA.email,
-      artifactRegistry,
-      Regions.Osaka,
-      artifactRegistry
-    )
+    if (environment === 'prod') {
+      // 5. GKE Autopilot Cluster
+      const osakaConfig = NetworkConfig.Osaka
+      const kubernetes = new KubernetesComponent('kubernetes-cluster', {
+        project: this.project,
+        environment,
+        region: Regions.Osaka,
+        regionName: RegionNames.Osaka,
+        networkId: network.network.id,
+        subnetCidr: osakaConfig.subnetCidr,
+        podsCidr: osakaConfig.podsCidr,
+        servicesCidr: osakaConfig.servicesCidr,
+        masterCidr: osakaConfig.masterCidr,
+        artifactRegistry,
+      })
 
-    // 9. Workload Identity Federation
+      // 6. Cloud SQL Instance (Postgres)
+      new PostgresComponent('postgres', {
+        project: this.project,
+        region: Regions.Osaka,
+        regionName: RegionNames.Osaka,
+        environment,
+        subnetId: kubernetes.subnet.id,
+        networkId: network.network.id,
+        pscEndpointIp: osakaConfig.postgresPscIp,
+        dnsZoneName: network.pscZone.name,
+        appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
+      })
+    }
+
+    // 7. Workload Identity Federation
     const wif = new WorkloadIdentityComponent({
       environment,
       folder: this.folder,

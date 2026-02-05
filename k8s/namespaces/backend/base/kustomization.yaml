@@ -16,6 +16,20 @@ images:
   newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
   newTag: latest
 
+patches:
+- target:
+    kind: Deployment
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: all
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: "autopilot-spot"
+
 configMapGenerator:
 - name: backend-config
   envs:

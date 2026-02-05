@@ -10,7 +10,27 @@ export const Roles = {
     FolderViewer: 'roles/resourcemanager.folderViewer',
   },
   CloudSql: {
+    Client: 'roles/cloudsql.client',
     InstanceUser: 'roles/cloudsql.instanceUser',
+  },
+  Logging: {
+    LogWriter: 'roles/logging.logWriter',
+  },
+  Monitoring: {
+    MetricWriter: 'roles/monitoring.metricWriter',
+    Viewer: 'roles/monitoring.viewer',
+  },
+  Stackdriver: {
+    ResourceMetadataWriter: 'roles/stackdriver.resourceMetadata.writer',
+  },
+  CloudTrace: {
+    Agent: 'roles/cloudtrace.agent',
+  },
+  DiscoveryEngine: {
+    Viewer: 'roles/discoveryengine.viewer',
+  },
+  AiPlatform: {
+    User: 'roles/aiplatform.user',
   },
   ArtifactRegistry: {
     Reader: 'roles/artifactregistry.reader',
@@ -95,6 +115,23 @@ export class IamService {
         serviceAccountId: sa.name,
         role: 'roles/iam.workloadIdentityUser',
         member: pulumi.interpolate`principalSet://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${pool.workloadIdentityPoolId}/${externalMember}`,
+      },
+      { parent }
+    )
+  }
+
+  bindKubernetesSaUser(
+    name: string,
+    sa: gcp.serviceaccount.Account,
+    namespace: string,
+    parent?: pulumi.Resource
+  ) {
+    return new gcp.serviceaccount.IAMMember(
+      `${name}-k8s-sa-wif-user`,
+      {
+        serviceAccountId: sa.name,
+        role: 'roles/iam.workloadIdentityUser',
+        member: pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${name}`,
       },
       { parent }
     )
