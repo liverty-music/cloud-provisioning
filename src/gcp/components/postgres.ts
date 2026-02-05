@@ -1,6 +1,5 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as gcp from '@pulumi/gcp'
-import { Roles, IamService } from '../services/iam.js'
 import { ApiService } from '../services/api.js'
 
 export interface PostgresComponentArgs {
@@ -69,11 +68,6 @@ export class PostgresComponent extends pulumi.ComponentResource {
       'sqladmin.googleapis.com', // Required for Cloud SQL
       'servicenetworking.googleapis.com', // Required for PSC
     ])
-
-    const iamSvc = new IamService(project)
-
-    // 1. Grant necessary roles to the provided service account
-    iamSvc.bindProjectRoles([Roles.CloudSql.InstanceUser], backendApp, appServiceAccountEmail, this)
 
     // 2. Provision Cloud SQL Instance (Producer)
     const postgresDbName = `postgres-${regionName}`

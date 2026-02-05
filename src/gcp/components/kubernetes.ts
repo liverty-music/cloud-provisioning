@@ -33,6 +33,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
   public readonly cluster: gcp.container.Cluster
   public readonly subnet: gcp.compute.Subnetwork
   public readonly nodeServiceAccountEmail: pulumi.Output<string>
+  public readonly backendAppServiceAccountEmail: pulumi.Output<string>
 
   constructor(name: string, args: KubernetesComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:KubernetesComponent', name, args, opts)
@@ -56,9 +57,9 @@ export class KubernetesComponent extends pulumi.ComponentResource {
     // 1. Dedicated Service Account for GKE Nodes
     const iamSvc = new IamService(project)
     const gkeNodeSa = iamSvc.createServiceAccount(
-      `gke-node-sa-${regionName}`,
-      `gke-node-${regionName}`,
-      `GKE Node Service Account (${regionName})`,
+      `gke-node`,
+      `gke-node`,
+      `GKE Node Service Account`,
       'Service Account for GKE Autopilot Nodes',
       this
     )
@@ -66,27 +67,52 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
     // Grant standard GKE node roles
     iamSvc.bindProjectRoles(
-      [
-        Roles.Logging.LogWriter,
-        Roles.Monitoring.MetricWriter,
-        Roles.Monitoring.Viewer,
-        Roles.Stackdriver.ResourceMetadataWriter,
-      ],
-      `gke-node-sa-${regionName}`,
+      [Roles.Logging.LogWriter, Roles.Monitoring.MetricWriter],
+      `gke-node`,
       gkeNodeSa.email,
       this
     )
 
     // Grant permission to pull from Artifact Registry
+    iamSvc.bindArtifactRegistryReader(`gke-node`, gkeNodeSa.email, artifactRegistry, region, this)
+
+    // 2. Application Service Account (backend-app)
+    const backendApp = 'backend-app'
+    const namespace = 'backend'
+    const backendAppSa = iamSvc.createServiceAccount(
+      `liverty-music-${backendApp}`,
+      backendApp,
+      'Liverty Music Backend Application Service Account',
+      'Service account for backend application',
+      this
+    )
+    this.backendAppServiceAccountEmail = backendAppSa.email
+
+    // Grant permission to pull from Artifact Registry
     iamSvc.bindArtifactRegistryReader(
-      `gke-node-sa-${regionName}`,
-      gkeNodeSa.email,
+      backendApp,
+      backendAppSa.email,
       artifactRegistry,
       region,
       this
     )
+    iamSvc.bindProjectRoles(
+      [
+        Roles.Logging.LogWriter,
+        Roles.Monitoring.MetricWriter,
+        Roles.CloudTrace.Agent,
+        Roles.CloudSql.InstanceUser,
+        Roles.AiPlatform.User,
+      ],
+      backendApp,
+      backendAppSa.email,
+      this
+    )
 
-    // 2. Dedicated Subnet for GKE
+    // Bind Kubernetes Service Account to Workload Identity
+    iamSvc.bindKubernetesSaUser(backendApp, backendAppSa, namespace, this)
+
+    // 3. Dedicated Subnet for GKE
     this.subnet = new gcp.compute.Subnetwork(
       `cluster-subnet-${regionName}`,
       {
@@ -159,6 +185,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
       clusterEndpoint: this.cluster.endpoint,
       subnetId: this.subnet.id,
       nodeServiceAccountEmail: this.nodeServiceAccountEmail,
+      backendAppServiceAccountEmail: this.backendAppServiceAccountEmail,
     })
   }
 }

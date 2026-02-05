@@ -21,3 +21,29 @@ helmCharts:
       enabled: true
     controller:
       enableStatefulSet: true
+
+patches:
+- target:
+    kind: Deployment
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: all
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: "autopilot-spot"
+- target:
+    kind: StatefulSet
+  patch: |-
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: all
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: "autopilot-spot"
