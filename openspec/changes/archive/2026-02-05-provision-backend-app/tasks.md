@@ -20,6 +20,6 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Verify ArgoCD successfully syncs the new `backend` application.
-- [ ] 4.2 Verify the backend pods are running and healthy.
-- [ ] 4.3 Validate internal connectivity to the backend service.
+- [x] 4.1 Verify ArgoCD successfully syncs the new `backend` application.
+- [x] 4.2 Verify the backend pods are running and healthy.
+- [x] 4.3 Validate internal connectivity to the backend service.

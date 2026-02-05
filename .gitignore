@@ -34,3 +34,6 @@ Thumbs.db
 
 # Helm
 charts/
+
+# Agent
+.pr_data/
