@@ -1,59 +1,31 @@
 import * as zitadel from '@pulumiverse/zitadel'
 import * as pulumi from '@pulumi/pulumi'
 import { Environment } from '../../config.js'
-import { ZitadelConfig } from '../index.js'
 
 export interface FrontendComponentArgs {
   env: Environment
-  config: ZitadelConfig
+  orgId: pulumi.Input<string>
+  projectId: pulumi.Input<string>
+  provider: zitadel.Provider
 }
 
 export class FrontendComponent extends pulumi.ComponentResource {
-  public readonly project: zitadel.Project
   public readonly application: zitadel.ApplicationOidc
   public readonly loginPolicy: zitadel.LoginPolicy
-  public readonly provider: zitadel.Provider
 
   constructor(name: string, args: FrontendComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('zitadel:liverty-music:Frontend', name, {}, opts)
 
-    const { env, config } = args
+    const { env, orgId, projectId, provider } = args
+    const resourceOptions = { provider, parent: this }
 
-    // 1. Explicitly create a Zitadel Provider using the passed configuration
-    this.provider = new zitadel.Provider(
-      `${name}-provider`,
-      {
-        domain: config.domain,
-        jwtProfileJson: config.pulumiJwtProfileJson,
-      },
-      { parent: this }
-    )
-
-    const resourceOptions = { provider: this.provider, parent: this }
-
-    // 2.1 Define zitadel.Project resource
-    this.project = new zitadel.Project(
-      name,
-      {
-        name: name,
-        orgId: config.orgId,
-        // Minimal role settings for initial setup
-        projectRoleAssertion: false,
-        projectRoleCheck: false,
-        hasProjectCheck: false,
-        // Enforce this project's policies instead of organization default
-        privateLabelingSetting: 'PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY',
-      },
-      resourceOptions
-    )
-
-    // 2.2 Define zitadel.ApplicationOidc resource
+    // 1. Define zitadel.ApplicationOidc resource
     this.application = new zitadel.ApplicationOidc(
       'frontend',
       {
-        projectId: this.project.id,
+        projectId: projectId,
         name: `${name}-frontend`,
-        orgId: config.orgId,
+        orgId: orgId,
         accessTokenType: 'OIDC_TOKEN_TYPE_JWT',
         appType: 'OIDC_APP_TYPE_USER_AGENT',
         authMethodType: 'OIDC_AUTH_METHOD_TYPE_NONE',
@@ -69,11 +41,11 @@ export class FrontendComponent extends pulumi.ComponentResource {
       resourceOptions
     )
 
-    // 2.3 Define zitadel.LoginPolicy resource
+    // 2. Define zitadel.LoginPolicy resource
     this.loginPolicy = new zitadel.LoginPolicy(
       'default',
       {
-        orgId: config.orgId,
+        orgId: orgId,
         userLogin: false,
         allowRegister: true,
         allowExternalIdp: false,
@@ -93,7 +65,6 @@ export class FrontendComponent extends pulumi.ComponentResource {
     )
 
     this.registerOutputs({
-      project: this.project,
       application: this.application,
       loginPolicy: this.loginPolicy,
     })
