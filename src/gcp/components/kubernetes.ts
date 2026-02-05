@@ -30,7 +30,6 @@ export interface KubernetesComponentArgs {
 }
 
 export class KubernetesComponent extends pulumi.ComponentResource {
-  public readonly cluster: gcp.container.Cluster
   public readonly subnet: gcp.compute.Subnetwork
   public readonly nodeServiceAccountEmail: pulumi.Output<string>
   public readonly backendAppServiceAccountEmail: pulumi.Output<string>
@@ -135,14 +134,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
       { parent: this }
     )
 
+    if (environment === 'prod') {
+      return
+    }
+
     // 3. GKE Autopilot Cluster
-    this.cluster = new gcp.container.Cluster(
+    const cluster = new gcp.container.Cluster(
       `cluster-${regionName}`,
       {
         name: `cluster-${regionName}`,
         location: region,
         enableAutopilot: true,
-        deletionProtection: environment !== 'dev',
+        deletionProtection: false,
         network: networkId,
         subnetwork: this.subnet.id,
         datapathProvider: 'ADVANCED_DATAPATH', // Dataplane V2 (default for Autopilot)
@@ -181,8 +184,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
     )
 
     this.registerOutputs({
-      clusterName: this.cluster.name,
-      clusterEndpoint: this.cluster.endpoint,
+      clusterName: cluster.name,
+      clusterEndpoint: cluster.endpoint,
       subnetId: this.subnet.id,
       nodeServiceAccountEmail: this.nodeServiceAccountEmail,
       backendAppServiceAccountEmail: this.backendAppServiceAccountEmail,

@@ -13,7 +13,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
   public readonly network: gcp.compute.Network
   public readonly router: gcp.compute.Router
   public readonly nat: gcp.compute.RouterNat
-  public readonly pscZone: gcp.dns.ManagedZone
+  public readonly sqlZone: gcp.dns.ManagedZone
 
   constructor(name: string, args: NetworkComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:NetworkComponent', name, args, opts)
@@ -35,13 +35,16 @@ export class NetworkComponent extends pulumi.ComponentResource {
       { parent: this }
     )
 
-    // 2. Private DNS Zone for Private Service Connect (psc.internal)
-    this.pscZone = new gcp.dns.ManagedZone(
-      'private-service-connect-zone',
+    // 2. Private DNS Zone for Cloud SQL PSC (.sql.goog)
+    // Detailed: The Go Cloud SQL Connector SDK requires the hashed domain (.sql.goog) for SNI/TLS verification.
+    // Creating a regional zone (asia-northeast2.sql.goog.) keeps the scope clean and avoids conflicts
+    // with other regions while allowing the SDK to resolve the recommended DNS name.
+    this.sqlZone = new gcp.dns.ManagedZone(
+      'cloud-sql-psc-zone',
       {
-        name: 'private-service-connect-zone',
-        dnsName: 'psc.internal.',
-        description: 'Common DNS zone for Private Service Connect services',
+        name: 'cloud-sql-psc-zone',
+        dnsName: 'asia-northeast2.sql.goog.',
+        description: 'Private zone for Cloud SQL PSC resolution',
         visibility: 'private',
         privateVisibilityConfig: {
           networks: [{ networkUrl: this.network.id }],
@@ -81,7 +84,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 
     this.registerOutputs({
       networkName: this.network.name,
-      pscZoneName: this.pscZone.name,
+      sqlZoneName: this.sqlZone.name,
     })
   }
 }

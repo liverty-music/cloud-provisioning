@@ -40,11 +40,11 @@ export interface PostgresComponentArgs {
  * - Integrated PSC Endpoint & Cloud DNS Record
  */
 export class PostgresComponent extends pulumi.ComponentResource {
-  public readonly instance: gcp.sql.DatabaseInstance
-  public readonly database: gcp.sql.Database
-  public readonly pscAddress: gcp.compute.Address
-  public readonly pscForwardingRule: gcp.compute.ForwardingRule
-  public readonly dnsRecord: gcp.dns.RecordSet
+  // public readonly instance: gcp.sql.DatabaseInstance
+  // public readonly database: gcp.sql.Database
+  // public readonly pscAddress: gcp.compute.Address
+  // public readonly pscForwardingRule: gcp.compute.ForwardingRule
+  // public readonly dnsRecord: gcp.dns.RecordSet
 
   constructor(name: string, args: PostgresComponentArgs, opts?: pulumi.ComponentResourceOptions) {
     super('gcp:liverty-music:PostgresComponent', name, args, opts)
@@ -69,9 +69,13 @@ export class PostgresComponent extends pulumi.ComponentResource {
       'servicenetworking.googleapis.com', // Required for PSC
     ])
 
+    if (environment === 'prod') {
+      return
+    }
+
     // 2. Provision Cloud SQL Instance (Producer)
     const postgresDbName = `postgres-${regionName}`
-    this.instance = new gcp.sql.DatabaseInstance(
+    const instance = new gcp.sql.DatabaseInstance(
       postgresDbName,
       {
         name: postgresDbName,
@@ -128,7 +132,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 
     // 4. Create PSC Endpoint (Consumer Side)
     // 4a. Static Internal IP Reservation
-    this.pscAddress = new gcp.compute.Address(
+    const pscAddress = new gcp.compute.Address(
       `psc-endpoint-ip-${postgresDbName}`,
       {
         name: `psc-endpoint-ip-${postgresDbName}`,
@@ -141,40 +145,42 @@ export class PostgresComponent extends pulumi.ComponentResource {
     )
 
     // 4b. Forwarding Rule (The Endpoint)
-    this.pscForwardingRule = new gcp.compute.ForwardingRule(
+    new gcp.compute.ForwardingRule(
       `psc-endpoint-${postgresDbName}`,
       {
         name: `psc-endpoint-${postgresDbName}`,
         region: region,
         network: networkId,
         subnetwork: subnetId,
-        ipAddress: this.pscAddress.id,
-        target: this.instance.pscServiceAttachmentLink, // Connect to SQL
+        ipAddress: pscAddress.id,
+        target: instance.pscServiceAttachmentLink, // Connect to SQL
         loadBalancingScheme: '', // Must be empty for PSC
       },
       { parent: this }
     )
 
-    // 5. DNS Record (postgres.osaka.psc.internal)
-    this.dnsRecord = new gcp.dns.RecordSet(
+    // 5. DNS Record (Hashed .sql.goog domain required for Cloud SQL Connector)
+    // The SDK/Auth Proxy internally resolves the instance connection name to this specific
+    // hashed domain for TLS handshake and certificate validation.
+    const dnsRecord = new gcp.dns.RecordSet(
       `private-db-a-record-${postgresDbName}`,
       {
-        name: `postgres.${regionName}.psc.internal.`,
+        name: instance.dnsName,
         managedZone: dnsZoneName,
         type: 'A',
         ttl: 300,
-        rrdatas: [this.pscAddress.address],
+        rrdatas: [pscAddress.address],
       },
       { parent: this }
     )
 
     // 6. Create default database
-    this.database = new gcp.sql.Database(
+    new gcp.sql.Database(
       backendApp,
       {
         name: backendApp,
         project: project.projectId,
-        instance: this.instance.name,
+        instance: instance.name,
         charset: 'UTF8',
         collation: 'en_US.UTF8',
       },
@@ -191,17 +197,17 @@ export class PostgresComponent extends pulumi.ComponentResource {
       {
         name: iamUserName,
         project: project.projectId,
-        instance: this.instance.name,
+        instance: instance.name,
         type: 'CLOUD_IAM_SERVICE_ACCOUNT',
       },
-      { parent: this, dependsOn: [this.instance] }
+      { parent: this, dependsOn: [instance] }
     )
 
     this.registerOutputs({
-      instanceConnectionName: this.instance.connectionName,
-      pscServiceAttachment: this.instance.pscServiceAttachmentLink,
-      pscEndpointIp: this.pscAddress.address,
-      dnsRecord: this.dnsRecord.name,
+      instanceConnectionName: instance.connectionName,
+      pscServiceAttachment: instance.pscServiceAttachmentLink,
+      pscEndpointIp: pscAddress.address,
+      dnsRecord: dnsRecord.name,
     })
   }
 }
