@@ -96,5 +96,30 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
       variables: this.variables,
       secrets: this.secrets,
     })
+
+    // Apply Branch Protection (Prod Only to avoid stack conflicts)
+    if (environment === 'prod') {
+      new github.BranchProtection(
+        `${repositoryName}-protection`,
+        {
+          repositoryId: repositoryName,
+          pattern: 'main',
+          enforceAdmins: true,
+          allowsDeletions: false,
+          allowsForcePushes: false,
+          requiredLinearHistory: false,
+          requireConversationResolution: false,
+          requiredPullRequestReviews: [
+            {
+              dismissStaleReviews: false,
+              restrictDismissals: false,
+              requiredApprovingReviewCount: 0,
+              requireCodeOwnerReviews: false,
+            },
+          ],
+        },
+        { provider, parent: this }
+      )
+    }
   }
 }
