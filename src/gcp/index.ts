@@ -82,7 +82,7 @@ export class Gcp {
       { parent: this.project }
     )
 
-    if (environment === 'prod') {
+    if (environment === 'dev') {
       // 5. GKE Autopilot Cluster
       const osakaConfig = NetworkConfig.Osaka
       const kubernetes = new KubernetesComponent('kubernetes-cluster', {
