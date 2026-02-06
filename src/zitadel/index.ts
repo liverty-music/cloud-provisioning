@@ -40,8 +40,8 @@ export class Zitadel {
         projectRoleAssertion: false,
         projectRoleCheck: false,
         hasProjectCheck: false,
-        // Enforce this project's policies instead of organization default
-        privateLabelingSetting: 'PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY',
+        // Use default private labeling to avoid potential policy conflicts with instance SMTP
+        privateLabelingSetting: 'PRIVATE_LABELING_SETTING_UNSPECIFIED',
       },
       { provider: this.provider }
     )
