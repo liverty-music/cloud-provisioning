@@ -21,10 +21,10 @@ export class FrontendComponent extends pulumi.ComponentResource {
 
     // 1. Define zitadel.ApplicationOidc resource
     this.application = new zitadel.ApplicationOidc(
-      'frontend',
+      'web-frontend',
       {
         projectId: projectId,
-        name: `${name}-frontend`,
+        name: `web-frontend`,
         orgId: orgId,
         // Use JWT Access Token for easier stateless validation by backend services if needed
         accessTokenType: 'OIDC_TOKEN_TYPE_JWT',
@@ -56,16 +56,16 @@ export class FrontendComponent extends pulumi.ComponentResource {
       'default',
       {
         orgId: orgId,
-        // Disable username/password login (Passwordless only)
+        // Disable username/password login (userLogin=false disables password auth)
         userLogin: false,
         allowRegister: true,
-        // Disable External IDPs to enforce Passkeys Only
-        allowExternalIdp: false,
+        // Enable External IDPs (Google) for verification
+        allowExternalIdp: true,
         forceMfa: false,
         forceMfaLocalOnly: false,
         // Allow Passwordless (Passkeys) for better UX and security
         passwordlessType: 'PASSWORDLESS_TYPE_ALLOWED',
-        hidePasswordReset: true, // Hide password reset since password login is disabled
+        hidePasswordReset: true, // Disable password reset flow since password login is disabled
         // User convenience: allow trying usernames without immediate rejection (security trade-off: enumeration possible)
         ignoreUnknownUsernames: true,
         defaultRedirectUri: 'http://localhost:9000',
