@@ -42,7 +42,7 @@ Follow this three-step process sequentially.
 
 1. **Determine Review Strategy**:
    - If **PR Action** is `opened` (first review): Call `pull_request_read.get_diff` to retrieve the **FULL PR DIFF** (base vs head).
-   - If **PR Action** is `synchronize` (subsequent review): Use `run_shell_command(cat)` with the command `git show` to retrieve **ONLY the diff for the latest commit**. The checkout action ensures HEAD points to the latest commit.
+   - If **PR Action** is `synchronize` (subsequent review): Use `run_shell_command` to execute `git show` to retrieve **ONLY the diff for the latest commit**. The checkout action ensures HEAD points to the latest commit.
    - **STRICT RULE**: Only provide feedback on lines that are actually part of the diff (lines starting with `+` or `-`).
 
 2. **Review Code**: Meticulously review the code provided returned according to the **Review Criteria**.
