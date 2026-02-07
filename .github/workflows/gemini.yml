@@ -43,7 +43,9 @@ jobs:
                   "includeTools": [
                     "add_comment_to_pending_review",
                     "pull_request_read",
-                    "pull_request_review_write"
+                    "pull_request_review_write",
+                    "get_pull_request_comments",
+                    "get_pull_request_reviews"
                   ],
                   "env": {
                     "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
