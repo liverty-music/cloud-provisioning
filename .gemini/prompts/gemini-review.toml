@@ -27,7 +27,10 @@ The following environment variables contain context:
 ### Phase 1: Analysis
 
 1. **Gather Context:** Use `pull_request_read` to fetch the PR diff and metadata.
-2. **Analyze Changes:** For each modified file, evaluate:
+   - **STRICT RULE**: Only review the **net cumulative diff** between the base and head branches.
+   - **IGNORE**: Disregard any intermediate commit history or trial-and-error changes that are not present in the final diff.
+
+2. **Analyze Cumulative Changes:** For each modified file in the PR diff, evaluate:
    - Correctness: Does the code do what it claims?
    - Security: Are there vulnerabilities (injection, exposure, improper handling)?
    - Performance: Are there inefficiencies or potential bottlenecks?
