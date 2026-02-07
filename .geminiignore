@@ -1,0 +1,7 @@
+# Ignore Pulumi and infra related noise
+.pulumi/
+*.bak
+gha-creds-*.json
+node_modules/
+dist/
+.env*
