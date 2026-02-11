@@ -1,35 +1,29 @@
 {
-    "name": "public-cloud-scaffold",
-    "type": "module",
-    "main": "src/index.ts",
-    "engines": {
-        "node": ">=22.0.0"
-    },
-    "scripts": {
-        "lint": "eslint src/**/*.ts",
-        "lint:fix": "eslint src/**/*.ts --fix",
-        "format": "prettier --write src/**/*.ts",
-        "format:check": "prettier --check src/**/*.ts",
-        "typecheck": "tsc --noEmit",
-        "build": "tsc",
-        "dev": "tsc --watch"
-    },
-    "devDependencies": {
-        "@types/node": "^22.0.0",
-        "@typescript-eslint/eslint-plugin": "^8.37.0",
-        "@typescript-eslint/parser": "^8.37.0",
-        "eslint": "^9.31.0",
-        "eslint-config-prettier": "^10.1.8",
-        "eslint-plugin-prettier": "^5.5.3",
-        "prettier": "^3.6.2",
-        "ts-node": "^10.9.2",
-        "typescript": "^5.0.0",
-        "typescript-eslint": "^8.37.0"
-    },
-    "dependencies": {
-        "@pulumi/gcp": "^9.10.0",
-        "@pulumi/github": "^6.11.0",
-        "@pulumi/pulumi": "^3.218.0",
-        "@pulumiverse/zitadel": "^0.2.0"
-    }
+  "name": "public-cloud-scaffold",
+  "type": "module",
+  "main": "src/index.ts",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "lint": "biome lint --write src",
+    "format": "biome format --write src",
+    "check": "biome check --write src",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.14",
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@pulumi/cloudflare": "^6.13.0",
+    "@pulumi/gcp": "^9.10.0",
+    "@pulumi/github": "^6.11.0",
+    "@pulumi/pulumi": "^3.218.0",
+    "@pulumiverse/zitadel": "^0.2.0"
+  }
 }
