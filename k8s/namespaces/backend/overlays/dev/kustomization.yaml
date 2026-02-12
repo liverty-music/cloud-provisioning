@@ -18,8 +18,16 @@ patches:
   target:
     kind: Deployment
 
+- target:
+    kind: HTTPRoute
+    name: server-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["api.dev.liverty-music.app"]
+
 configMapGenerator:
-- name: server-config
+- name: config
   behavior: merge
   envs:
   - server/configmap.env

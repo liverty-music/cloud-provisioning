@@ -6,13 +6,7 @@ spec:
   parentRefs:
   - name: external-gateway
     namespace: gateway
-  hostnames:
-  - "api.dev.liverty-music.app"
   rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: svc # Referenced via kustomizeconfig.yaml 'nameReference'
+  - backendRefs:
+    - name: svc
       port: 80

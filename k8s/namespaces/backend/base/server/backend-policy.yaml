@@ -1,0 +1,13 @@
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: policy
+spec:
+  default:
+    timeoutSec: 30
+    connectionDraining:
+      drainingTimeoutSec: 60
+  targetRef:
+    group: ""
+    kind: Service
+    name: svc # Referenced via kustomizeconfig.yaml 'nameReference'
