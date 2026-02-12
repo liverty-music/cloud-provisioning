@@ -1,0 +1,14 @@
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: policy
+spec:
+  default:
+    config:
+      type: GRPC
+      grpcHealthCheck:
+        port: 8080
+  targetRef:
+    group: ""
+    kind: Service
+    name: svc # Referenced via kustomizeconfig.yaml 'nameReference'

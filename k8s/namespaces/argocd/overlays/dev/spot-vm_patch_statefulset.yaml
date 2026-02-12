@@ -1,0 +1,9 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: any
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/compute-class: "autopilot-spot"
