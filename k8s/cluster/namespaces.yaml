@@ -11,3 +11,10 @@ metadata:
   name: backend
   labels:
     name: backend
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    name: gateway
