@@ -9,6 +9,10 @@ export interface GcpConfig {
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"
 	}
+	cloudflare?: {
+		apiToken: string
+		zoneId: string
+	}
 }
 
 export interface ProjectComponentArgs {
