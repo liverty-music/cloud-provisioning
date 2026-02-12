@@ -10,7 +10,7 @@ spec:
   source:
     repoURL: https://github.com/liverty-music/cloud-provisioning.git
     targetRevision: main
-    path: k8s/namespaces/gateway/base
+    path: k8s/namespaces/gateway/overlays/dev
   destination:
     server: https://kubernetes.default.svc
     namespace: gateway
