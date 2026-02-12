@@ -5,8 +5,12 @@ resources:
 - deployment.yaml
 - service.yaml
 - serviceaccount.yaml
-- httproute.yaml
 - health-check-policy.yaml
+- backend-policy.yaml
+- httproute.yaml
+
+configurations:
+- kustomizeconfig.yaml
 
 namePrefix: server-
 
@@ -17,23 +21,6 @@ labels:
 
 images:
 - name: server
-
-replacements:
-- source:
-    kind: Service
-    name: svc
-    fieldPath: metadata.name
-  targets:
-  - select:
-      kind: HTTPRoute
-      name: route
-    fieldPaths:
-    - spec.rules.0.backendRefs.0.name
-  - select:
-      kind: HealthCheckPolicy
-      name: policy
-    fieldPaths:
-    - spec.targetRef.name
 
 configMapGenerator:
 - name: config
