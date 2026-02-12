@@ -1,5 +1,6 @@
 import * as gcp from '@pulumi/gcp'
 import type * as pulumi from '@pulumi/pulumi'
+import type { CloudflareConfig } from '../cloudflare/config.js'
 import { KubernetesComponent } from './components/kubernetes.js'
 // import { ConcertDataStore } from './components/concert-data-store.js'
 import { NetworkComponent } from './components/network.js'
@@ -13,7 +14,7 @@ export interface GcpArgs {
 	displayName: string
 	environment: 'dev' | 'staging' | 'prod'
 	gcpConfig: GcpConfig
-	publicDomain?: string
+	cloudflareConfig: CloudflareConfig
 }
 
 export const NetworkConfig = {
@@ -46,8 +47,13 @@ export class Gcp {
 	public readonly publicZoneNameservers: pulumi.Output<string[]> | undefined
 
 	constructor(args: GcpArgs) {
-		const { brandId, displayName, environment, gcpConfig, publicDomain } =
-			args
+		const {
+			brandId,
+			displayName,
+			environment,
+			gcpConfig,
+			cloudflareConfig,
+		} = args
 
 		// 1. Project and Folders
 		const projectBasis = new ProjectComponent({
@@ -66,7 +72,8 @@ export class Gcp {
 			region: Regions.Osaka,
 			regionName: RegionNames.Osaka,
 			project: this.project,
-			publicDomain,
+			environment,
+			cloudflareConfig,
 		})
 		this.publicZoneNameservers = network.publicZoneNameservers
 

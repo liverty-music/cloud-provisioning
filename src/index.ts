@@ -1,5 +1,5 @@
 import * as pulumi from '@pulumi/pulumi'
-import { DnsSubdomainDelegation } from './cloudflare/components/dns-subdomain-delegation.js'
+import type { CloudflareConfig } from './cloudflare/config.js'
 import type { Environment } from './config.js'
 import type { GcpConfig } from './gcp/components/project.js'
 import { Gcp } from './gcp/index.js'
@@ -20,6 +20,7 @@ const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
 const bufConfig = config.requireObject('buf') as BufConfig
 const zitadelConfig = config.requireObject('zitadel') as ZitadelConfig
+const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 
 const env = pulumi.getStack() as Environment
 
@@ -50,7 +51,7 @@ const gcp = new Gcp({
 	displayName,
 	environment: env,
 	gcpConfig,
-	publicDomain: gcpConfig.domains?.publicDomain,
+	cloudflareConfig,
 })
 
 // 3. GitHub Repository Environments (All Environments)
@@ -66,19 +67,6 @@ new GitHubRepositoryComponent({
 		SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
 	},
 })
-
-// 5. DNS Subdomain Delegation (Dev/Staging Only)
-if (
-	env !== 'prod' &&
-	gcp.publicZoneNameservers &&
-	gcpConfig.domains?.publicDomain
-) {
-	new DnsSubdomainDelegation('subdomain-delegation', {
-		domain: gcpConfig.domains.publicDomain,
-		subdomain: env,
-		nameservers: gcp.publicZoneNameservers,
-	})
-}
 
 // Export common resources
 export const folder = gcp.folder
