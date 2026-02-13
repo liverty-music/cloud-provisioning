@@ -37,3 +37,5 @@ charts/
 
 # Agent
 .pr_data/
+
+tmp/
