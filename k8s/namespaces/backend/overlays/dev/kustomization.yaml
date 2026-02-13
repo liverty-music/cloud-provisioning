@@ -7,11 +7,11 @@ resources:
 namespace: backend
 
 patches:
-# Target server-app after prefixing
+# Target backend-app (no longer affected by namePrefix)
 - path: serviceaccount_patch.yaml
   target:
     kind: ServiceAccount
-    name: server-app
+    name: backend-app
 
 # Global Spot VM patch for all Deployments in dev
 - path: spot-vm_patch.yaml

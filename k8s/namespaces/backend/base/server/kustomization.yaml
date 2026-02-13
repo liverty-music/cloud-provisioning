@@ -4,7 +4,6 @@ kind: Kustomization
 resources:
 - deployment.yaml
 - service.yaml
-- serviceaccount.yaml
 - health-check-policy.yaml
 - backend-policy.yaml
 - httproute.yaml
