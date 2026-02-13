@@ -21,6 +21,8 @@ labels:
 
 images:
 - name: server
+  newName: asia-northeast1-docker.pkg.dev/liverty-music-dev/backend/server
+  newTag: latest
 
 configMapGenerator:
 - name: config
