@@ -7,17 +7,27 @@ resources:
 namespace: backend
 
 patches:
-- target:
+# Target server-app after prefixing
+- path: serviceaccount_patch.yaml
+  target:
     kind: ServiceAccount
-    name: backend-app
+    name: server-app
+
+# Global Spot VM patch for all Deployments in dev
+- path: spot-vm_patch.yaml
+  target:
+    kind: Deployment
+
+- target:
+    kind: HTTPRoute
+    name: server-route
   patch: |-
-    - op: replace
-      path: /metadata/annotations/iam.gke.io~1gcp-service-account
-      value: backend-app@liverty-music-dev.iam.gserviceaccount.com
+    - op: add
+      path: /spec/hostnames
+      value: ["api.dev.liverty-music.app"]
 
 configMapGenerator:
-- name: server-config
+- name: config
   behavior: merge
   envs:
-  - backend-app/config.env
-
+  - server/configmap.env

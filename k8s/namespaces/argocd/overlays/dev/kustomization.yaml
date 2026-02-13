@@ -3,3 +3,12 @@ kind: Kustomization
 
 resources:
 - ../../base
+
+patches:
+# Global Spot VM patches for dev
+- path: spot-vm_patch_deployment.yaml
+  target:
+    kind: Deployment
+- path: spot-vm_patch_statefulset.yaml
+  target:
+    kind: StatefulSet

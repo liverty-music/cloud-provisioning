@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: server
+  name: app
 spec:
   replicas: 1
   template:
     metadata:
       # Labels handled by commonLabels
     spec:
-      serviceAccountName: backend-app
+      serviceAccountName: app
       containers:
       - name: server
-        image: backend-server
+        image: server
         ports:
         - containerPort: 8080
           name: http
         envFrom:
         - configMapRef:
-            name: server-config
+            name: config
         readinessProbe:
           grpc:
             port: 8080

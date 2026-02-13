@@ -1,32 +1,34 @@
-import * as pulumi from '@pulumi/pulumi'
 import * as gcp from '@pulumi/gcp'
-import { ProjectComponent, GcpConfig } from './components/project.js'
-import { WorkloadIdentityComponent } from './components/workload-identity.js'
+import type * as pulumi from '@pulumi/pulumi'
+import type { CloudflareConfig } from '../cloudflare/config.js'
+import { KubernetesComponent } from './components/kubernetes.js'
 // import { ConcertDataStore } from './components/concert-data-store.js'
 import { NetworkComponent } from './components/network.js'
-import { KubernetesComponent } from './components/kubernetes.js'
 import { PostgresComponent } from './components/postgres.js'
+import { type GcpConfig, ProjectComponent } from './components/project.js'
+import { WorkloadIdentityComponent } from './components/workload-identity.js'
 import { RegionNames, Regions } from './region.js'
 
 export interface GcpArgs {
-  brandId: string
-  displayName: string
-  environment: 'dev' | 'staging' | 'prod'
-  gcpConfig: GcpConfig
+	brandId: string
+	displayName: string
+	environment: 'dev' | 'staging' | 'prod'
+	gcpConfig: GcpConfig
+	cloudflareConfig: CloudflareConfig
 }
 
 export const NetworkConfig = {
-  Osaka: {
-    // Primary range for GKE Nodes + PSC Endpoints
-    subnetCidr: '10.10.0.0/20',
-    // Secondary ranges for GKE
-    podsCidr: '10.20.0.0/16',
-    servicesCidr: '10.30.0.0/20',
-    // GKE Control Plane CIDR
-    masterCidr: '172.16.0.0/28',
-    // Target IP for Cloud SQL PSC Endpoint
-    postgresPscIp: '10.10.10.10',
-  },
+	Osaka: {
+		// Primary range for GKE Nodes + PSC Endpoints
+		subnetCidr: '10.10.0.0/20',
+		// Secondary ranges for GKE
+		podsCidr: '10.20.0.0/16',
+		servicesCidr: '10.30.0.0/20',
+		// GKE Control Plane CIDR
+		masterCidr: '172.16.0.0/28',
+		// Target IP for Cloud SQL PSC Endpoint
+		postgresPscIp: '10.10.10.10',
+	},
 } as const
 
 /**
@@ -34,89 +36,101 @@ export const NetworkConfig = {
  * It is a plain class (not a ComponentResource) to keep the resource URNs flat.
  */
 export class Gcp {
-  public readonly folder: gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder>
-  public readonly project: gcp.organizations.Project
-  public readonly projectId: pulumi.Output<string>
-  public readonly region: string = Regions.Osaka
-  public readonly githubActionsSAEmail: pulumi.Output<string>
-  public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
+	public readonly folder:
+		| gcp.organizations.Folder
+		| pulumi.Output<gcp.organizations.Folder>
+	public readonly project: gcp.organizations.Project
+	public readonly projectId: pulumi.Output<string>
+	public readonly region: string = Regions.Osaka
+	public readonly githubActionsSAEmail: pulumi.Output<string>
+	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
+	public readonly publicZoneNameservers: pulumi.Output<string[]> | undefined
 
-  constructor(args: GcpArgs) {
-    const { brandId, displayName, environment, gcpConfig } = args
+	constructor(args: GcpArgs) {
+		const {
+			brandId,
+			displayName,
+			environment,
+			gcpConfig,
+			cloudflareConfig,
+		} = args
 
-    // 1. Project and Folders
-    const projectBasis = new ProjectComponent({
-      brandId,
-      displayName,
-      environment,
-      gcpConfig,
-    })
-    this.folder = projectBasis.folder
-    this.project = projectBasis.project
-    this.projectId = this.project.projectId
+		// 1. Project and Folders
+		const projectBasis = new ProjectComponent({
+			brandId,
+			displayName,
+			environment,
+			gcpConfig,
+		})
+		this.folder = projectBasis.folder
+		this.project = projectBasis.project
+		this.projectId = this.project.projectId
 
-    // 2. Identity Management (GSA + Workload Identity)
-    // 3. Network (VPC, Subnets, NAT) - Osaka
-    const network = new NetworkComponent('network', {
-      region: Regions.Osaka,
-      regionName: RegionNames.Osaka,
-      project: this.project,
-    })
+		// 2. Identity Management (GSA + Workload Identity)
+		// 3. Network (VPC, Subnets, NAT) - Osaka
+		const network = new NetworkComponent('network', {
+			region: Regions.Osaka,
+			regionName: RegionNames.Osaka,
+			project: this.project,
+			environment,
+			cloudflareConfig,
+		})
+		this.publicZoneNameservers = network.publicZoneNameservers
 
-    // 4. Concert Data Store (Vertex AI Search)
-    // new ConcertDataStore({
-    //   project: this.project,
-    //   region: Regions.Osaka,
-    // })
+		// 4. Concert Data Store (Vertex AI Search)
+		// new ConcertDataStore({
+		//   project: this.project,
+		//   region: Regions.Osaka,
+		// })
 
-    // 4. Artifact Registry
-    const artifactRegistry = new gcp.artifactregistry.Repository(
-      'github-backend-repository',
-      {
-        repositoryId: 'backend',
-        location: Regions.Osaka,
-        format: 'DOCKER',
-        project: this.project.projectId,
-        description: 'Docker repository for GitHub Backend Repository',
-      },
-      { parent: this.project }
-    )
+		// 4. Artifact Registry
+		const artifactRegistry = new gcp.artifactregistry.Repository(
+			'github-backend-repository',
+			{
+				repositoryId: 'backend',
+				location: Regions.Osaka,
+				format: 'DOCKER',
+				project: this.project.projectId,
+				description: 'Docker repository for GitHub Backend Repository',
+			},
+			{ parent: this.project },
+		)
 
-    // 5. GKE Autopilot Cluster
-    const osakaConfig = NetworkConfig.Osaka
-    const kubernetes = new KubernetesComponent('kubernetes-cluster', {
-      project: this.project,
-      environment,
-      region: Regions.Osaka,
-      regionName: RegionNames.Osaka,
-      networkId: network.network.id,
-      subnetCidr: osakaConfig.subnetCidr,
-      podsCidr: osakaConfig.podsCidr,
-      servicesCidr: osakaConfig.servicesCidr,
-      masterCidr: osakaConfig.masterCidr,
-      artifactRegistry,
-    })
+		// 5. GKE Autopilot Cluster
+		const osakaConfig = NetworkConfig.Osaka
+		const kubernetes = new KubernetesComponent('kubernetes-cluster', {
+			project: this.project,
+			environment,
+			region: Regions.Osaka,
+			regionName: RegionNames.Osaka,
+			networkId: network.network.id,
+			subnetCidr: osakaConfig.subnetCidr,
+			podsCidr: osakaConfig.podsCidr,
+			servicesCidr: osakaConfig.servicesCidr,
+			masterCidr: osakaConfig.masterCidr,
+			artifactRegistry,
+		})
 
-    // 6. Cloud SQL Instance (Postgres)
-    new PostgresComponent('postgres', {
-      project: this.project,
-      region: Regions.Osaka,
-      regionName: RegionNames.Osaka,
-      environment,
-      subnetId: kubernetes.subnet.id,
-      networkId: network.network.id,
-      pscEndpointIp: osakaConfig.postgresPscIp,
-      dnsZoneName: network.sqlZone.name,
-      appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
-    })
+		// 6. Cloud SQL Instance (Postgres)
+		new PostgresComponent('postgres', {
+			project: this.project,
+			region: Regions.Osaka,
+			regionName: RegionNames.Osaka,
+			environment,
+			subnetId: kubernetes.subnet.id,
+			networkId: network.network.id,
+			pscEndpointIp: osakaConfig.postgresPscIp,
+			dnsZoneName: network.sqlZone.name,
+			appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
+		})
 
-    // 7. Workload Identity Federation
-    const wif = new WorkloadIdentityComponent({
-      environment,
-      folder: this.folder,
-      project: this.project,
-    })
-    this.githubWorkloadIdentityProvider = wif.githubProvider.name
-    this.githubActionsSAEmail = wif.githubActionsSA.email
-  }
+		// 7. Workload Identity Federation
+		const wif = new WorkloadIdentityComponent({
+			environment,
+			folder: this.folder,
+			project: this.project,
+		})
+		this.githubWorkloadIdentityProvider = wif.githubProvider.name
+		this.githubActionsSAEmail = wif.githubActionsSA.email
+	}
 }

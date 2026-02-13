@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- deployment.yaml
+- service.yaml
+- serviceaccount.yaml
+- health-check-policy.yaml
+- backend-policy.yaml
+- httproute.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+namePrefix: server-
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: server
+
+images:
+- name: server
+
+configMapGenerator:
+- name: config
+  envs:
+  - configmap.env
