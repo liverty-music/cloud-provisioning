@@ -8,7 +8,7 @@ spec:
     metadata:
       # Labels handled by commonLabels
     spec:
-      serviceAccountName: app
+      serviceAccountName: backend-app
       containers:
       - name: server
         image: server
