@@ -1,8 +1,0 @@
-node_modules/
-dist/
-build/
-*.d.ts
-coverage/
-.env
-Pulumi.*.yaml
-package-lock.json
