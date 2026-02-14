@@ -100,7 +100,7 @@ export class Gcp {
 			'github-frontend-repository',
 			{
 				repositoryId: 'frontend',
-				location: Regions.Osaka,
+				location: this.region,
 				format: 'DOCKER',
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Frontend Repository',
@@ -120,7 +120,7 @@ export class Gcp {
 			podsCidr: osakaConfig.podsCidr,
 			servicesCidr: osakaConfig.servicesCidr,
 			masterCidr: osakaConfig.masterCidr,
-			artifactRegistry: backendArtifactRegistry,
+			artifactRegistries: [backendArtifactRegistry, frontendArtifactRegistry],
 		})
 
 		// 6. Cloud SQL Instance (Postgres)
