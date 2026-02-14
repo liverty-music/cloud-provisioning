@@ -149,8 +149,17 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 
 		// Enable backend CI job to impersonate GitHub Actions SA via WIF
 		this.iamService.bindWifUser(
-			githubActionsSAName,
+			`${githubActionsSAName}-backend`,
 			`attribute.repository/liverty-music/backend`,
+			this.githubActionsSA,
+			this.pool,
+			this,
+		)
+
+		// Enable frontend CI job to impersonate GitHub Actions SA via WIF
+		this.iamService.bindWifUser(
+			`${githubActionsSAName}-frontend`,
+			`attribute.repository/liverty-music/frontend`,
 			this.githubActionsSA,
 			this.pool,
 			this,

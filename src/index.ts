@@ -55,17 +55,29 @@ const gcp = new Gcp({
 })
 
 // 3. GitHub Repository Environments (All Environments)
+const sharedVariables = {
+	REGION: gcp.region,
+	PROJECT_ID: gcp.projectId,
+	WORKLOAD_IDENTITY_PROVIDER: gcp.githubWorkloadIdentityProvider,
+	SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
+}
+
+// Backend Repository
 new GitHubRepositoryComponent({
 	brandId,
 	githubConfig,
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
-	variables: {
-		REGION: gcp.region,
-		PROJECT_ID: gcp.projectId,
-		WORKLOAD_IDENTITY_PROVIDER: gcp.githubWorkloadIdentityProvider,
-		SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
-	},
+	variables: sharedVariables,
+})
+
+// Frontend Repository
+new GitHubRepositoryComponent({
+	brandId,
+	githubConfig,
+	repositoryName: RepositoryName.FRONTEND,
+	environment: env,
+	variables: sharedVariables,
 })
 
 // Export common resources
