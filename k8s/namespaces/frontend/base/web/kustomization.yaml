@@ -17,6 +17,6 @@ labels:
     app: web
 
 images:
-- name: frontend-app
+- name: web-app
   newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/app
   newTag: latest

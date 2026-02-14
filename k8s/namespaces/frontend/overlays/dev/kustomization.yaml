@@ -15,7 +15,7 @@ patches:
 # Patch HTTPRoute hostname for dev environment
 - target:
     kind: HTTPRoute
-    name: route
+    name: web-route
   patch: |-
     - op: add
       path: /spec/hostnames
