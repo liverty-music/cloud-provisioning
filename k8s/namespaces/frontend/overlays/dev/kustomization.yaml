@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+namespace: frontend
+
+patches:
+# Global Spot VM patch for all Deployments in dev
+- path: spot-vm_patch.yaml
+  target:
+    kind: Deployment
+
+# Patch HTTPRoute hostname for dev environment
+- target:
+    kind: HTTPRoute
+    name: web-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["dev.liverty-music.app"]
