@@ -167,18 +167,29 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				})
 			})
 
-			// Certificate Manager: DNS Authorization
-			const dnsAuth = new gcp.certificatemanager.DnsAuthorization(
-				'api-gateway-dns-auth',
+			// Certificate Manager: DNS Authorization for Backend Server
+			const backendServerDnsAuth = new gcp.certificatemanager.DnsAuthorization(
+				'backend-server-dns-auth',
 				{
-					name: 'api-gateway-dns-auth',
+					name: 'backend-server-dns-auth',
 					location: 'global',
 					domain: `api.${managedZoneName}`,
 				},
 				{ parent: this, dependsOn: certManagerApi },
 			)
 
-			// Certificate Manager: Google-managed Certificate
+			// Certificate Manager: DNS Authorization for Web App
+			const webAppDnsAuth = new gcp.certificatemanager.DnsAuthorization(
+				'web-app-dns-auth',
+				{
+					name: 'web-app-dns-auth',
+					location: 'global',
+					domain: `${managedZoneName}`,
+				},
+				{ parent: this, dependsOn: certManagerApi },
+			)
+
+			// Certificate Manager: Google-managed Certificate (covers both domains)
 			const cert = new gcp.certificatemanager.Certificate(
 				'api-gateway-cert',
 				{
@@ -186,8 +197,11 @@ export class NetworkComponent extends pulumi.ComponentResource {
 					location: 'global',
 					scope: 'DEFAULT',
 					managed: {
-						domains: [`api.${managedZoneName}`],
-						dnsAuthorizations: [dnsAuth.id],
+						domains: [
+							`api.${managedZoneName}`,
+							`${managedZoneName}`,
+						],
+						dnsAuthorizations: [backendServerDnsAuth.id, webAppDnsAuth.id],
 					},
 				},
 				{ parent: this, dependsOn: certManagerApi },
@@ -202,14 +216,26 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{ parent: this, dependsOn: certManagerApi },
 			)
 
-			// Certificate Manager: Certificate Map Entry
+			// Certificate Manager: Certificate Map Entry for Backend Server
 			new gcp.certificatemanager.CertificateMapEntry(
-				'api-gateway-cert-map-entry',
+				'backend-server-cert-map-entry',
 				{
-					name: 'api-gateway-cert-map-entry',
+					name: 'backend-server-cert-map-entry',
 					map: certMap.name,
 					certificates: [cert.id],
 					hostname: `api.${managedZoneName}`,
+				},
+				{ parent: this, dependsOn: certManagerApi },
+			)
+
+			// Certificate Manager: Certificate Map Entry for Web App
+			new gcp.certificatemanager.CertificateMapEntry(
+				'web-app-cert-map-entry',
+				{
+					name: 'web-app-cert-map-entry',
+					map: certMap.name,
+					certificates: [cert.id],
+					hostname: `${managedZoneName}`,
 				},
 				{ parent: this, dependsOn: certManagerApi },
 			)
@@ -225,26 +251,54 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{ parent: this },
 			)
 
-			// DNS CNAME record for ACME challenge validation
+			// DNS CNAME record for Backend Server ACME challenge validation
 			new gcp.dns.RecordSet(
-				'api-gateway-dns-auth-cname',
+				'backend-server-dns-auth-cname',
 				{
-					name: dnsAuth.dnsResourceRecords.apply((r) => r[0].name),
+					name: backendServerDnsAuth.dnsResourceRecords.apply((r) => r[0].name),
 					managedZone: publicZone.name,
 					type: 'CNAME',
 					ttl: 300,
-					rrdatas: dnsAuth.dnsResourceRecords.apply((r) => [
+					rrdatas: backendServerDnsAuth.dnsResourceRecords.apply((r) => [
 						r[0].data,
 					]),
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
 
-			// DNS A record for api subdomain
+			// DNS CNAME record for Web App ACME challenge validation
 			new gcp.dns.RecordSet(
-				'api-gateway-a-record',
+				'web-app-dns-auth-cname',
+				{
+					name: webAppDnsAuth.dnsResourceRecords.apply((r) => r[0].name),
+					managedZone: publicZone.name,
+					type: 'CNAME',
+					ttl: 300,
+					rrdatas: webAppDnsAuth.dnsResourceRecords.apply((r) => [
+						r[0].data,
+					]),
+				},
+				{ parent: this, dependsOn: enabledApis },
+			)
+
+			// DNS A record for Backend Server
+			new gcp.dns.RecordSet(
+				'backend-server-a-record',
 				{
 					name: `api.${managedZoneName}.`,
+					managedZone: publicZone.name,
+					type: 'A',
+					ttl: 300,
+					rrdatas: [staticIp.address],
+				},
+				{ parent: this, dependsOn: enabledApis },
+			)
+
+			// DNS A record for Web App
+			new gcp.dns.RecordSet(
+				'web-app-a-record',
+				{
+					name: `${managedZoneName}.`,
 					managedZone: publicZone.name,
 					type: 'A',
 					ttl: 300,
