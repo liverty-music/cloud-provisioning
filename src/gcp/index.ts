@@ -84,7 +84,7 @@ export class Gcp {
 		// })
 
 		// 4. Artifact Registry
-		const artifactRegistry = new gcp.artifactregistry.Repository(
+		const backendArtifactRegistry = new gcp.artifactregistry.Repository(
 			'github-backend-repository',
 			{
 				repositoryId: 'backend',
@@ -92,6 +92,18 @@ export class Gcp {
 				format: 'DOCKER',
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Backend Repository',
+			},
+			{ parent: this.project },
+		)
+
+		const frontendArtifactRegistry = new gcp.artifactregistry.Repository(
+			'github-frontend-repository',
+			{
+				repositoryId: 'frontend',
+				location: this.region,
+				format: 'DOCKER',
+				project: this.project.projectId,
+				description: 'Docker repository for GitHub Frontend Repository',
 			},
 			{ parent: this.project },
 		)
@@ -108,7 +120,7 @@ export class Gcp {
 			podsCidr: osakaConfig.podsCidr,
 			servicesCidr: osakaConfig.servicesCidr,
 			masterCidr: osakaConfig.masterCidr,
-			artifactRegistry,
+			artifactRegistries: [backendArtifactRegistry, frontendArtifactRegistry],
 		})
 
 		// 6. Cloud SQL Instance (Postgres)

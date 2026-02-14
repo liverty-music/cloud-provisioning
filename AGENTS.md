@@ -112,6 +112,44 @@ The following environment variables must be set in `.env`:
 - Use VPC networks with appropriate firewall rules
 - Implement resource tagging/labeling for cost management
 
+## Operating Protocols
+
+### Pulumi Deployment Approval Protocol
+
+**CRITICAL REQUIREMENT**: Before executing `pulumi up` or any deployment command, you MUST follow this strict approval workflow:
+
+1. **Always Preview First**
+   - Execute `pulumi preview` (or `pulumi preview --diff` for detailed changes)
+   - Capture the complete output showing:
+     - Resources to be created (+)
+     - Resources to be modified (~)
+     - Resources to be deleted (-)
+     - Resource count summary
+
+2. **Present to User**
+   - Display the preview output to the user
+   - Highlight any destructive operations (deletions, replacements)
+   - Explain the impact of the changes in plain language
+   - Note any potential risks or concerns
+
+3. **Wait for Explicit Approval**
+   - DO NOT proceed with `pulumi up` until the user explicitly approves
+   - Accept only clear affirmative responses ("yes", "proceed", "approve", etc.)
+   - If the user has questions or concerns, address them before deployment
+
+4. **Execute Deployment**
+   - Only after receiving explicit approval, execute `pulumi up`
+   - Monitor the deployment progress
+   - Report any errors or warnings immediately
+
+**Never skip this workflow**, even for:
+- Small or "obvious" changes
+- Configuration updates
+- Emergency fixes
+- Automated scenarios
+
+**Exception**: Only skip the approval step if the user has provided explicit advance authorization for a specific deployment in the current session (e.g., "preview and deploy the storage bucket we just discussed").
+
 ## Stack Management
 
 ### Environment Separation

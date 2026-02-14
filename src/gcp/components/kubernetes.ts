@@ -24,9 +24,9 @@ export interface KubernetesComponentArgs {
 	masterCidr: string
 
 	/**
-	 * The Artifact Registry repository to grant pull access to.
+	 * The Artifact Registry repositories to grant pull access to.
 	 */
-	artifactRegistry: gcp.artifactregistry.Repository
+	artifactRegistries: gcp.artifactregistry.Repository[]
 }
 
 export class KubernetesComponent extends pulumi.ComponentResource {
@@ -51,7 +51,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			podsCidr,
 			servicesCidr,
 			masterCidr,
-			artifactRegistry,
+			artifactRegistries,
 		} = args
 
 		const apiService = new ApiService(project)
@@ -79,14 +79,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 
-		// Grant permission to pull from Artifact Registry
-		iamSvc.bindArtifactRegistryReader(
-			`gke-node`,
-			gkeNodeSa.email,
-			artifactRegistry,
-			region,
-			this,
-		)
+		// Grant permission to pull from Artifact Registries
+		// Registry order: [backend, frontend]
+		const registryNames = ['backend', 'frontend']
+		for (const [index, registry] of artifactRegistries.entries()) {
+			iamSvc.bindArtifactRegistryReader(
+				`${registryNames[index]}-gke-node`,
+				gkeNodeSa.email,
+				registry,
+				region,
+				this,
+			)
+		}
 
 		// 2. Application Service Account (backend-app)
 		const backendApp = 'backend-app'
@@ -100,14 +104,17 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		)
 		this.backendAppServiceAccountEmail = backendAppSa.email
 
-		// Grant permission to pull from Artifact Registry
-		iamSvc.bindArtifactRegistryReader(
-			backendApp,
-			backendAppSa.email,
-			artifactRegistry,
-			region,
-			this,
-		)
+		// Grant permission to pull from Artifact Registries
+		// Registry order: [backend, frontend]
+		for (const [index, registry] of artifactRegistries.entries()) {
+			iamSvc.bindArtifactRegistryReader(
+				`${registryNames[index]}-app`,
+				backendAppSa.email,
+				registry,
+				region,
+				this,
+			)
+		}
 		iamSvc.bindProjectRoles(
 			[
 				Roles.Logging.LogWriter,
