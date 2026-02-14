@@ -79,7 +79,6 @@ This project provisions and manages cloud resources for Liverty Music, including
 ├── Pulumi.{dev,prod}.yaml       # Stack-specific configurations with ESC references
 ├── package.json                 # Node.js dependencies and scripts
 ├── tsconfig.json               # TypeScript compiler configuration
-├── eslint.config.mjs           # ESLint configuration
 ├── CLAUDE.md                   # AI assistant project instructions
 └── src/
     ├── index.ts                # Main infrastructure entry point
@@ -126,10 +125,9 @@ pulumi stack select prod      # Production environment
 
 ### Available Scripts
 
-- `npm run lint` – Lint TypeScript code with ESLint
-- `npm run lint:fix` – Auto-fix linting issues
-- `npm run format` – Format code with Prettier
-- `npm run format:check` – Check code formatting
+- `npm run lint` – Lint code with Biome
+- `npm run format` – Format code with Biome
+- `npm run check` – Run Biome checks (combines lint and format)
 - `npm run typecheck` – Run TypeScript type checking
 - `npm run build` – Compile TypeScript to JavaScript
 - `npm run dev` – Watch mode for development
