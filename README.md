@@ -158,6 +158,59 @@ This project currently manages:
 - **Compute Resources**: GKE Autopilot Cluster (`osaka-region`) with Private Nodes
 - **Storage/Database**: Cloud SQL PostgreSQL 18 with Private Service Connect (PSC) & Cloud DNS
 
+## Frontend Deployment Architecture
+
+The Aurelia 2 frontend SPA is deployed to GKE using GitOps with ArgoCD, following the same patterns as the backend.
+
+### Infrastructure Components
+
+**Container Image Pipeline**:
+- Multi-stage Docker build: `node:22-alpine` (builder) → `caddy:2-alpine` (runtime)
+- Automated builds on push to `main` branch via GitHub Actions
+- Images pushed to Google Artifact Registry: `asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app`
+- Tagged with: `latest`, `${GITHUB_SHA}`, `main`
+
+**Kubernetes Resources**:
+- **Namespace**: `frontend`
+- **Deployment**: 1 replica, 50m-200m CPU, 64Mi-128Mi memory, spot VMs
+- **Service**: ClusterIP on port 80
+- **HTTPRoute**: Gateway API route binding to `external-gateway`
+- **Web Server**: Caddy 2 serving static assets from `/srv`
+
+**Network & TLS**:
+- **Domain**: `https://dev.liverty-music.app`
+- **Gateway**: Shared `external-gateway` in `gateway` namespace (same as backend)
+- **Static IP**: Shared `api-gateway-static-ip` (routing by hostname)
+- **Certificate**: Google-managed TLS via `api-gateway-cert-map`
+- **DNS**: Cloud DNS A record pointing to shared static IP
+
+**GitOps Workflow**:
+1. Frontend code changes merged to `main` → GitHub Actions builds Docker image
+2. ArgoCD monitors `k8s/namespaces/frontend/overlays/dev` in this repository
+3. Kustomize applies base manifests + dev overlays
+4. ArgoCD syncs changes to cluster (auto-prune, self-heal)
+
+### SPA Routing
+
+Caddy is configured with `try_files {path} /index.html` to support client-side routing:
+- Static assets (`/assets/*.js`, `/favicon.ico`) served directly
+- All other routes fallback to `index.html` for Aurelia 2 router to handle
+- Enables direct access to client-side routes (e.g., `/concerts`, `/users`)
+
+### Environment URLs
+
+- **Dev Frontend**: https://dev.liverty-music.app
+- **Dev Backend API**: https://api.dev.liverty-music.app
+
+### Deployment Verification
+
+After deploying, verify the following:
+- ArgoCD sync status (Healthy/Synced)
+- Pod health checks (`kubectl get pods -n frontend`)
+- HTTPRoute binding verification (`kubectl get httproute -n frontend`)
+- TLS certificate validation (`curl -sI https://dev.liverty-music.app`)
+- SPA routing tests (`curl -s https://dev.liverty-music.app/concerts`)
+
 ## Future Enhancements
 
 - **Security policies** (Refined IAM roles, service accounts)
