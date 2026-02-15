@@ -93,10 +93,7 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.SPECIFICATION,
 	environment: env,
-	variables: {
-		REGION: gcp.region,
-		PROJECT_ID: gcp.projectId,
-	},
+	variables: sharedVariables,
 	requiredStatusCheckContexts: ['Buf PR Checks / buf-checks'],
 })
 
@@ -106,10 +103,7 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.CLOUD_PROVISIONING,
 	environment: env,
-	variables: {
-		REGION: gcp.region,
-		PROJECT_ID: gcp.projectId,
-	},
+	variables: sharedVariables,
 	requiredStatusCheckContexts: [], // No required checks (only Gemini Review which is optional)
 })
 
