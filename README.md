@@ -169,7 +169,7 @@ The Aurelia 2 frontend SPA is deployed to GKE using GitOps with ArgoCD, followin
 **Container Image Pipeline**:
 - Multi-stage Docker build: `node:22-alpine` (builder) → `caddy:2-alpine` (runtime)
 - Automated builds on push to `main` branch via GitHub Actions
-- Images pushed to Google Artifact Registry: `asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/app`
+- Images pushed to Google Artifact Registry: `asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app`
 - Tagged with: `latest`, `${GITHUB_SHA}`, `main`
 
 **Kubernetes Resources**:
@@ -206,12 +206,12 @@ Caddy is configured with `try_files {path} /index.html` to support client-side r
 
 ### Deployment Verification
 
-See [deployment-verification.md](../specification/openspec/changes/frontend-k8s-deployment/docs/deployment-verification.md) for detailed verification results including:
-- ArgoCD sync status
-- Pod health checks
-- HTTPRoute binding verification
-- TLS certificate validation
-- SPA routing tests
+After deploying, verify the following:
+- ArgoCD sync status (Healthy/Synced)
+- Pod health checks (`kubectl get pods -n frontend`)
+- HTTPRoute binding verification (`kubectl get httproute -n frontend`)
+- TLS certificate validation (`curl -sI https://dev.liverty-music.app`)
+- SPA routing tests (`curl -s https://dev.liverty-music.app/concerts`)
 
 ## Future Enhancements
 
