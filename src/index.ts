@@ -69,6 +69,12 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
 	variables: sharedVariables,
+	requiredStatusCheckContexts: [
+		'Test / test',
+		'Test / vulnerability-check',
+		'Lint / golangci',
+		'Atlas CI / atlas-ci',
+	],
 })
 
 // Frontend Repository
@@ -78,6 +84,27 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
 	variables: sharedVariables,
+	requiredStatusCheckContexts: [], // No required checks (only Gemini Review which is optional)
+})
+
+// Specification Repository
+new GitHubRepositoryComponent({
+	brandId,
+	githubConfig,
+	repositoryName: RepositoryName.SPECIFICATION,
+	environment: env,
+	variables: sharedVariables,
+	requiredStatusCheckContexts: ['Buf PR Checks / buf-checks'],
+})
+
+// Cloud Provisioning Repository
+new GitHubRepositoryComponent({
+	brandId,
+	githubConfig,
+	repositoryName: RepositoryName.CLOUD_PROVISIONING,
+	environment: env,
+	variables: sharedVariables,
+	requiredStatusCheckContexts: [], // No required checks (only Gemini Review which is optional)
 })
 
 // Export common resources

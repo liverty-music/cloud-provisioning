@@ -120,7 +120,10 @@ export class Gcp {
 			podsCidr: osakaConfig.podsCidr,
 			servicesCidr: osakaConfig.servicesCidr,
 			masterCidr: osakaConfig.masterCidr,
-			artifactRegistries: [backendArtifactRegistry, frontendArtifactRegistry],
+			artifactRegistries: [
+				backendArtifactRegistry,
+				frontendArtifactRegistry,
+			],
 		})
 
 		// 6. Cloud SQL Instance (Postgres)

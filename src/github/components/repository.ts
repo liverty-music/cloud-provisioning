@@ -10,6 +10,7 @@ export interface GitHubRepositoryComponentArgs {
 	environment: Environment
 	variables: Record<string, pulumi.Input<string>>
 	secrets?: Record<string, pulumi.Input<string>>
+	requiredStatusCheckContexts?: string[]
 }
 
 export class GitHubRepositoryComponent extends pulumi.ComponentResource {
@@ -35,6 +36,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			environment,
 			variables,
 			secrets,
+			requiredStatusCheckContexts,
 		} = args
 
 		// Use a new provider instance to ensure we can use it in any stack
@@ -119,6 +121,20 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 					allowsForcePushes: false,
 					requiredLinearHistory: false,
 					requireConversationResolution: false,
+					// Require status checks to pass before merging (if specified)
+					// Note: Gemini Review is intentionally excluded from all repositories
+					...(requiredStatusCheckContexts &&
+					requiredStatusCheckContexts.length > 0
+						? {
+								requiredStatusChecks: [
+									{
+										strict: true, // Require branches to be up to date before merging
+										contexts: requiredStatusCheckContexts,
+									},
+								],
+							}
+						: {}),
+					// Require pull requests before merging (blocks direct pushes)
 					requiredPullRequestReviews: [
 						{
 							dismissStaleReviews: false,
@@ -127,6 +143,8 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 							requireCodeOwnerReviews: false,
 						},
 					],
+					// Block direct pushes to main branch (empty array = no one can push directly)
+					restrictPushes: [],
 				},
 				{ provider, parent: this },
 			)
