@@ -168,15 +168,16 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			})
 
 			// Certificate Manager: DNS Authorization for Backend Server
-			const backendServerDnsAuth = new gcp.certificatemanager.DnsAuthorization(
-				'backend-server-dns-auth',
-				{
-					name: 'backend-server-dns-auth',
-					location: 'global',
-					domain: `api.${managedZoneName}`,
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
+			const backendServerDnsAuth =
+				new gcp.certificatemanager.DnsAuthorization(
+					'backend-server-dns-auth',
+					{
+						name: 'backend-server-dns-auth',
+						location: 'global',
+						domain: `api.${managedZoneName}`,
+					},
+					{ parent: this, dependsOn: certManagerApi },
+				)
 
 			// Certificate Manager: DNS Authorization for Web App
 			const webAppDnsAuth = new gcp.certificatemanager.DnsAuthorization(
@@ -201,7 +202,10 @@ export class NetworkComponent extends pulumi.ComponentResource {
 							`api.${managedZoneName}`,
 							`${managedZoneName}`,
 						],
-						dnsAuthorizations: [backendServerDnsAuth.id, webAppDnsAuth.id],
+						dnsAuthorizations: [
+							backendServerDnsAuth.id,
+							webAppDnsAuth.id,
+						],
 					},
 				},
 				{ parent: this, dependsOn: certManagerApi },
@@ -255,13 +259,15 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			new gcp.dns.RecordSet(
 				'backend-server-dns-auth-cname',
 				{
-					name: backendServerDnsAuth.dnsResourceRecords.apply((r) => r[0].name),
+					name: backendServerDnsAuth.dnsResourceRecords.apply(
+						(r) => r[0].name,
+					),
 					managedZone: publicZone.name,
 					type: 'CNAME',
 					ttl: 300,
-					rrdatas: backendServerDnsAuth.dnsResourceRecords.apply((r) => [
-						r[0].data,
-					]),
+					rrdatas: backendServerDnsAuth.dnsResourceRecords.apply(
+						(r) => [r[0].data],
+					),
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
@@ -270,7 +276,9 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			new gcp.dns.RecordSet(
 				'web-app-dns-auth-cname',
 				{
-					name: webAppDnsAuth.dnsResourceRecords.apply((r) => r[0].name),
+					name: webAppDnsAuth.dnsResourceRecords.apply(
+						(r) => r[0].name,
+					),
 					managedZone: publicZone.name,
 					type: 'CNAME',
 					ttl: 300,
