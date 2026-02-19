@@ -34,7 +34,7 @@ jobs:
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           gemini_model: 'gemini-3-flash-preview'
-          prompt: '/gemini-review'
+          prompt: '/github-actions-review'
           gemini_debug: false
           workflow_name: 'gemini-review'
           settings: |-
