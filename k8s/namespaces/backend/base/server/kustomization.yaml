@@ -7,6 +7,7 @@ resources:
 - health-check-policy.yaml
 - backend-policy.yaml
 - httproute.yaml
+- external-secret.yaml
 
 configurations:
 - kustomizeconfig.yaml
