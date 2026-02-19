@@ -1,5 +1,5 @@
 import * as gcp from '@pulumi/gcp'
-import type * as pulumi from '@pulumi/pulumi'
+import * as pulumi from '@pulumi/pulumi'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import { KubernetesComponent } from './components/kubernetes.js'
 // import { ConcertDataStore } from './components/concert-data-store.js'
@@ -124,6 +124,14 @@ export class Gcp {
 				backendArtifactRegistry,
 				frontendArtifactRegistry,
 			],
+			secrets: gcpConfig.lastFmApiKey
+				? [
+						{
+							name: 'lastfm-api-key',
+							value: pulumi.secret(gcpConfig.lastFmApiKey),
+						},
+					]
+				: [],
 		})
 
 		// 6. Cloud SQL Instance (Postgres)

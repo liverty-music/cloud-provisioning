@@ -24,6 +24,7 @@ export type GoogleApis =
 	| 'container.googleapis.com'
 	| 'dns.googleapis.com'
 	| 'artifactregistry.googleapis.com'
+	| 'secretmanager.googleapis.com'
 
 export class ApiService {
 	constructor(private project: gcp.organizations.Project) {}

@@ -6,6 +6,7 @@ export interface GcpConfig {
 	organizationId: string
 	billingAccount: string
 	geminiApiKey?: string
+	lastFmApiKey?: string
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"
 	}
