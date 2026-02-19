@@ -26,8 +26,18 @@ patches:
       path: /spec/hostnames
       value: ["api.dev.liverty-music.app"]
 
+# CronJob: run concert discovery only on Fridays in dev
+- path: cronjob/concert-discovery/schedule_patch.yaml
+  target:
+    kind: CronJob
+    name: concert-discovery-app
+
 configMapGenerator:
 - name: config
   behavior: merge
   envs:
   - server/configmap.env
+- name: job-config
+  behavior: merge
+  envs:
+  - cronjob/concert-discovery/configmap.env

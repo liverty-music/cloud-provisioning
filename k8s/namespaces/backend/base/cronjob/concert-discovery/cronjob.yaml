@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: app
+spec:
+  schedule: "0 9 * * *" # 18:00 JST daily
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: backend-app
+          restartPolicy: Never
+          containers:
+          - name: concert-discovery
+            image: concert-discovery
+            envFrom:
+            - configMapRef:
+                name: job-config
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi

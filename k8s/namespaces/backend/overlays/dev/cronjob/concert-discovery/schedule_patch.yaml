@@ -1,0 +1,6 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: concert-discovery-app
+spec:
+  schedule: "0 9 * * 5" # Fridays only at 18:00 JST
