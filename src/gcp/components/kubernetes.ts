@@ -149,6 +149,28 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		// Bind Kubernetes Service Account to Workload Identity
 		iamSvc.bindKubernetesSaUser(backendApp, backendAppSa, namespace, this)
 
+		// External Secrets Operator Service Account
+		// Uses pod identity (ADC): ESO controller pod authenticates directly via its own GCP SA.
+		// This avoids sharing the backend-app SA with the cluster-wide ESO operator.
+		const esoName = 'external-secrets'
+		const esoNamespace = 'external-secrets'
+		const esoSa = iamSvc.createServiceAccount(
+			`liverty-music-${esoName}`,
+			esoName,
+			'External Secrets Operator Service Account',
+			'Service account for ESO controller to read GCP Secret Manager secrets',
+			this,
+		)
+		// Grant project-level Secret Manager read access so ESO can sync any provisioned secret.
+		iamSvc.bindProjectRoles(
+			[Roles.SecretManager.SecretAccessor],
+			esoName,
+			esoSa.email,
+			this,
+		)
+		// Allow K8s SA external-secrets/external-secrets to impersonate this GCP SA.
+		iamSvc.bindKubernetesSaUser(esoName, esoSa, esoNamespace, this)
+
 		// 3. GCP Secret Manager secrets for backend-app
 		for (const secret of secrets) {
 			const secretResource = new gcp.secretmanager.Secret(
