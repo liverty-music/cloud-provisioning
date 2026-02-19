@@ -37,3 +37,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - server/configmap.env
+- name: job-config
+  behavior: merge
+  envs:
+  - cronjob/concert-discovery/configmap.env

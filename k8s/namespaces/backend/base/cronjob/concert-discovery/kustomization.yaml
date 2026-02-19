@@ -17,6 +17,6 @@ images:
   newTag: latest
 
 configMapGenerator:
-- name: config
+- name: job-config
   envs:
   - configmap.env
