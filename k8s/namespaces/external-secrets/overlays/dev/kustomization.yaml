@@ -5,10 +5,10 @@ resources:
 - ../../base
 
 patches:
-- path: cluster-secret-store-patch.yaml
+- path: eso-sa-patch.yaml
   target:
-    kind: ClusterSecretStore
-    name: gcp-secret-manager
+    kind: ServiceAccount
+    name: external-secrets
 
 # Spot VM patch for dev
 - target:
@@ -18,3 +18,13 @@ patches:
     - op: add
       path: /spec/template/spec/nodeSelector/cloud.google.com~1compute-class
       value: autopilot-spot
+
+# Cost reduction: 1 replica is sufficient for dev
+- target:
+    kind: Deployment
+    name: external-secrets
+    namespace: external-secrets
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 1
