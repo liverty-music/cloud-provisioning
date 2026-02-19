@@ -161,17 +161,12 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			'Service account for ESO controller to read GCP Secret Manager secrets',
 			this,
 		)
-		// Grant project-level Secret Manager read access so ESO can sync any provisioned secret.
-		iamSvc.bindProjectRoles(
-			[Roles.SecretManager.SecretAccessor],
-			esoName,
-			esoSa.email,
-			this,
-		)
 		// Allow K8s SA external-secrets/external-secrets to impersonate this GCP SA.
 		iamSvc.bindKubernetesSaUser(esoName, esoSa, esoNamespace, this)
 
 		// 3. GCP Secret Manager secrets for backend-app
+		// Both backend-app and ESO SAs receive per-secret SecretAccessor bindings so that
+		// neither SA has broader project-level access than strictly required.
 		for (const secret of secrets) {
 			const secretResource = new gcp.secretmanager.Secret(
 				secret.name,
@@ -197,6 +192,17 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					project: project.projectId,
 					role: Roles.SecretManager.SecretAccessor,
 					member: pulumi.interpolate`serviceAccount:${backendAppSa.email}`,
+				},
+				{ parent: this },
+			)
+			// ESO per-secret binding — avoids project-level secretAccessor
+			new gcp.secretmanager.SecretIamMember(
+				`${secret.name}-eso-accessor`,
+				{
+					secretId: secretResource.secretId,
+					project: project.projectId,
+					role: Roles.SecretManager.SecretAccessor,
+					member: pulumi.interpolate`serviceAccount:${esoSa.email}`,
 				},
 				{ parent: this },
 			)
