@@ -10,7 +10,7 @@ spec:
   source:
     repoURL: https://github.com/liverty-music/cloud-provisioning.git
     targetRevision: main
-    path: k8s/cluster
+    path: k8s/cluster/overlays/dev
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd # Application resource lives here, but it manages cluster-wide/other-ns resources

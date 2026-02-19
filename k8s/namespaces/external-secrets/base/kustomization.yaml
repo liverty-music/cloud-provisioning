@@ -12,6 +12,4 @@ helmCharts:
   includeCRDs: true
   valuesFile: values.yaml
 
-resources:
-- cluster-secret-store.yaml
 

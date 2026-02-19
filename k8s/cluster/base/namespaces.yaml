@@ -25,3 +25,17 @@ metadata:
   name: frontend
   labels:
     name: frontend
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    name: external-secrets
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reloader
+  labels:
+    name: reloader
