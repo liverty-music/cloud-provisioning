@@ -4,5 +4,6 @@ kind: Kustomization
 resources:
 - serviceaccount.yaml
 - server
+- cronjob/concert-discovery
 
 namespace: backend
