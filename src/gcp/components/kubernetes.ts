@@ -4,6 +4,13 @@ import type { Region, RegionName } from '../region.js'
 import { ApiService } from '../services/api.js'
 import { IamService, Roles } from '../services/iam.js'
 
+export interface SecretConfig {
+	/** GCP Secret Manager secret name, e.g. 'lastfm-api-key'. */
+	name: string
+	/** The secret value to store. Pass as pulumi.secret() to ensure it is encrypted. */
+	value: pulumi.Input<string>
+}
+
 export interface KubernetesComponentArgs {
 	project: gcp.organizations.Project
 	environment: 'dev' | 'staging' | 'prod'
@@ -27,6 +34,12 @@ export interface KubernetesComponentArgs {
 	 * The Artifact Registry repositories to grant pull access to.
 	 */
 	artifactRegistries: gcp.artifactregistry.Repository[]
+
+	/**
+	 * Runtime secrets to provision in GCP Secret Manager and grant access to the backend-app SA.
+	 * Each entry creates a secret, a version (value from Pulumi config), and an IAM accessor binding.
+	 */
+	secrets?: SecretConfig[]
 }
 
 export class KubernetesComponent extends pulumi.ComponentResource {
@@ -52,6 +65,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			servicesCidr,
 			masterCidr,
 			artifactRegistries,
+			secrets = [],
 		} = args
 
 		const apiService = new ApiService(project)
@@ -59,6 +73,10 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			['container.googleapis.com'],
 			this,
 		)
+		const enabledSecretManagerApi =
+			secrets.length > 0
+				? apiService.enableApis(['secretmanager.googleapis.com'], this)
+				: []
 
 		// 1. Dedicated Service Account for GKE Nodes
 		const iamSvc = new IamService(project)
@@ -131,7 +149,38 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		// Bind Kubernetes Service Account to Workload Identity
 		iamSvc.bindKubernetesSaUser(backendApp, backendAppSa, namespace, this)
 
-		// 3. Dedicated Subnet for GKE
+		// 3. GCP Secret Manager secrets for backend-app
+		for (const secret of secrets) {
+			const secretResource = new gcp.secretmanager.Secret(
+				secret.name,
+				{
+					secretId: secret.name,
+					project: project.projectId,
+					replication: { auto: {} },
+				},
+				{ parent: this, dependsOn: enabledSecretManagerApi },
+			)
+			new gcp.secretmanager.SecretVersion(
+				`${secret.name}-version`,
+				{
+					secret: secretResource.id,
+					secretData: secret.value,
+				},
+				{ parent: this },
+			)
+			new gcp.secretmanager.SecretIamMember(
+				`${secret.name}-backend-app-accessor`,
+				{
+					secretId: secretResource.secretId,
+					project: project.projectId,
+					role: Roles.SecretManager.SecretAccessor,
+					member: pulumi.interpolate`serviceAccount:${backendAppSa.email}`,
+				},
+				{ parent: this },
+			)
+		}
+
+		// 5. Dedicated Subnet for GKE
 		this.subnet = new gcp.compute.Subnetwork(
 			`cluster-subnet-${regionName}`,
 			{
@@ -158,7 +207,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			return
 		}
 
-		// 3. GKE Autopilot Cluster
+		// 6. GKE Autopilot Cluster
 		const cluster = new gcp.container.Cluster(
 			`cluster-${regionName}`,
 			{

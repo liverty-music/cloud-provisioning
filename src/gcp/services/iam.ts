@@ -36,6 +36,9 @@ export const Roles = {
 		Reader: 'roles/artifactregistry.reader',
 		Writer: 'roles/artifactregistry.writer',
 	},
+	SecretManager: {
+		SecretAccessor: 'roles/secretmanager.secretAccessor',
+	},
 } as const
 
 type DeepValueOf<T> = T extends object
