@@ -3,3 +3,13 @@ kind: Kustomization
 
 resources:
 - ../../base
+
+# Spot VM patch for dev cost reduction
+patches:
+- target:
+    kind: Deployment
+    namespace: reloader
+  patch: |-
+    - op: add
+      path: /spec/template/spec/nodeSelector/cloud.google.com~1compute-class
+      value: autopilot-spot

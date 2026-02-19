@@ -1,7 +1,3 @@
-global:
-  nodeSelector:
-    cloud.google.com/compute-class: "autopilot-spot"
-
 reloader:
   resources:
     requests:
