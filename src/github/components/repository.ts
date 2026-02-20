@@ -128,7 +128,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 						? {
 								requiredStatusChecks: [
 									{
-										strict: true, // Require branches to be up to date before merging
+										strict: false,
 										contexts: requiredStatusCheckContexts,
 									},
 								],
