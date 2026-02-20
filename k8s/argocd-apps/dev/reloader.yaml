@@ -14,6 +14,8 @@ spec:
     repoURL: https://github.com/liverty-music/cloud-provisioning.git
     targetRevision: main
     path: k8s/namespaces/reloader/overlays/dev
+    kustomize:
+      enableHelm: true
   destination:
     server: https://kubernetes.default.svc
     namespace: reloader
