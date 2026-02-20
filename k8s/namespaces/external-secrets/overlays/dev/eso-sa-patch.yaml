@@ -4,4 +4,4 @@ metadata:
   name: external-secrets
   namespace: external-secrets
   annotations:
-    iam.gke.io/gcp-service-account: external-secrets@liverty-music-dev.iam.gserviceaccount.com
+    iam.gke.io/gcp-service-account: k8s-external-secrets@liverty-music-dev.iam.gserviceaccount.com

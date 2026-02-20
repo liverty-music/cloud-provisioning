@@ -152,17 +152,26 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		// External Secrets Operator Service Account
 		// Uses pod identity (ADC): ESO controller pod authenticates directly via its own GCP SA.
 		// This avoids sharing the backend-app SA with the cluster-wide ESO operator.
-		const esoName = 'external-secrets'
+		//
+		// esoK8sSaName: the K8s SA name created by the ESO Helm chart — used in the WIF
+		// principal URL (ns/{esoNamespace}/sa/{esoK8sSaName}). Must not change.
+		const esoK8sSaName = 'external-secrets'
 		const esoNamespace = 'external-secrets'
 		const esoSa = iamSvc.createServiceAccount(
-			`liverty-music-${esoName}`,
-			esoName,
+			'k8s-external-secrets',
+			'k8s-external-secrets',
 			'External Secrets Operator Service Account',
 			'Service account for ESO controller to read GCP Secret Manager secrets',
 			this,
 		)
 		// Allow K8s SA external-secrets/external-secrets to impersonate this GCP SA.
-		iamSvc.bindKubernetesSaUser(esoName, esoSa, esoNamespace, this)
+		// NOTE: bindKubernetesSaUser uses `name` as both the Pulumi logical resource name
+		// prefix AND the K8s SA name embedded in the WIF principal URL
+		// (ns/{namespace}/sa/{name}). Therefore esoK8sSaName MUST match the actual K8s SA
+		// name created by the ESO Helm chart ('external-secrets') and must not be changed
+		// to match the GCP SA account ID ('k8s-external-secrets').
+		// Resulting Pulumi resource: external-secrets-k8s-sa-wif-user
+		iamSvc.bindKubernetesSaUser(esoK8sSaName, esoSa, esoNamespace, this)
 
 		// 3. GCP Secret Manager secrets for backend-app
 		// Both backend-app and ESO SAs receive per-secret SecretAccessor bindings so that
