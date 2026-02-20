@@ -43,20 +43,18 @@ Find defects or say nothing. If no critical issues: output ONLY "LGTM".
 - Find CRITICAL issues per Focus Areas
 - Skip issues from Step 2
 
-**Step 4: Post Comments**
-- Format: **[Critical]** `file:line` followed by Issue and Fix
-- Severity: Critical (security, outages, data exposure) | Warning (cost, HA, bugs)
-- Call: `create_pending_pull_request_review` → `add_comment_to_pending_review` → `submit_pending_pull_request_review`
+**Step 4: Submit Review**
 
-## Output
-No issues found: `LGTM`
+**IF no issues found:**
+- Call `submit_pending_pull_request_review` with event `APPROVE` and empty body
+- Do NOT add any comment or body text
 
-Issues found:
-```
-**[Critical]** `file_path:line_number`
-Issue: [Brief explanation]
-Fix: [Actionable solution]
-```
+**IF issues found:**
+- Call `create_pending_pull_request_review` with event `REQUEST_CHANGES`
+- For each issue: call `add_comment_to_pending_review`
+  - Format: **[Critical]** `file:line` followed by Issue and Fix
+  - Severity: Critical (security, outages, data exposure) | Warning (cost, HA, bugs)
+- Call `submit_pending_pull_request_review`
 
 Do NOT add: summaries, praise, explanations of code, trivial suggestions.
 """
