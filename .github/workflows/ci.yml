@@ -30,7 +30,7 @@ jobs:
               - 'package-lock.json'
               - 'tsconfig.json'
               - 'biome.json'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/**'
 
   lint:
     needs: changes
@@ -97,10 +97,7 @@ jobs:
     needs: [lint, lint-skip, typecheck, typecheck-skip]
     if: always()
     steps:
-      - name: Check all jobs passed
-        run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
-            echo "One or more CI jobs failed"
-            exit 1
-          fi
-          echo "All CI jobs passed"
+      - uses: re-actors/alls-green@release/v1
+        with:
+          allowed-skips: lint, lint-skip, typecheck, typecheck-skip
+          jobs: ${{ toJSON(needs) }}
