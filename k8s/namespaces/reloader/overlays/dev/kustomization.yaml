@@ -4,12 +4,18 @@ kind: Kustomization
 resources:
 - ../../base
 
-# Spot VM patch for dev cost reduction
+# Spot VM patch for dev cost reduction (strategic merge patch to safely add nodeSelector)
 patches:
 - target:
     kind: Deployment
-    namespace: reloader
+    name: reloader
   patch: |-
-    - op: add
-      path: /spec/template/spec/nodeSelector/cloud.google.com~1compute-class
-      value: autopilot-spot
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: reloader
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: autopilot-spot

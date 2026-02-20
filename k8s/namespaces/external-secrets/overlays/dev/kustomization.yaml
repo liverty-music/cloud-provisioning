@@ -10,14 +10,20 @@ patches:
     kind: ServiceAccount
     name: external-secrets
 
-# Spot VM patch for dev
+# Spot VM patch for dev (strategic merge patch to safely add nodeSelector)
 - target:
     kind: Deployment
-    namespace: external-secrets
+    name: external-secrets
   patch: |-
-    - op: add
-      path: /spec/template/spec/nodeSelector/cloud.google.com~1compute-class
-      value: autopilot-spot
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: external-secrets
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: autopilot-spot
 
 # Cost reduction: 1 replica is sufficient for dev
 - target:
