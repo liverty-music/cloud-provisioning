@@ -50,8 +50,14 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				// Strict clock skew validation
 				clockSkew: '0s',
 				// Dev defaults; ideally these should be configurable
-				redirectUris: ['http://localhost:9000/auth/callback'],
-				postLogoutRedirectUris: ['http://localhost:9000/signedout'],
+				redirectUris: [
+					'http://localhost:9000/auth/callback',
+					'https://dev.liverty-music.app/auth/callback',
+				],
+				postLogoutRedirectUris: [
+					'http://localhost:9000/signedout',
+					'https://dev.liverty-music.app/signedout',
+				],
 				// Allow http://localhost for development
 				devMode: env === 'dev',
 			},
@@ -75,7 +81,7 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				hidePasswordReset: true, // Disable password reset flow since password login is disabled
 				// User convenience: allow trying usernames without immediate rejection (security trade-off: enumeration possible)
 				ignoreUnknownUsernames: true,
-				defaultRedirectUri: 'http://localhost:9000',
+				defaultRedirectUri: 'https://dev.liverty-music.app',
 				// Standard session and security lifetimes
 				passwordCheckLifetime: '240h0m0s',
 				externalLoginCheckLifetime: '240h0m0s',
