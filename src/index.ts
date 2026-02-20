@@ -69,11 +69,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: [
-		'Atlas CI / CI Success',
-		'Lint / CI Success',
-		'Test / CI Success',
-	],
+	requiredStatusCheckContexts: ['CI Success'],
 })
 
 // Frontend Repository
@@ -93,7 +89,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.SPECIFICATION,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: ['Buf PR Checks / CI Success'],
+	requiredStatusCheckContexts: ['CI Success'],
 })
 
 // Cloud Provisioning Repository
