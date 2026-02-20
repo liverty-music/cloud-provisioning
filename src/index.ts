@@ -70,10 +70,9 @@ new GitHubRepositoryComponent({
 	environment: env,
 	variables: sharedVariables,
 	requiredStatusCheckContexts: [
-		'Test / test',
-		'Test / vulnerability-check',
-		'Lint / golangci',
-		'Atlas CI / atlas-ci',
+		'Atlas CI / CI Success',
+		'Lint / CI Success',
+		'Test / CI Success',
 	],
 })
 
