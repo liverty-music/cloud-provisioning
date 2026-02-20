@@ -7,6 +7,12 @@ export interface GcpConfig {
 	billingAccount: string
 	geminiApiKey?: string
 	lastFmApiKey?: string
+	/** Private key for the TicketSBT contract deployer EOA on Base Sepolia. */
+	ticketSbtDeployerKey?: string
+	/** Base Sepolia JSON-RPC endpoint URL. */
+	baseSepoliaRpcUrl?: string
+	/** ERC-4337 Bundler (Pimlico/Alchemy) API key. */
+	bundlerApiKey?: string
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"
 	}

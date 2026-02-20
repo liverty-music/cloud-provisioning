@@ -124,14 +124,40 @@ export class Gcp {
 				backendArtifactRegistry,
 				frontendArtifactRegistry,
 			],
-			secrets: gcpConfig.lastFmApiKey
-				? [
-						{
-							name: 'lastfm-api-key',
-							value: pulumi.secret(gcpConfig.lastFmApiKey),
-						},
-					]
-				: [],
+			secrets: [
+				...(gcpConfig.lastFmApiKey
+					? [
+							{
+								name: 'lastfm-api-key',
+								value: pulumi.secret(gcpConfig.lastFmApiKey),
+							},
+						]
+					: []),
+				...(gcpConfig.ticketSbtDeployerKey
+					? [
+							{
+								name: 'ticket-sbt-deployer-key',
+								value: pulumi.secret(gcpConfig.ticketSbtDeployerKey),
+							},
+						]
+					: []),
+				...(gcpConfig.baseSepoliaRpcUrl
+					? [
+							{
+								name: 'base-sepolia-rpc-url',
+								value: pulumi.secret(gcpConfig.baseSepoliaRpcUrl),
+							},
+						]
+					: []),
+				...(gcpConfig.bundlerApiKey
+					? [
+							{
+								name: 'bundler-api-key',
+								value: pulumi.secret(gcpConfig.bundlerApiKey),
+							},
+						]
+					: []),
+			],
 		})
 
 		// 6. Cloud SQL Instance (Postgres)
