@@ -23,6 +23,21 @@ export class FrontendComponent extends pulumi.ComponentResource {
 		const { env, orgId, projectId, provider } = args
 		const resourceOptions = { provider, parent: this }
 
+		// Environment-specific domains
+		const domainMap: Record<Environment, string> = {
+			dev: 'dev.liverty-music.app',
+			staging: 'staging.liverty-music.app',
+			prod: 'liverty-music.app',
+		}
+		const domain = domainMap[env]
+
+		const redirectUris = [`https://${domain}/auth/callback`]
+		const postLogoutRedirectUris = [`https://${domain}/signedout`]
+		if (env === 'dev') {
+			redirectUris.push('http://localhost:9000/auth/callback')
+			postLogoutRedirectUris.push('http://localhost:9000/signedout')
+		}
+
 		// 1. Define zitadel.ApplicationOidc resource
 		this.application = new zitadel.ApplicationOidc(
 			'web-frontend',
@@ -49,9 +64,8 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				idTokenUserinfoAssertion: true,
 				// Strict clock skew validation
 				clockSkew: '0s',
-				// Dev defaults; ideally these should be configurable
-				redirectUris: ['http://localhost:9000/auth/callback'],
-				postLogoutRedirectUris: ['http://localhost:9000/signedout'],
+				redirectUris,
+				postLogoutRedirectUris,
 				// Allow http://localhost for development
 				devMode: env === 'dev',
 			},
@@ -75,7 +89,7 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				hidePasswordReset: true, // Disable password reset flow since password login is disabled
 				// User convenience: allow trying usernames without immediate rejection (security trade-off: enumeration possible)
 				ignoreUnknownUsernames: true,
-				defaultRedirectUri: 'http://localhost:9000',
+				defaultRedirectUri: `https://${domain}`,
 				// Standard session and security lifetimes
 				passwordCheckLifetime: '240h0m0s',
 				externalLoginCheckLifetime: '240h0m0s',
