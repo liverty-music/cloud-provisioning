@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: core
   namespace: argocd
+  # Wave 1: apply ClusterSecretStore after ESO CRDs are installed (wave 0)
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
