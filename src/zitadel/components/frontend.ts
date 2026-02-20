@@ -80,8 +80,8 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				// Disable username/password login (userLogin=false disables password auth)
 				userLogin: false,
 				allowRegister: true,
-				// Enable External IDPs (Google) for verification
-				allowExternalIdp: true,
+				// Disable external IDPs (Google etc.) to enforce passkey-only authentication
+				allowExternalIdp: false,
 				forceMfa: false,
 				forceMfaLocalOnly: false,
 				// Allow Passwordless (Passkeys) for better UX and security
