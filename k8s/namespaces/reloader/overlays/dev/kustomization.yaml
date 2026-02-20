@@ -5,16 +5,14 @@ resources:
 - ../../base
 
 # Spot VM patch for dev cost reduction (strategic merge patch to safely add nodeSelector)
-# Note: Helm releaseName "reloader" produces Deployment named "reloader-reloader"
 patches:
 - target:
     kind: Deployment
-    name: reloader-reloader
   patch: |-
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: reloader-reloader
+      name: reloader
     spec:
       template:
         spec:
