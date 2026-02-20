@@ -114,6 +114,31 @@ The following environment variables must be set in `.env`:
 
 ## Operating Protocols
 
+### Kubernetes Manifest Dry-Run Protocol
+
+**MANDATORY**: Before creating any commit that includes changes to `k8s/` manifests, you MUST run a Kustomize dry-run to verify the rendered output is correct.
+
+**Commands**:
+```bash
+# Plain Kustomize overlays (no Helm)
+kubectl kustomize k8s/<path>/overlays/<env>
+
+# Helm-based overlays (ESO, Reloader, etc.)
+kubectl kustomize --enable-helm k8s/<path>/overlays/<env>
+```
+
+**What to verify**:
+- All targeted resources are rendered without errors
+- Patches are applied to the correct resources (check `name`, `nodeSelector`, `replicas`, etc.)
+- No unintended resources are modified
+
+**When Helm is required**: Any overlay whose base uses `helmCharts:` in `kustomization.yaml` requires `--enable-helm`. Check `k8s/<path>/base/kustomization.yaml` to determine this.
+
+**Do NOT commit if**:
+- `kubectl kustomize` returns an error
+- A patch is missing from a resource that should have it (e.g., `nodeSelector: NOT SET` when expected)
+- A resource has unexpected field values
+
 ### Pulumi Deployment Approval Protocol
 
 **CRITICAL REQUIREMENT**: Before executing `pulumi up` or any deployment command, you MUST follow this strict approval workflow:

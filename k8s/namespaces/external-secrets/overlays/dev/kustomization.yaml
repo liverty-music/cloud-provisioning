@@ -10,10 +10,10 @@ patches:
     kind: ServiceAccount
     name: external-secrets
 
-# Spot VM patch for dev (strategic merge patch to safely add nodeSelector)
+# Spot VM patch for dev: apply to all ESO Deployments (controller, cert-controller, webhook)
+# target selects all Deployments; metadata.name in the SMP body is not used for matching
 - target:
     kind: Deployment
-    name: external-secrets
   patch: |-
     apiVersion: apps/v1
     kind: Deployment

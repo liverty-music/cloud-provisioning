@@ -40,7 +40,7 @@ jobs:
           settings: |-
             {
               "model": {
-                "maxSessionTurns": 20,
+                "maxSessionTurns": 40,
                 "compressionThreshold": 0.4
               },
               "mcpServers": {
