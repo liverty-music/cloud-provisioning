@@ -2,8 +2,13 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
+  annotations:
+    reloader.stakater.com/auto: "true"
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
   template:
     metadata:
       # Labels handled by commonLabels
@@ -18,6 +23,8 @@ spec:
         envFrom:
         - configMapRef:
             name: config
+        - secretRef:
+            name: backend-secrets
         readinessProbe:
           grpc:
             port: 8080

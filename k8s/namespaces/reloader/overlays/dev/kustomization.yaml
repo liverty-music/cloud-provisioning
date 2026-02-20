@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+# Spot VM patch for dev cost reduction (strategic merge patch to safely add nodeSelector)
+patches:
+- target:
+    kind: Deployment
+    name: reloader
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: reloader
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: autopilot-spot

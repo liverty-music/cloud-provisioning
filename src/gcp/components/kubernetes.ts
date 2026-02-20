@@ -149,7 +149,33 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		// Bind Kubernetes Service Account to Workload Identity
 		iamSvc.bindKubernetesSaUser(backendApp, backendAppSa, namespace, this)
 
+		// External Secrets Operator Service Account
+		// Uses pod identity (ADC): ESO controller pod authenticates directly via its own GCP SA.
+		// This avoids sharing the backend-app SA with the cluster-wide ESO operator.
+		//
+		// esoK8sSaName: the K8s SA name created by the ESO Helm chart — used in the WIF
+		// principal URL (ns/{esoNamespace}/sa/{esoK8sSaName}). Must not change.
+		const esoK8sSaName = 'external-secrets'
+		const esoNamespace = 'external-secrets'
+		const esoSa = iamSvc.createServiceAccount(
+			'k8s-external-secrets',
+			'k8s-external-secrets',
+			'External Secrets Operator Service Account',
+			'Service account for ESO controller to read GCP Secret Manager secrets',
+			this,
+		)
+		// Allow K8s SA external-secrets/external-secrets to impersonate this GCP SA.
+		// NOTE: bindKubernetesSaUser uses `name` as both the Pulumi logical resource name
+		// prefix AND the K8s SA name embedded in the WIF principal URL
+		// (ns/{namespace}/sa/{name}). Therefore esoK8sSaName MUST match the actual K8s SA
+		// name created by the ESO Helm chart ('external-secrets') and must not be changed
+		// to match the GCP SA account ID ('k8s-external-secrets').
+		// Resulting Pulumi resource: external-secrets-k8s-sa-wif-user
+		iamSvc.bindKubernetesSaUser(esoK8sSaName, esoSa, esoNamespace, this)
+
 		// 3. GCP Secret Manager secrets for backend-app
+		// Both backend-app and ESO SAs receive per-secret SecretAccessor bindings so that
+		// neither SA has broader project-level access than strictly required.
 		for (const secret of secrets) {
 			const secretResource = new gcp.secretmanager.Secret(
 				secret.name,
@@ -175,6 +201,17 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					project: project.projectId,
 					role: Roles.SecretManager.SecretAccessor,
 					member: pulumi.interpolate`serviceAccount:${backendAppSa.email}`,
+				},
+				{ parent: this },
+			)
+			// ESO per-secret binding — avoids project-level secretAccessor
+			new gcp.secretmanager.SecretIamMember(
+				`${secret.name}-eso-accessor`,
+				{
+					secretId: secretResource.secretId,
+					project: project.projectId,
+					role: Roles.SecretManager.SecretAccessor,
+					member: pulumi.interpolate`serviceAccount:${esoSa.email}`,
 				},
 				{ parent: this },
 			)
