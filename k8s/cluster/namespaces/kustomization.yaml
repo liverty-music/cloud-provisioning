@@ -3,4 +3,4 @@ kind: Kustomization
 
 # Deployed at Wave -1 so namespaces exist before Wave 0 operators (ESO, Reloader)
 resources:
-- ../base/namespaces.yaml
+- namespaces.yaml
