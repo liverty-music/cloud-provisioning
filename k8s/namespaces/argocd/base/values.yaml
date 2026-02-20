@@ -2,6 +2,12 @@ global:
   nodeSelector:
     cloud.google.com/compute-class: "autopilot-spot"
 
+configs:
+  cm:
+    # Enable Helm template rendering inside kustomize overlays that use helmCharts:.
+    # Required for external-secrets and reloader overlays.
+    kustomize.buildOptions: "--enable-helm"
+
 server:
   service:
     type: ClusterIP
