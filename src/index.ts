@@ -93,7 +93,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.SPECIFICATION,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: ['Buf PR Checks / buf-checks'],
+	requiredStatusCheckContexts: ['Buf PR Checks / CI Success'],
 })
 
 // Cloud Provisioning Repository
