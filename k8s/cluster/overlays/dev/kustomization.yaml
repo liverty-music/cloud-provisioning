@@ -8,4 +8,4 @@ patches:
 - path: cluster-secret-store-patch.yaml
   target:
     kind: ClusterSecretStore
-    name: gcp-secret-manager
+    name: google-secret-manager
