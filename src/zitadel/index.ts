@@ -1,8 +1,10 @@
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
 import { FrontendComponent } from './components/frontend.js'
+import { ActionsComponent } from './components/token-action.js'
 
 export * from './components/frontend.js'
+export * from './components/token-action.js'
 
 export interface ZitadelConfig {
 	orgId: string
@@ -22,6 +24,7 @@ export class Zitadel {
 	public readonly provider: zitadel.Provider
 	public readonly project: zitadel.Project
 	public readonly frontend: FrontendComponent
+	public readonly actions: ActionsComponent
 
 	constructor(name: string, args: ZitadelArgs) {
 		const { env, config } = args
@@ -50,6 +53,12 @@ export class Zitadel {
 			env,
 			orgId: config.orgId,
 			projectId: this.project.id,
+			provider: this.provider,
+		})
+
+		this.actions = new ActionsComponent(name, {
+			env,
+			orgId: config.orgId,
 			provider: this.provider,
 		})
 	}
