@@ -129,11 +129,9 @@ Run from the `cloud-provisioning` directory with the correct stack selected:
 pulumi stack select dev
 
 # Set secrets (values are encrypted at rest by Pulumi)
-# --path creates nested keys under the gcp object, which is required for
-# config.requireObject('gcp') to deserialize correctly.
 pulumi config set --path gcp.ticketSbtDeployerKey --secret <PRIVATE_KEY_HEX>
-pulumi config set --path gcp.baseSepoliaRpcUrl --secret <RPC_URL>
-pulumi config set --path gcp.bundlerApiKey --secret <API_KEY>
+pulumi config set --path gcp.baseSepoliaRpcUrl    --secret <RPC_URL>
+pulumi config set --path gcp.bundlerApiKey        --secret <API_KEY>
 ```
 
 Verify (values will appear as `[secret]`):
