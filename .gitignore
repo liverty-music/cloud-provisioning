@@ -38,4 +38,5 @@ charts/
 # Agent
 .pr_data/
 
-tmp/
+tmp/*
+!tmp/.gitkeep
