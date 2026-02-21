@@ -50,7 +50,7 @@ Find defects or say nothing. If no critical issues: output ONLY "LGTM".
 - Do NOT add any comment or body text
 
 **IF issues found:**
-- Call `create_pending_pull_request_review` with event `REQUEST_CHANGES`
+- Call `create_pending_pull_request_review` with event `COMMENT`
 - For each issue: call `add_comment_to_pending_review`
   - Format: **[Critical]** `file:line` followed by Issue and Fix
   - Severity: Critical (security, outages, data exposure) | Warning (cost, HA, bugs)
