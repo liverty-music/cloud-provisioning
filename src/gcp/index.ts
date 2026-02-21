@@ -136,7 +136,7 @@ export class Gcp {
 				...(gcpConfig.ticketSbtDeployerKey
 					? [
 							{
-								name: 'blockchain-deployer-private-key',
+								name: 'ticket-sbt-deployer-key',
 								value: pulumi.secret(
 									gcpConfig.ticketSbtDeployerKey,
 								),
@@ -146,7 +146,7 @@ export class Gcp {
 				...(gcpConfig.baseSepoliaRpcUrl
 					? [
 							{
-								name: 'blockchain-rpc-url',
+								name: 'base-sepolia-rpc-url',
 								value: pulumi.secret(
 									gcpConfig.baseSepoliaRpcUrl,
 								),
