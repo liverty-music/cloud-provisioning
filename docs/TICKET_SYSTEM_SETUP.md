@@ -11,8 +11,8 @@ The ticket system uses three secrets stored in GCP Secret Manager:
 
 | Secret name               | Purpose                                                                      |
 |---------------------------|------------------------------------------------------------------------------|
-| `ticket-sbt-deployer-key` | Private key of the EOA that deploys and mints TicketSBT NFTs on Base Sepolia |
-| `base-sepolia-rpc-url`    | JSON-RPC endpoint for the Base Sepolia testnet                               |
+| `blockchain-deployer-private-key` | Private key of the EOA that deploys and mints TicketSBT NFTs on Base Sepolia |
+| `blockchain-rpc-url`    | JSON-RPC endpoint for the Base Sepolia testnet                               |
 | `bundler-api-key`         | ERC-4337 bundler API key (Pimlico or Alchemy Account Kit)                   |
 
 ---
@@ -83,7 +83,7 @@ A balance of `0.05 ETH` or more is sufficient for development.
 ## Step 3 — Obtain Alchemy RPC URL and Bundler API Key
 
 You need two values from Alchemy:
-1. A **Base Sepolia RPC URL** (`base-sepolia-rpc-url`)
+1. A **Base Sepolia RPC URL** (`blockchain-rpc-url`)
 2. A **Bundler API key** for ERC-4337 (`bundler-api-key`)
 
 ### 3-a. Create an Alchemy account
@@ -98,7 +98,7 @@ Sign up at <https://dashboard.alchemy.com/> (free tier available).
    ```
    https://base-sepolia.g.alchemy.com/v2/<YOUR_API_KEY>
    ```
-   This is your `base-sepolia-rpc-url`.
+   This is your `blockchain-rpc-url`.
 
 ### 3-c. Get the Bundler API key
 
@@ -129,9 +129,11 @@ Run from the `cloud-provisioning` directory with the correct stack selected:
 pulumi stack select dev
 
 # Set secrets (values are encrypted at rest by Pulumi)
-pulumi config set --secret liverty-music:gcp.ticketSbtDeployerKey  <PRIVATE_KEY_HEX>
-pulumi config set --secret liverty-music:gcp.baseSepoliaRpcUrl     <RPC_URL>
-pulumi config set --secret liverty-music:gcp.bundlerApiKey         <API_KEY>
+# --path creates nested keys under the gcp object, which is required for
+# config.requireObject('gcp') to deserialize correctly.
+pulumi config set --path gcp.ticketSbtDeployerKey --secret <PRIVATE_KEY_HEX>
+pulumi config set --path gcp.baseSepoliaRpcUrl --secret <RPC_URL>
+pulumi config set --path gcp.bundlerApiKey --secret <API_KEY>
 ```
 
 Verify (values will appear as `[secret]`):
@@ -164,9 +166,9 @@ pulumi preview
 Review the planned changes — three new Secret Manager resources should appear:
 
 ```
-+ gcp:secretmanager/secret:Secret                   ticket-sbt-deployer-key         create
-+ gcp:secretmanager/secretVersion:SecretVersion     ticket-sbt-deployer-key-version create
-+ gcp:secretmanager/secret:Secret                   base-sepolia-rpc-url            create
++ gcp:secretmanager/secret:Secret                   blockchain-deployer-private-key         create
++ gcp:secretmanager/secretVersion:SecretVersion     blockchain-deployer-private-key-version create
++ gcp:secretmanager/secret:Secret                   blockchain-rpc-url            create
 ...
 ```
 
@@ -205,8 +207,8 @@ pulumi login
 Import the existing secret into Pulumi state:
 
 ```bash
-pulumi import gcp:secretmanager/secret:Secret ticket-sbt-deployer-key \
-  projects/<PROJECT_ID>/secrets/ticket-sbt-deployer-key
+pulumi import gcp:secretmanager/secret:Secret blockchain-deployer-private-key \
+  projects/<PROJECT_ID>/secrets/blockchain-deployer-private-key
 ```
 
 ### Contract build / deploy issues
