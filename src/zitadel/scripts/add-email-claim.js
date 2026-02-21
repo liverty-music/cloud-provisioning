@@ -27,9 +27,9 @@
 //
 // biome-ignore lint/correctness/noUnusedVariables: called by Zitadel runtime by name, not imported
 function addEmailClaim(ctx, api) {
-  var user = ctx.v1.getUser();
-  // biome-ignore lint/complexity/useOptionalChain: Zitadel Actions use ECMAScript 5.1; ?. is unavailable
-  if (user && user.human && user.human.email) {
-    api.v1.claims.setClaim('email', user.human.email);
-  }
+	var user = ctx.v1.getUser()
+	// biome-ignore lint/complexity/useOptionalChain: Zitadel Actions use ECMAScript 5.1; ?. is unavailable
+	if (user && user.human && user.human.email) {
+		api.v1.claims.setClaim('email', user.human.email)
+	}
 }
