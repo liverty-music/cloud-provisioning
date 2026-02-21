@@ -27,6 +27,10 @@ export interface PostgresComponentArgs {
 	 * GCP Service Account email for the backend application.
 	 */
 	appServiceAccountEmail: pulumi.Input<string>
+	/**
+	 * Human user emails that require IAM database authentication access.
+	 */
+	iamDatabaseUsers?: string[]
 }
 
 /**
@@ -63,6 +67,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			pscEndpointIp,
 			dnsZoneName,
 			appServiceAccountEmail,
+			iamDatabaseUsers = [],
 		} = args
 
 		const backendApp = 'backend-app'
@@ -207,6 +212,31 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			},
 			{ parent: this, dependsOn: [instance] },
 		)
+
+		// 8. Create Cloud IAM SQL Users for human access (e.g., Cloud SQL Studio)
+		for (const email of iamDatabaseUsers) {
+			const sanitizedName = email.replace(/[@.]/g, '-')
+			new gcp.sql.User(
+				`iam-user-${sanitizedName}`,
+				{
+					name: email,
+					project: project.projectId,
+					instance: instance.name,
+					type: 'CLOUD_IAM_USER',
+				},
+				{ parent: this, dependsOn: [instance] },
+			)
+
+			new gcp.projects.IAMMember(
+				`iam-user-${sanitizedName}-x-cloudsql-instance-user`,
+				{
+					project: project.projectId,
+					role: 'roles/cloudsql.instanceUser',
+					member: `user:${email}`,
+				},
+				{ parent: this },
+			)
+		}
 
 		this.registerOutputs({
 			instanceConnectionName: instance.connectionName,

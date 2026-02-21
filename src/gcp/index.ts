@@ -175,6 +175,7 @@ export class Gcp {
 			pscEndpointIp: osakaConfig.postgresPscIp,
 			dnsZoneName: network.sqlZone.name,
 			appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
+			iamDatabaseUsers: ['pannpers@pannpers.dev'],
 		})
 
 		// 7. Workload Identity Federation
