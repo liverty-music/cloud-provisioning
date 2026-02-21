@@ -129,9 +129,9 @@ Run from the `cloud-provisioning` directory with the correct stack selected:
 pulumi stack select dev
 
 # Set secrets (values are encrypted at rest by Pulumi)
-pulumi config set --secret liverty-music:gcp.ticketSbtDeployerKey  <PRIVATE_KEY_HEX>
-pulumi config set --secret liverty-music:gcp.baseSepoliaRpcUrl     <RPC_URL>
-pulumi config set --secret liverty-music:gcp.bundlerApiKey         <API_KEY>
+pulumi config set --path gcp.ticketSbtDeployerKey --secret <PRIVATE_KEY_HEX>
+pulumi config set --path gcp.baseSepoliaRpcUrl    --secret <RPC_URL>
+pulumi config set --path gcp.bundlerApiKey        --secret <API_KEY>
 ```
 
 Verify (values will appear as `[secret]`):
