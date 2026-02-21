@@ -18,6 +18,45 @@ patches:
   target:
     kind: Deployment
 
+# Spot VM patch for CronJobs in dev
+- path: spot-vm_patch_cronjob.yaml
+  target:
+    kind: CronJob
+
+# Reduce replicas to 1 for dev
+- target:
+    kind: Deployment
+    name: server-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: server-app
+    spec:
+      replicas: 1
+
+# Right-size resources for dev
+- target:
+    kind: Deployment
+    name: server-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: server-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: server
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+
 - target:
     kind: HTTPRoute
     name: server-route

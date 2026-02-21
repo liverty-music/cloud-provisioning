@@ -16,73 +16,61 @@ server:
   resources:
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 64Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 256Mi
 
 repoServer:
   resources:
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 64Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 256Mi
 
 controller:
   enableStatefulSet: true
   resources:
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 128Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 384Mi
 
 redis:
   enabled: true
   resources:
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 52Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 200m
+      memory: 128Mi
 
 redisSecretInit:
   enabled: true
   resources:
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 52Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 200m
+      memory: 128Mi
 
 dex:
-  resources:
-    requests:
-      cpu: 50m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+  enabled: false
 
 notifications:
-  resources:
-    requests:
-      cpu: 50m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+  enabled: false
 
 applicationSet:
   resources:
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 64Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 200m
+      memory: 256Mi

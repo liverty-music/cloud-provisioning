@@ -4,27 +4,27 @@ replicaCount: 2
 resources:
   requests:
     cpu: 50m
-    memory: 128Mi
+    memory: 64Mi
   limits:
-    cpu: 500m
+    cpu: 200m
     memory: 256Mi
 
 webhook:
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 52Mi
     limits:
-      cpu: 200m
+      cpu: 100m
       memory: 128Mi
 
 certController:
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 52Mi
     limits:
-      cpu: 200m
+      cpu: 100m
       memory: 128Mi
 
 # Use Workload Identity - no service account keys needed
