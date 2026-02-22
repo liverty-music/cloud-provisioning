@@ -102,9 +102,78 @@ The following environment variables must be set in `.env`:
 
 ### Sensitive Data Handling
 - NEVER hardcode secrets in infrastructure code
-- Use `pulumi config set --secret` for sensitive values
+- Use Pulumi ESC (`esc env set ... --secret`) to store secrets in the correct environment
 - Leverage GCP Secret Manager for application secrets
 - Use IAM roles instead of service account keys when possible
+
+### Pulumi ESC Secret Management
+
+This project uses **Pulumi ESC** (Environment, Secrets, and Configuration) for all configuration and secrets. Secrets MUST be stored in the correct ESC environment, NOT in stack config files.
+
+#### ESC Environment Hierarchy
+
+```
+liverty-music/common          ← shared config inherited by all envs
+├── liverty-music/dev          ← dev-specific config (imports common)
+└── liverty-music/prod         ← prod-specific config (imports common)
+
+liverty-music/cloud-provisioning/common  ← project-level shared config
+├── liverty-music/cloud-provisioning/dev  ← project dev (imports above)
+└── liverty-music/cloud-provisioning/prod
+```
+
+Stack files (`Pulumi.dev.yaml`) reference ESC environments:
+```yaml
+environment:
+  - liverty-music/dev
+```
+
+#### CRITICAL: `pulumi config set` vs `esc env set`
+
+- **`pulumi config set --secret`**: Writes to the **stack YAML file** (`Pulumi.dev.yaml`) or the common ESC environment. This is WRONG for environment-specific secrets.
+- **`esc env set`**: Writes directly to a **specific ESC environment**. This is the CORRECT approach.
+
+#### Setting a Secret in a Specific ESC Environment
+
+```bash
+# Correct: writes to liverty-music/dev ESC environment
+esc env set liverty-music/dev pulumiConfig.gcp.someSecret "value" --secret
+
+# Wrong: may write to common env or stack file
+pulumi -s dev config set --secret --path 'liverty-music:gcp.someSecret' "value"
+```
+
+#### ESC Path Mapping
+
+ESC `pulumiConfig` keys map to Pulumi config namespaces:
+
+| ESC Path | Pulumi Config Key |
+|----------|-------------------|
+| `pulumiConfig.gcp.billingAccount` | `liverty-music:gcp.billingAccount` |
+| `pulumiConfig.gcp.postgresAdminPassword` | `liverty-music:gcp.postgresAdminPassword` |
+| `pulumiConfig.github.token` | `liverty-music:github.token` |
+
+#### Common ESC Commands
+
+```bash
+# List all environments
+esc env ls
+
+# View an environment's resolved values (secrets redacted)
+esc env get liverty-music/dev
+
+# View a specific value
+esc env get liverty-music/dev pulumiConfig.gcp.postgresAdminPassword
+
+# Set a secret value
+esc env set liverty-music/dev pulumiConfig.gcp.someKey "value" --secret
+
+# Set a plaintext value
+esc env set liverty-music/dev pulumiConfig.gcp.someKey "value"
+
+# View raw YAML definition (shows fn::secret ciphertexts)
+esc env get liverty-music/dev --show-secrets
+```
 
 ### GCP Best Practices
 - Apply principle of least privilege for IAM roles

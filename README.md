@@ -216,6 +216,39 @@ After deploying, verify the following:
 - **Security policies** (Refined IAM roles, service accounts)
 - **CI/CD Pipelines** (GitHub Actions integration with WIF)
 
+## Cloud SQL Admin Password Setup
+
+The Cloud SQL `postgres` admin user password must be generated locally and stored in the Pulumi config before deploying. This password is used by:
+
+- **Pulumi**: Sets the `postgres` user password on the Cloud SQL instance via `gcp.sql.User`
+- **Secret Manager**: Stored as `postgres-admin-password` for Atlas Operator to authenticate
+- **Atlas Operator**: Connects to Cloud SQL as `postgres` to run schema migrations
+
+### Generate and Configure the Password
+
+```bash
+# 1. Generate a secure random password (32 chars, alphanumeric)
+PASSWORD=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 32)
+
+# 2. Store in the dev ESC environment as a secret
+#    This writes to liverty-music/dev ESC env under pulumiConfig.gcp.postgresAdminPassword
+esc env set liverty-music/dev pulumiConfig.gcp.postgresAdminPassword "$PASSWORD" --secret
+
+# 3. Verify it was stored
+esc env get liverty-music/dev pulumiConfig.gcp.postgresAdminPassword
+```
+
+### What Happens on `pulumi up`
+
+1. `gcp.sql.User` sets the `postgres` user password on the Cloud SQL instance
+2. `gcp.secretmanager.SecretVersion` stores the password in Secret Manager as `postgres-admin-password`
+3. External Secrets Operator (ESO) syncs the secret to a K8s `Secret` in the `atlas-operator` namespace
+4. Atlas Operator reads the secret to authenticate against Cloud SQL for migrations
+
+### Rotation
+
+To rotate the password, re-run the steps above with a new value and run `pulumi up`. The Cloud SQL user password and Secret Manager version will be updated automatically. The ESO sync interval will propagate the new secret to K8s.
+
 ## Kubernetes & ArgoCD Bootstrap
 
 When setting up a fresh cluster (e.g., `cluster-osaka`), follow these steps to bootstrap the environment.
