@@ -55,9 +55,7 @@ export class Gcp {
 			cloudflareConfig,
 		} = args
 
-		const gcpPulumiConfig = new pulumi.Config('gcp')
-		const cloudSqlUsers =
-			gcpPulumiConfig.getObject<string[]>('cloudSqlUsers') ?? []
+		const cloudSqlUsers = gcpConfig.cloudSqlUsers ?? []
 
 		// 1. Project and Folders
 		const projectBasis = new ProjectComponent({
