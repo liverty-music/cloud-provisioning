@@ -56,7 +56,8 @@ export class Gcp {
 		} = args
 
 		const gcpPulumiConfig = new pulumi.Config('gcp')
-		const cloudSqlUsers = gcpPulumiConfig.getObject<string[]>('cloudSqlUsers') ?? []
+		const cloudSqlUsers =
+			gcpPulumiConfig.getObject<string[]>('cloudSqlUsers') ?? []
 
 		// 1. Project and Folders
 		const projectBasis = new ProjectComponent({
