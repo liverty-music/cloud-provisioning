@@ -1,5 +1,4 @@
 import * as gcp from '@pulumi/gcp'
-import * as postgresql from '@pulumi/postgresql'
 import * as pulumi from '@pulumi/pulumi'
 import { ApiService } from '../services/api.js'
 
@@ -32,6 +31,11 @@ export interface PostgresComponentArgs {
 	 * Human user emails that require IAM database authentication access.
 	 */
 	iamDatabaseUsers?: string[]
+	/**
+	 * Password for the Cloud SQL built-in postgres admin user.
+	 * Used by Atlas Operator for schema management and migrations.
+	 */
+	postgresAdminPassword?: pulumi.Input<string>
 }
 
 /**
@@ -69,6 +73,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			dnsZoneName,
 			appServiceAccountEmail,
 			iamDatabaseUsers = [],
+			postgresAdminPassword,
 		} = args
 
 		const apiService = new ApiService(project)
@@ -186,7 +191,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		const livertyMusicDbName = 'liverty-music'
 
 		// 6. Create default database
-		const livertyMusicDatabase = new gcp.sql.Database(
+		new gcp.sql.Database(
 			livertyMusicDbName,
 			{
 				name: livertyMusicDbName,
@@ -199,11 +204,10 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		)
 
 		// 7. Create Cloud IAM SQL User
+		const backendApp = 'backend-app'
 		const iamUserName = pulumi
 			.output(appServiceAccountEmail)
 			.apply((email) => email.replace('.gserviceaccount.com', ''))
-
-		const backendApp = 'backend-app'
 
 		new gcp.sql.User(
 			backendApp,
@@ -241,64 +245,22 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			)
 		}
 
-		// 9. PostgreSQL Schema & Permissions (via Cloud SQL Auth Proxy)
-		// Requires: cloud-sql-proxy running locally on port 15432
-		const pgProvider = new postgresql.Provider(
-			'cloud-sql-pg',
-			{
-				host: 'localhost',
-				port: 15432,
-				username: 'postgres',
-				database: livertyMusicDatabase.name,
-				sslmode: 'disable', // Auth Proxy handles encryption
-				superuser: false,
-			},
-			{ parent: this },
-		)
-
-		const appSchema = new postgresql.Schema(
-			`liverty-music-app`,
-			{ name: 'app' },
-			{ provider: pgProvider, parent: this },
-		)
-
-		new postgresql.Grant(
-			'liverty-music-schema-usage',
-			{
-				database: livertyMusicDatabase.name,
-				role: iamUserName,
-				schema: appSchema.name,
-				objectType: 'schema',
-				privileges: ['CREATE', 'USAGE'],
-			},
-			{ provider: pgProvider, parent: this, dependsOn: [appSchema] },
-		)
-
-		new postgresql.DefaultPrivileges(
-			'liverty-music-table-defaults',
-			{
-				database: livertyMusicDatabase.name,
-				role: iamUserName,
-				schema: appSchema.name,
-				owner: 'postgres',
-				objectType: 'table',
-				privileges: ['ALL'],
-			},
-			{ provider: pgProvider, parent: this, dependsOn: [appSchema] },
-		)
-
-		new postgresql.DefaultPrivileges(
-			'liverty-music-sequence-defaults',
-			{
-				database: livertyMusicDatabase.name,
-				role: iamUserName,
-				schema: appSchema.name,
-				owner: 'postgres',
-				objectType: 'sequence',
-				privileges: ['ALL'],
-			},
-			{ provider: pgProvider, parent: this, dependsOn: [appSchema] },
-		)
+		// 9. Set password on built-in postgres admin user
+		// Atlas Operator connects as postgres (cloudsqlsuperuser) to run migrations
+		// that create schemas and grant permissions to the IAM SA user.
+		if (postgresAdminPassword) {
+			new gcp.sql.User(
+				'postgres-admin',
+				{
+					name: 'postgres',
+					project: project.projectId,
+					instance: instance.name,
+					password: postgresAdminPassword,
+					type: 'BUILT_IN',
+				},
+				{ parent: this, dependsOn: [instance] },
+			)
+		}
 
 		this.registerOutputs({
 			instanceConnectionName: instance.connectionName,

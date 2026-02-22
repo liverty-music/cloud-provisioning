@@ -23,7 +23,6 @@
     "@pulumi/cloudflare": "^6.13.0",
     "@pulumi/gcp": "^9.10.0",
     "@pulumi/github": "^6.11.0",
-    "@pulumi/postgresql": "^3.16.2",
     "@pulumi/pulumi": "^3.218.0",
     "@pulumiverse/zitadel": "^0.2.0"
   }

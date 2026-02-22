@@ -14,6 +14,8 @@ export interface GcpConfig {
 	baseSepoliaRpcUrl?: string
 	/** ERC-4337 Bundler (Pimlico/Alchemy) API key. */
 	bundlerApiKey?: string
+	/** Password for the Cloud SQL built-in postgres admin user. */
+	postgresAdminPassword?: string
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"
 	}

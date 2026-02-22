@@ -163,6 +163,16 @@ export class Gcp {
 							},
 						]
 					: []),
+				...(gcpConfig.postgresAdminPassword
+					? [
+							{
+								name: 'postgres-admin-password',
+								value: pulumi.secret(
+									gcpConfig.postgresAdminPassword,
+								),
+							},
+						]
+					: []),
 			],
 		})
 
@@ -178,6 +188,7 @@ export class Gcp {
 			dnsZoneName: network.sqlZone.name,
 			appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
 			iamDatabaseUsers: cloudSqlUsers,
+			postgresAdminPassword: gcpConfig.postgresAdminPassword,
 		})
 
 		// 7. Workload Identity Federation
