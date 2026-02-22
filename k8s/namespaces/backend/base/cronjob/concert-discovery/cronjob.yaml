@@ -19,6 +19,8 @@ spec:
             envFrom:
             - configMapRef:
                 name: job-config
+            - secretRef:
+                name: backend-secrets
             resources:
               requests:
                 cpu: 100m
