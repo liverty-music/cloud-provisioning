@@ -71,8 +71,6 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			iamDatabaseUsers = [],
 		} = args
 
-		const backendApp = 'backend-app'
-
 		const apiService = new ApiService(project)
 		const enabledApis = apiService.enableApis([
 			'sqladmin.googleapis.com', // Required for Cloud SQL
@@ -185,11 +183,13 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
+		const livertyMusicDbName = 'liverty-music'
+
 		// 6. Create default database
-		new gcp.sql.Database(
-			backendApp,
+		const livertyMusicDatabase = new gcp.sql.Database(
+			livertyMusicDbName,
 			{
-				name: backendApp,
+				name: livertyMusicDbName,
 				project: project.projectId,
 				instance: instance.name,
 				charset: 'UTF8',
@@ -202,6 +202,8 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		const iamUserName = pulumi
 			.output(appServiceAccountEmail)
 			.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+		const backendApp = 'backend-app'
 
 		new gcp.sql.User(
 			backendApp,
@@ -247,7 +249,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				host: 'localhost',
 				port: 15432,
 				username: 'postgres',
-				database: backendApp,
+				database: livertyMusicDatabase.name,
 				sslmode: 'disable', // Auth Proxy handles encryption
 				superuser: false,
 			},
@@ -255,17 +257,17 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		)
 
 		const appSchema = new postgresql.Schema(
-			'liverty-music',
-			{ name: 'liverty_music' },
+			`liverty-music-app`,
+			{ name: 'app' },
 			{ provider: pgProvider, parent: this },
 		)
 
 		new postgresql.Grant(
-			'backend-schema-usage',
+			'liverty-music-schema-usage',
 			{
-				database: backendApp,
+				database: livertyMusicDatabase.name,
 				role: iamUserName,
-				schema: 'liverty_music',
+				schema: appSchema.name,
 				objectType: 'schema',
 				privileges: ['CREATE', 'USAGE'],
 			},
@@ -273,11 +275,11 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		)
 
 		new postgresql.DefaultPrivileges(
-			'backend-table-defaults',
+			'liverty-music-table-defaults',
 			{
-				database: backendApp,
+				database: livertyMusicDatabase.name,
 				role: iamUserName,
-				schema: 'liverty_music',
+				schema: appSchema.name,
 				owner: 'postgres',
 				objectType: 'table',
 				privileges: ['ALL'],
@@ -286,11 +288,11 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		)
 
 		new postgresql.DefaultPrivileges(
-			'backend-sequence-defaults',
+			'liverty-music-sequence-defaults',
 			{
-				database: backendApp,
+				database: livertyMusicDatabase.name,
 				role: iamUserName,
-				schema: 'liverty_music',
+				schema: appSchema.name,
 				owner: 'postgres',
 				objectType: 'sequence',
 				privileges: ['ALL'],
