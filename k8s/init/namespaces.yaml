@@ -39,3 +39,10 @@ metadata:
   name: reloader
   labels:
     name: reloader
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: atlas-operator
+  labels:
+    name: atlas-operator

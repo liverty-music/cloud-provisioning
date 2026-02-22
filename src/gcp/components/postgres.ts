@@ -31,6 +31,11 @@ export interface PostgresComponentArgs {
 	 * Human user emails that require IAM database authentication access.
 	 */
 	iamDatabaseUsers?: string[]
+	/**
+	 * Password for the Cloud SQL built-in postgres admin user.
+	 * Used by Atlas Operator for schema management and migrations.
+	 */
+	postgresAdminPassword?: pulumi.Input<string>
 }
 
 /**
@@ -68,9 +73,8 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			dnsZoneName,
 			appServiceAccountEmail,
 			iamDatabaseUsers = [],
+			postgresAdminPassword,
 		} = args
-
-		const backendApp = 'backend-app'
 
 		const apiService = new ApiService(project)
 		const enabledApis = apiService.enableApis([
@@ -184,11 +188,13 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
+		const livertyMusicDbName = 'liverty-music'
+
 		// 6. Create default database
 		new gcp.sql.Database(
-			backendApp,
+			livertyMusicDbName,
 			{
-				name: backendApp,
+				name: livertyMusicDbName,
 				project: project.projectId,
 				instance: instance.name,
 				charset: 'UTF8',
@@ -198,6 +204,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		)
 
 		// 7. Create Cloud IAM SQL User
+		const backendApp = 'backend-app'
 		const iamUserName = pulumi
 			.output(appServiceAccountEmail)
 			.apply((email) => email.replace('.gserviceaccount.com', ''))
@@ -235,6 +242,23 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					member: `user:${email}`,
 				},
 				{ parent: this },
+			)
+		}
+
+		// 9. Set password on built-in postgres admin user
+		// Atlas Operator connects as postgres (cloudsqlsuperuser) to run migrations
+		// that create schemas and grant permissions to the IAM SA user.
+		if (postgresAdminPassword) {
+			new gcp.sql.User(
+				'postgres-admin',
+				{
+					name: 'postgres',
+					project: project.projectId,
+					instance: instance.name,
+					password: postgresAdminPassword,
+					type: 'BUILT_IN',
+				},
+				{ parent: this, dependsOn: [instance] },
 			)
 		}
 
