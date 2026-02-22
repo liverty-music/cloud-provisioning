@@ -32,6 +32,7 @@ if (env === 'prod') {
 		githubConfig: {
 			...githubConfig,
 			geminiApiKey: gcpConfig.geminiApiKey,
+			anthropicApiKey: githubConfig.anthropicApiKey,
 		},
 		bufConfig,
 	})

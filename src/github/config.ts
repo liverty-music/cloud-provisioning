@@ -3,6 +3,7 @@ export interface GitHubConfig {
 	token: string
 	billingEmail: string
 	geminiApiKey?: string
+	anthropicApiKey?: string
 }
 
 export interface BufConfig {
