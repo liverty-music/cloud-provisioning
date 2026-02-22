@@ -1,4 +1,5 @@
 import * as gcp from '@pulumi/gcp'
+import * as postgresql from '@pulumi/postgresql'
 import * as pulumi from '@pulumi/pulumi'
 import { ApiService } from '../services/api.js'
 
@@ -237,6 +238,65 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				{ parent: this },
 			)
 		}
+
+		// 9. PostgreSQL Schema & Permissions (via Cloud SQL Auth Proxy)
+		// Requires: cloud-sql-proxy running locally on port 15432
+		const pgProvider = new postgresql.Provider(
+			'cloud-sql-pg',
+			{
+				host: 'localhost',
+				port: 15432,
+				username: 'postgres',
+				database: backendApp,
+				sslmode: 'disable', // Auth Proxy handles encryption
+				superuser: false,
+			},
+			{ parent: this },
+		)
+
+		const appSchema = new postgresql.Schema(
+			'liverty-music',
+			{ name: 'liverty_music' },
+			{ provider: pgProvider, parent: this },
+		)
+
+		new postgresql.Grant(
+			'backend-schema-usage',
+			{
+				database: backendApp,
+				role: iamUserName,
+				schema: 'liverty_music',
+				objectType: 'schema',
+				privileges: ['CREATE', 'USAGE'],
+			},
+			{ provider: pgProvider, parent: this, dependsOn: [appSchema] },
+		)
+
+		new postgresql.DefaultPrivileges(
+			'backend-table-defaults',
+			{
+				database: backendApp,
+				role: iamUserName,
+				schema: 'liverty_music',
+				owner: 'postgres',
+				objectType: 'table',
+				privileges: ['ALL'],
+			},
+			{ provider: pgProvider, parent: this, dependsOn: [appSchema] },
+		)
+
+		new postgresql.DefaultPrivileges(
+			'backend-sequence-defaults',
+			{
+				database: backendApp,
+				role: iamUserName,
+				schema: 'liverty_music',
+				owner: 'postgres',
+				objectType: 'sequence',
+				privileges: ['ALL'],
+			},
+			{ provider: pgProvider, parent: this, dependsOn: [appSchema] },
+		)
 
 		this.registerOutputs({
 			instanceConnectionName: instance.connectionName,
