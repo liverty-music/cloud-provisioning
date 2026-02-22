@@ -276,6 +276,52 @@ esc env get liverty-music/dev pulumiConfig.gcp.postgresAdminPassword
 
 To rotate the password, re-run the steps above with a new value and run `pulumi up`. The Cloud SQL user password and Secret Manager version will be updated automatically. The ESO sync interval will propagate the new secret to K8s.
 
+## Claude Code Review (GitHub Actions)
+
+Claude Code Review provides AI-powered PR review across all repositories, using the Anthropic API subscription (no per-token charges).
+
+### Prerequisites
+
+- Anthropic API key (from [console.anthropic.com](https://console.anthropic.com))
+- GitHub Organization admin access
+
+### 1. Install the Claude GitHub App (Manual, One-Time)
+
+1. Visit https://github.com/apps/claude
+2. Click **Install** and select the `liverty-music` organization
+3. Grant access to **All repositories** (or select specific ones)
+4. Required permissions: Contents (R/W), Issues (R/W), Pull requests (R/W)
+
+### 2. Store the API Key in Pulumi ESC
+
+```bash
+# Store ANTHROPIC_API_KEY as a secret in the common ESC environment
+esc env set liverty-music/common pulumiConfig.github.anthropicApiKey $API_KEY --secret
+
+# Verify
+esc env get liverty-music/common pulumiConfig.github.anthropicApiKey
+```
+
+This value is consumed by `OrganizationComponent` to create a `ANTHROPIC_API_KEY` GitHub Organization Secret (visibility: all repositories).
+
+### 3. Deploy with Pulumi
+
+```bash
+pulumi stack select prod
+pulumi up
+```
+
+### 4. Add Workflow to Each Repository
+
+Add `.github/workflows/claude.yml` to each repository. See the `backend` repository for the reference workflow configuration.
+
+### Workflow Capabilities
+
+- **Auto Review**: Runs on `pull_request` events (`opened`, `synchronize`)
+- **Interactive**: Respond to `@claude` mentions in PR/issue comments
+- **CLAUDE.md Aware**: Automatically reads repository `CLAUDE.md` for project-specific review rules
+- **Cost Control**: Use `--max-turns` in `claude_args` to limit API usage
+
 ## Kubernetes & ArgoCD Bootstrap
 
 When setting up a fresh cluster (e.g., `cluster-osaka`), follow these steps to bootstrap the environment.

@@ -143,6 +143,19 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			this.secrets.push(geminiApiKeySecret)
 		}
 
+		if (githubConfig.anthropicApiKey) {
+			const anthropicApiKeySecret = new github.ActionsOrganizationSecret(
+				'anthropic-api-key',
+				{
+					secretName: 'ANTHROPIC_API_KEY',
+					visibility: 'all',
+					plaintextValue: githubConfig.anthropicApiKey,
+				},
+				{ provider: this.provider, parent: this },
+			)
+			this.secrets.push(anthropicApiKeySecret)
+		}
+
 		// Register outputs
 		this.registerOutputs({
 			provider: this.provider,
