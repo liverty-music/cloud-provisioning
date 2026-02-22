@@ -7,6 +7,7 @@ export interface GcpConfig {
 	billingAccount: string
 	geminiApiKey?: string
 	lastFmApiKey?: string
+	cloudSqlUsers?: string[]
 	/** Private key for the TicketSBT contract deployer EOA on Base Sepolia. */
 	ticketSbtDeployerKey?: string
 	/** Base Sepolia JSON-RPC endpoint URL. */
