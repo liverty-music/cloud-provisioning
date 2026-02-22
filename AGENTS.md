@@ -70,32 +70,32 @@ go vet ./...
 - Be descriptive and consistent across stacks
 
 ### File Organization
-- **`src/index.ts`**: Main infrastructure entry point with organization folder, project, and service definitions
-- **`src/config/`**: Configuration management
-  - **`constants.ts`**: Project constants, folder names, and API service definitions
-  - **`environments.ts`**: Environment-specific configuration logic and types
-  - **`index.ts`**: Configuration exports
-- **`src/components/`**: Reusable infrastructure components (organized by domain)
-  - **`compute/`**: Compute resources (GCE, GKE, Cloud Functions)
-  - **`networking/`**: VCP, subnets, firewall rules, load balancers
-  - **`security/`**: IAM roles, service accounts, Secret Manager
-  - **`storage/`**: Cloud Storage buckets, Cloud SQL, Firestore
-- **`Pulumi.{env}.yaml`**: Stack-specific configurations for each environment
-- **`.env`**: Environment variables for organization and billing account IDs
+- **`src/index.ts`**: Main infrastructure entry point dispatching to GCP and GitHub components
+- **`src/gcp/`**: GCP infrastructure
+  - **`index.ts`**: GCP stack entry point
+  - **`config/`**: Configuration management (`constants.ts`, `environments.ts`)
+  - **`components/`**: Infrastructure components (flat structure)
+    - **`project.ts`**: GCP project, folder, services, Secret Manager
+    - **`network.ts`**: VPC, subnets, Cloud NAT, firewall rules
+    - **`kubernetes.ts`**: GKE Autopilot cluster
+    - **`postgres.ts`**: Cloud SQL PostgreSQL 18, PSC endpoint, DNS, IAM users
+    - **`workload-identity.ts`**: Workload Identity Federation for GKE service accounts
+    - **`concert-data-store.ts`**: Vertex AI Search data store
+  - **`services/`**: API enablement helpers
+- **`src/github/`**: GitHub organization and repository management
+- **`k8s/`**: Kubernetes manifests managed by ArgoCD
+  - **`argocd-apps/dev/`**: ArgoCD Application definitions (backend, frontend, atlas-operator, backend-migrations, etc.)
+  - **`namespaces/`**: Per-namespace Kustomize bases and overlays (argocd, backend, frontend, atlas-operator, external-secrets, gateway, reloader)
+- **`Pulumi.{env}.yaml`**: Stack-specific configurations referencing ESC environments
 - **`.mise.toml`**: Node.js version management (v22)
 
 ### Configuration Management
-- Use `pulumi config` for environment-specific values
-- Always use `--secret` for sensitive configurations  
-- Document required configurations in stack README
-
-### Required Environment Variables
-The following environment variables must be set in `.env`:
-- **`GCP_ORGANIZATION_ID`**: Your GCP organization ID (required for folder and project creation)
-- **`GCP_BILLING_ACCOUNT`**: Billing account ID for automatic project billing association
+- All configuration and secrets are managed through **Pulumi ESC** (see Security Guidelines below)
+- Use `esc env set` (NOT `pulumi config set`) for environment-specific secrets
+- Stack YAML files (`Pulumi.{env}.yaml`) reference ESC environments
 
 ### Optional Pulumi Configuration
-- **`region`**: GCP region (defaults to `us-central1` via DEFAULT_REGION constant)
+- **`region`**: GCP region (defaults to `asia-northeast2` via DEFAULT_REGION constant)
 - **`zone`**: Specific GCP zone within the region
 
 ## Security Guidelines
@@ -263,37 +263,32 @@ pulumi stack select prod
 
 When implementing infrastructure, follow these patterns:
 
-1. **Organization and Project Structure** (Current Implementation)
+1. **Organization and Project Structure** (`project.ts`)
    - Create organization folders using descriptive names from FOLDER_NAME constant
    - Projects follow `{projectPrefix}-{environment}` naming pattern
-   - Automatic billing account association via GCP_BILLING_ACCOUNT env var
-   - Dependency management: services depend on projects, projects depend on folders
+   - Automatic billing account association via ESC config
+   - Secret Manager secrets for application credentials (e.g., `postgres-admin-password`)
 
-2. **Service Management** (Current Implementation)
-   - Enable required APIs via enabledApis configuration in environment configs
-   - Service names follow sanitized pattern (remove `.googleapis.com`, replace dots with hyphens)
-   - Use `disableOnDestroy: true` for proper cleanup
-   - Services depend on project creation
+2. **Networking** (`network.ts`)
+   - Custom VPC (`liverty-music`) with regional subnets
+   - Cloud NAT for outbound internet access
+   - Private Service Connect (PSC) for Cloud SQL connectivity
 
-3. **Storage Resources** (Scaffold Ready)
-   - Use consistent bucket naming conventions with environment prefixes
-   - Apply appropriate lifecycle policies and versioning
-   - Reference project.projectId for proper association
+3. **Compute / GKE** (`kubernetes.ts`)
+   - GKE Autopilot cluster with private nodes
+   - Workload Identity for pod-level GCP authentication
 
-4. **Compute Resources** (Scaffold Ready)
-   - Use managed instance groups for scalability in components/compute/
-   - Implement health checks and resource labels
-   - Leverage environment-specific configuration
+4. **Database** (`postgres.ts`)
+   - Cloud SQL PostgreSQL 18 with PSC-only connectivity (no public IP)
+   - IAM database authentication for application service accounts
+   - Built-in `postgres` user with password for Atlas Operator migrations
+   - DNS records for PSC endpoint resolution
 
-5. **Networking** (Scaffold Ready)
-   - Create dedicated VPCs per environment in components/networking/
-   - Use firewall rules with specific source ranges
-   - Implement network segmentation by environment
-
-6. **IAM and Security** (Scaffold Ready)
-   - Implement roles and service accounts in components/security/
-   - Use Google Groups for role assignments
-   - Enable audit logging for critical resources
+5. **GitOps / ArgoCD** (`k8s/`)
+   - "App of Apps" pattern via root ArgoCD Application
+   - Per-namespace Kustomize bases with environment overlays
+   - Atlas Operator for database migrations (synced from backend repo)
+   - External Secrets Operator for GCP Secret Manager → K8s Secret sync
 
 ## Troubleshooting
 

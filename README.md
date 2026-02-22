@@ -28,12 +28,20 @@ This project provisions and manages cloud resources for Liverty Music, including
 - **Organization Folder** (`gcp.organizations.Folder`) - Organizational folder for project grouping
 - **GCP Project** (`gcp.organizations.Project`) - Environment-specific projects with billing
 - **Enabled Services** (`gcp.projects.Service`) - Required GCP APIs for each environment
+- **Network** - Custom VPC, subnets (Osaka), Cloud NAT, firewall rules
+- **GKE Autopilot** - Private cluster with Workload Identity
+- **Cloud SQL** - PostgreSQL 18 with PSC-only connectivity, IAM database authentication
+- **Secret Manager** - Application secrets (e.g., `postgres-admin-password`)
+- **Artifact Registry** - Container image repositories for backend and frontend
+- **Cloud DNS** - Private zones for PSC endpoint resolution
 
-## Outputs
+### Kubernetes Resources (via ArgoCD)
 
-- `folder` – The created organization folder
-- `project` – The GCP project with configured billing
-- `enabledServices` – List of enabled GCP services
+- **ArgoCD** - GitOps controller (Helm-based)
+- **External Secrets Operator** - Syncs GCP Secret Manager → K8s Secrets
+- **Atlas Operator** - Database migration management via CRDs
+- **Gateway API** - Ingress routing with Google-managed TLS
+- **Reloader** - Automatic pod restarts on ConfigMap/Secret changes
 
 ## Prerequisites
 
@@ -78,19 +86,35 @@ This project provisions and manages cloud resources for Liverty Music, including
 ├── Pulumi.yaml                  # Pulumi project definition
 ├── Pulumi.{dev,prod}.yaml       # Stack-specific configurations with ESC references
 ├── package.json                 # Node.js dependencies and scripts
-├── tsconfig.json               # TypeScript compiler configuration
-├── CLAUDE.md                   # AI assistant project instructions
-└── src/
-    ├── index.ts                # Main infrastructure entry point
-    ├── config/
-    │   ├── index.ts            # Configuration exports
-    │   ├── constants.ts        # Project constants and API definitions
-    │   └── environments.ts     # Environment-specific configurations
-    └── components/             # Reusable infrastructure components (planned)
-        ├── compute/            # Compute resources (VMs, GKE, etc.)
-        ├── networking/         # VPC, subnets, firewall rules
-        ├── security/           # IAM, secrets, policies
-        └── storage/            # Cloud Storage, databases
+├── tsconfig.json                # TypeScript compiler configuration
+├── CLAUDE.md                    # AI assistant project instructions
+├── AGENTS.md                    # AI agent context (ESC, architecture)
+├── src/
+│   ├── index.ts                 # Main entry point (dispatches to GCP + GitHub)
+│   ├── gcp/
+│   │   ├── index.ts             # GCP stack entry point
+│   │   ├── config/              # Constants, environment configs
+│   │   ├── components/          # Infrastructure components
+│   │   │   ├── project.ts       # GCP project, folder, services, Secret Manager
+│   │   │   ├── network.ts       # VPC, subnets, Cloud NAT
+│   │   │   ├── kubernetes.ts    # GKE Autopilot cluster
+│   │   │   ├── postgres.ts      # Cloud SQL PostgreSQL 18, PSC, IAM users
+│   │   │   ├── workload-identity.ts  # Workload Identity Federation
+│   │   │   └── concert-data-store.ts # Vertex AI Search
+│   │   └── services/            # API enablement helpers
+│   └── github/                  # GitHub org & repo management
+├── k8s/
+│   ├── argocd-apps/dev/         # ArgoCD Application definitions
+│   ├── cluster/                 # Cluster-wide resources (namespaces)
+│   └── namespaces/              # Per-namespace Kustomize manifests
+│       ├── argocd/              # ArgoCD server (Helm-based)
+│       ├── atlas-operator/      # Atlas Operator (Helm-based)
+│       ├── backend/             # Backend Deployment, Service, ConfigMap
+│       ├── external-secrets/    # External Secrets Operator
+│       ├── frontend/            # Frontend Deployment, Service
+│       ├── gateway/             # Gateway API resources
+│       └── reloader/            # Reloader for ConfigMap/Secret rotation
+└── docs/                        # Operational runbooks
 ```
 
 ## Configuration
@@ -107,7 +131,7 @@ The stack configuration files (`Pulumi.{dev,prod}.yaml`) reference ESC environme
 
 ```yaml
 environment:
-  - cloud-provisioning/dev # or cloud-provisioning/prod
+  - liverty-music/dev # or liverty-music/prod
 ```
 
 This provides secure, centralized configuration management with dynamic secrets and proper access controls.
@@ -142,21 +166,24 @@ This project requires Node.js 22+ as specified in `package.json`:
 }
 ```
 
-## Current Implementation
+## Database Migration Architecture
 
-This project currently manages:
+Database schema migrations are managed by the **Atlas Kubernetes Operator** running inside GKE. This replaces the previous goose app-startup migration pattern.
 
-- **GitHub Organization**: Liverty Music organization settings and configuration
-- **GitHub Repositories**: Automated repository creation with templates:
-  - `cloud-provisioning` - This infrastructure repository
-  - `schema` - Protocol buffer schemas repository
-- **GCP Organization Folder**: Organizational structure for Liverty Music projects
-- **GCP Projects**: Environment-specific projects (dev/prod) with proper billing
-- **GCP Services**: Automated API enablement for required services
+### How It Works
 
-- **Network Resources**: Custom VPC (`liverty-music`), Subnets (Osaka), Cloud NAT
-- **Compute Resources**: GKE Autopilot Cluster (`osaka-region`) with Private Nodes
-- **Storage/Database**: Cloud SQL PostgreSQL 18 with Private Service Connect (PSC) & Cloud DNS
+1. Migration SQL files are maintained in the `backend` repository under `k8s/atlas/base/migrations/`
+2. Kustomize generates a ConfigMap from the migration files
+3. An `AtlasMigration` CRD references the ConfigMap and connects to Cloud SQL as the `postgres` user
+4. ArgoCD syncs the migration resources from the backend repo via a dedicated `backend-migrations` Application
+5. Sync wave ordering ensures migrations complete before the backend Deployment starts
+
+### Key Components
+
+- **Atlas Operator**: Installed via Helm in `atlas-operator` namespace (managed in this repo)
+- **AtlasMigration CRD + ConfigMap**: Defined in `backend` repo (`k8s/atlas/`)
+- **ArgoCD Application**: `backend-migrations` syncs from `backend` repo's `k8s/atlas/overlays/dev`
+- **ExternalSecret**: Syncs `postgres-admin-password` from Secret Manager to K8s Secret in `atlas-operator` namespace
 
 ## Frontend Deployment Architecture
 
