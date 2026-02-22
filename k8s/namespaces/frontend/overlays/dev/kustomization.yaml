@@ -12,6 +12,27 @@ patches:
   target:
     kind: Deployment
 
+# Right-size resources for dev
+- target:
+    kind: Deployment
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: caddy
+            resources:
+              requests:
+                cpu: 50m
+                memory: 52Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+
 # Patch HTTPRoute hostname for dev environment
 - target:
     kind: HTTPRoute

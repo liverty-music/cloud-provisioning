@@ -55,6 +55,10 @@ export class Gcp {
 			cloudflareConfig,
 		} = args
 
+		const gcpPulumiConfig = new pulumi.Config('gcp')
+		const cloudSqlUsers =
+			gcpPulumiConfig.getObject<string[]>('cloudSqlUsers') ?? []
+
 		// 1. Project and Folders
 		const projectBasis = new ProjectComponent({
 			brandId,
@@ -175,6 +179,7 @@ export class Gcp {
 			pscEndpointIp: osakaConfig.postgresPscIp,
 			dnsZoneName: network.sqlZone.name,
 			appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
+			iamDatabaseUsers: cloudSqlUsers,
 		})
 
 		// 7. Workload Identity Federation

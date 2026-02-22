@@ -1,0 +1,11 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: any
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: "autopilot-spot"
