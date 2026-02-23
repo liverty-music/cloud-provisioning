@@ -177,9 +177,7 @@ export class Gcp {
 					? [
 							{
 								name: 'vapid-private-key',
-								value: pulumi.secret(
-									gcpConfig.vapidPrivateKey,
-								),
+								value: pulumi.secret(gcpConfig.vapidPrivateKey),
 							},
 						]
 					: []),
