@@ -16,6 +16,8 @@ export interface GcpConfig {
 	bundlerApiKey?: string
 	/** Password for the Cloud SQL built-in postgres admin user. */
 	postgresAdminPassword?: string
+	/** VAPID private key for Web Push notification signing (ECDSA P-256). */
+	vapidPrivateKey?: string
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"
 	}
