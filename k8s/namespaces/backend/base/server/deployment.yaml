@@ -14,6 +14,10 @@ spec:
       # Labels handled by commonLabels
     spec:
       serviceAccountName: backend-app
+      volumes:
+      - name: zkp-verification-key
+        configMap:
+          name: zkp-verification-key
       containers:
       - name: server
         image: server
@@ -25,6 +29,11 @@ spec:
             name: config
         - secretRef:
             name: backend-secrets
+        volumeMounts:
+        - name: zkp-verification-key
+          mountPath: /configs/zkp/zkp-verification-key.json
+          subPath: zkp-verification-key.json
+          readOnly: true
         readinessProbe:
           grpc:
             port: 8080

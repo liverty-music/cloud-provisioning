@@ -28,3 +28,6 @@ configMapGenerator:
 - name: config
   envs:
   - configmap.env
+- name: zkp-verification-key
+  files:
+  - zkp-verification-key.json
