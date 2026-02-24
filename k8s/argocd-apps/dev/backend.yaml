@@ -3,9 +3,6 @@ kind: Application
 metadata:
   name: backend
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: server=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
-    argocd-image-updater.argoproj.io/server.update-strategy: latest
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:

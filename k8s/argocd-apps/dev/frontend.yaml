@@ -3,9 +3,6 @@ kind: Application
 metadata:
   name: frontend
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: web-app=asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
-    argocd-image-updater.argoproj.io/web-app.update-strategy: latest
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
