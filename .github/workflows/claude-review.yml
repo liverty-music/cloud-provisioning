@@ -1,14 +1,9 @@
-name: 'Claude Auto Review'
+# https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-comprehensive.yml
+name: PR Review with Progress Tracking
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -18,40 +13,60 @@ jobs:
   review:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@v1
+      - name: PR Review with Progress Tracking
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Enable progress tracking
           track_progress: true
+
+          # Your custom review instructions
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request. Focus on issues introduced by this PR only.
+            Perform a comprehensive code review with the following focus areas:
 
-            Review criteria:
-            - Infrastructure as Code best practices
-            - Security implications (IAM, secrets, network policies)
-            - Pulumi resource configuration correctness
-            - Kubernetes manifest validity
+            1. **Security**
+               - IAM role bindings follow least-privilege principle
+               - Secrets are never hardcoded; use Pulumi ESC or Secret Manager
+               - Network policies and firewall rules are appropriately restrictive
+               - GKE workload identity is used instead of service account keys
 
-            For each issue found, rate your confidence 0-100.
-            Only report issues with confidence >= 80.
+            2. **Infrastructure Correctness**
+               - Pulumi resource configuration is valid and idiomatic
+               - Resource naming follows kebab-case with environment prefix
+               - Dependencies between resources are explicitly declared
 
-            Do NOT report:
-            - Pre-existing issues not introduced in this PR
-            - Issues that linters will catch
-            - Pedantic style nitpicks
-            - General suggestions unrelated to the diff
+            3. **Cost & Reliability**
+               - Resources are appropriately sized for the target environment
+               - Autopilot/managed services are preferred over manual configuration
 
-            Use `gh pr comment` for a summary.
-            Use `mcp__github_inline_comment__create_inline_comment` for specific code issues.
-            Only post GitHub comments - don't submit review text as messages.
+            4. **GitOps Consistency**
+               - ArgoCD Application definitions reference the correct repo/path/revision
+               - Kustomize overlays apply patches to the correct base resources
 
+            Provide detailed feedback using inline comments for specific issues.
+            Use top-level comments for general observations or praise.
+
+          # Tools for comprehensive PR review
           claude_args: |
-            --max-turns 10
+            --max-turns 5
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+# When track_progress is enabled:
+# - Creates a tracking comment with progress checkboxes
+# - Includes all PR context (comments, attachments, images)
+# - Updates progress as the review proceeds
+# - Marks as completed when done
