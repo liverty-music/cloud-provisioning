@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
 - ../../base
+- image-updater.yaml
 
 patches:
 # Global Spot VM patches for dev
