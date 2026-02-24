@@ -217,6 +217,32 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			)
 		}
 
+		// ArgoCD Image Updater Service Account
+		const imageUpdaterK8sSaName = 'argocd-image-updater'
+		const imageUpdaterNamespace = 'argocd'
+		const imageUpdaterSa = iamSvc.createServiceAccount(
+			'k8s-argocd-image-updater',
+			'argocd-image-updater',
+			'ArgoCD Image Updater Service Account',
+			'Service account for ArgoCD Image Updater to read container images from GAR',
+			this,
+		)
+		for (const [index, registry] of artifactRegistries.entries()) {
+			iamSvc.bindArtifactRegistryReader(
+				`${registryNames[index]}-image-updater`,
+				imageUpdaterSa.email,
+				registry,
+				region,
+				this,
+			)
+		}
+		iamSvc.bindKubernetesSaUser(
+			imageUpdaterK8sSaName,
+			imageUpdaterSa,
+			imageUpdaterNamespace,
+			this,
+		)
+
 		// 5. Dedicated Subnet for GKE
 		this.subnet = new gcp.compute.Subnetwork(
 			`cluster-subnet-${regionName}`,
