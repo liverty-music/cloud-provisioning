@@ -1,3 +1,7 @@
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: argocd-image-updater@liverty-music-dev.iam.gserviceaccount.com
+
 config:
   logLevel: info
   registries: []
