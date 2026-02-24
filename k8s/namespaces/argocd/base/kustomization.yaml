@@ -11,11 +11,18 @@ helmCharts:
   namespace: argocd
   includeCRDs: true
   valuesFile: values.yaml
+- name: argocd-image-updater
+  repo: oci://ghcr.io/argoproj/argo-helm
+  version: 1.1.1
+  releaseName: argocd-image-updater
+  namespace: argocd
+  valuesFile: image-updater-values.yaml
 
 patches:
 - target:
     kind: (Deployment|StatefulSet|Job)
     namespace: argocd
+    name: argocd-*
   patch: |-
     - op: remove
       path: /spec/template/spec/nodeSelector/kubernetes.io~1os

@@ -21,6 +21,7 @@ spec:
       containers:
       - name: server
         image: server
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http

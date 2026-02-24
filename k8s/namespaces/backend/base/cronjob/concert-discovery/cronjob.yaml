@@ -16,6 +16,7 @@ spec:
           containers:
           - name: concert-discovery
             image: concert-discovery
+            imagePullPolicy: Always
             envFrom:
             - configMapRef:
                 name: job-config

@@ -11,6 +11,7 @@ spec:
       containers:
       - name: caddy
         image: web-app
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
           name: http
