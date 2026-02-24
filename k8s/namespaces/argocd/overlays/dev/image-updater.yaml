@@ -3,6 +3,7 @@ kind: ImageUpdater
 metadata:
   name: dev-apps
 spec:
+  namespace: argocd
   writeBackConfig:
     method: argocd
   applicationRefs:
