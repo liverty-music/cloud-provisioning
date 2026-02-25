@@ -77,8 +77,10 @@ export class FrontendComponent extends pulumi.ComponentResource {
 			'default',
 			{
 				orgId: orgId,
-				// Disable username/password login (userLogin=false disables password auth)
-				userLogin: false,
+				// TODO: Revert to false once upstream fix is released.
+				// Login V2 Register page does not render form fields when userLogin=false,
+				// even with passwordlessType=ALLOWED. See: https://github.com/zitadel/zitadel/issues/11682
+				userLogin: true,
 				allowRegister: true,
 				// Disable external IDPs (Google etc.) to enforce passkey-only authentication
 				allowExternalIdp: false,
