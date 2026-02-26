@@ -105,4 +105,4 @@ configMapGenerator:
 - name: worker-config
   behavior: merge
   envs:
-  - worker/consumer/configmap.env
+  - consumer/configmap.env
