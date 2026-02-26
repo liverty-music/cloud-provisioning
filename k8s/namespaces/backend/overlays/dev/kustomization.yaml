@@ -102,7 +102,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/concert-discovery/configmap.env
-- name: worker-config
+- name: consumer-config
   behavior: merge
   envs:
   - consumer/configmap.env

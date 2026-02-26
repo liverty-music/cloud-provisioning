@@ -15,7 +15,7 @@ spec:
         imagePullPolicy: Always
         envFrom:
         - configMapRef:
-            name: worker-config
+            name: consumer-config
         - secretRef:
             name: backend-secrets
         resources:

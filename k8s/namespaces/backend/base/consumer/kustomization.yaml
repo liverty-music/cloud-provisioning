@@ -21,6 +21,6 @@ images:
   newTag: latest
 
 configMapGenerator:
-- name: worker-config
+- name: consumer-config
   envs:
   - configmap.env

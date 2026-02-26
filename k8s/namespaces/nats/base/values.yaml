@@ -11,3 +11,8 @@ config:
         enabled: true
         size: 10Gi
         storageClassName: premium-rwo
+
+service:
+  ports:
+    monitor:
+      enabled: true
