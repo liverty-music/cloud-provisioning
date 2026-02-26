@@ -1,0 +1,18 @@
+config:
+  cluster:
+    enabled: true
+    replicas: 3
+
+  jetstream:
+    enabled: true
+    fileStore:
+      dir: /data
+      pvc:
+        enabled: true
+        size: 10Gi
+        storageClassName: premium-rwo
+
+service:
+  ports:
+    monitor:
+      enabled: true

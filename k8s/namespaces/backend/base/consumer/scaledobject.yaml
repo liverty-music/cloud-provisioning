@@ -1,0 +1,20 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: app
+spec:
+  scaleTargetRef:
+    name: app
+  minReplicaCount: 0
+  maxReplicaCount: 3
+  cooldownPeriod: 300
+  pollingInterval: 30
+  triggers:
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "LIVERTY_MUSIC"
+      consumer: "consumer"
+      lagThreshold: "10"
+      activationLagThreshold: "1"

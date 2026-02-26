@@ -46,3 +46,17 @@ metadata:
   name: atlas-operator
   labels:
     name: atlas-operator
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nats
+  labels:
+    name: nats
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
+  labels:
+    name: keda
