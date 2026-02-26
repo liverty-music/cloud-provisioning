@@ -10,12 +10,12 @@ spec:
   - namePattern: backend
     images:
     - alias: server
-      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
+      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server:main
       commonUpdateSettings:
-        updateStrategy: newest-build
+        updateStrategy: digest
   - namePattern: frontend
     images:
     - alias: web-app
-      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
+      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app:main
       commonUpdateSettings:
-        updateStrategy: newest-build
+        updateStrategy: digest
