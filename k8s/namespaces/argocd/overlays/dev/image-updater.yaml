@@ -13,9 +13,11 @@ spec:
       imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server:main
       commonUpdateSettings:
         updateStrategy: digest
+        pullSecret: ext:/scripts/auth.sh
   - namePattern: frontend
     images:
     - alias: web-app
       imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app:main
       commonUpdateSettings:
         updateStrategy: digest
+        pullSecret: ext:/scripts/auth.sh
