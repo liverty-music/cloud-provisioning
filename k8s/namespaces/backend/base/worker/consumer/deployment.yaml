@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  template:
+    spec:
+      serviceAccountName: backend-app
+      containers:
+      - name: consumer
+        image: consumer
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: worker-config
+        - secretRef:
+            name: backend-secrets
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi

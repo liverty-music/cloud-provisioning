@@ -71,6 +71,28 @@ patches:
     kind: CronJob
     name: concert-discovery-app
 
+# Right-size resources for consumer in dev
+- target:
+    kind: Deployment
+    name: consumer-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: consumer-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: consumer
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi
+
 configMapGenerator:
 - name: config
   behavior: merge
@@ -80,3 +102,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/concert-discovery/configmap.env
+- name: worker-config
+  behavior: merge
+  envs:
+  - worker/consumer/configmap.env
