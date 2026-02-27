@@ -9,8 +9,6 @@ config:
     prefix: asia-northeast2-docker.pkg.dev
     api_url: https://asia-northeast2-docker.pkg.dev
     ping: false
-    credentials: ext:/scripts/auth.sh
-    credsexpire: 55m
 
 authScripts:
   enabled: true
