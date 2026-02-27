@@ -225,7 +225,7 @@ kubectl kustomize --enable-helm k8s/<path>/overlays/<env>
 
 4. **Verify before commit**: When running Kustomize dry-run, also check that:
    - No container has empty `resources: {}`
-   - All Deployments/StatefulSets have `autopilot-spot` nodeSelector
+   - All Deployments/StatefulSets/CronJobs have `autopilot-spot` nodeSelector
    - No unnecessary Pods are rendered
 
 ### Pulumi Deployment Approval Protocol

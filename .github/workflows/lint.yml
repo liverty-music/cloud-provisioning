@@ -41,7 +41,7 @@ jobs:
             namespace=$(echo "$overlay" | cut -d'/' -f3)
             echo "::group::Rendering $namespace"
             kubectl kustomize --enable-helm "$overlay" \
-              > "/tmp/rendered/${namespace}.yaml" 2>&1 || {
+              > "/tmp/rendered/${namespace}.yaml" || {
               echo "::error::Failed to render $namespace"
               exit 1
             }
@@ -55,5 +55,4 @@ jobs:
           config: .kube-linter.yaml
 
       - name: Check Spot VM nodeSelector
-        if: always()
         run: ./scripts/check-spot-nodeselector.sh /tmp/rendered
