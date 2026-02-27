@@ -9,7 +9,7 @@ config:
       dir: /data
       pvc:
         enabled: true
-        size: 5Gi
+        size: 10Gi
         storageClassName: premium-rwo
 
 service:
