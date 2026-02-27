@@ -34,13 +34,16 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
+      - name: Install Kustomize
+        uses: imranismail/setup-kustomize@v2
+
       - name: Render all dev overlays
         run: |
           mkdir -p /tmp/rendered
           for overlay in k8s/namespaces/*/overlays/dev; do
             namespace=$(echo "$overlay" | cut -d'/' -f3)
             echo "::group::Rendering $namespace"
-            kubectl kustomize --enable-helm "$overlay" \
+            kustomize build --enable-helm "$overlay" \
               > "/tmp/rendered/${namespace}.yaml" || {
               echo "::error::Failed to render $namespace"
               exit 1
