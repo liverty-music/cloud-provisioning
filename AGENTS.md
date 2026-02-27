@@ -85,7 +85,7 @@ go vet ./...
 - **`src/github/`**: GitHub organization and repository management
 - **`k8s/`**: Kubernetes manifests managed by ArgoCD
   - **`argocd-apps/dev/`**: ArgoCD Application definitions (backend, frontend, atlas-operator, backend-migrations, etc.)
-  - **`namespaces/`**: Per-namespace Kustomize bases and overlays (argocd, backend, frontend, atlas-operator, external-secrets, gateway, reloader)
+  - **`namespaces/`**: Per-namespace Kustomize bases and overlays (argocd, backend, frontend, atlas-operator, external-secrets, gateway, keda, nats, reloader)
 - **`Pulumi.{env}.yaml`**: Stack-specific configurations referencing ESC environments
 - **`.mise.toml`**: Node.js version management (v22)
 
