@@ -32,10 +32,10 @@ export class FrontendComponent extends pulumi.ComponentResource {
 		const domain = domainMap[env]
 
 		const redirectUris = [`https://${domain}/auth/callback`]
-		const postLogoutRedirectUris = [`https://${domain}/signedout`]
+		const postLogoutRedirectUris = [`https://${domain}/`]
 		if (env === 'dev') {
 			redirectUris.push('http://localhost:9000/auth/callback')
-			postLogoutRedirectUris.push('http://localhost:9000/signedout')
+			postLogoutRedirectUris.push('http://localhost:9000/')
 		}
 
 		// 1. Define zitadel.ApplicationOidc resource
