@@ -8,16 +8,40 @@ spec:
   replicas: 1
   template:
     spec:
+      terminationGracePeriodSeconds: 90
       serviceAccountName: backend-app
       containers:
       - name: consumer
         image: consumer
         imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+          name: health
         envFrom:
         - configMapRef:
             name: consumer-config
         - secretRef:
             name: backend-secrets
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 3
         resources:
           requests:
             cpu: 50m

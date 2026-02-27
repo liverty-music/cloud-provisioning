@@ -11,6 +11,7 @@ spec:
     spec:
       template:
         spec:
+          terminationGracePeriodSeconds: 120
           serviceAccountName: backend-app
           restartPolicy: Never
           containers:
