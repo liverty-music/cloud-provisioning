@@ -1,0 +1,61 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "k8s/**"
+      - ".kube-linter.yaml"
+      - "scripts/check-spot-nodeselector.sh"
+      - ".github/workflows/lint.yml"
+  pull_request:
+    paths:
+      - "k8s/**"
+      - ".kube-linter.yaml"
+      - "scripts/check-spot-nodeselector.sh"
+      - ".github/workflows/lint.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Render all dev overlays
+        run: |
+          mkdir -p /tmp/rendered
+          for overlay in k8s/namespaces/*/overlays/dev; do
+            namespace=$(echo "$overlay" | cut -d'/' -f3)
+            echo "::group::Rendering $namespace"
+            kustomize build --enable-helm "$overlay" \
+              > "/tmp/rendered/${namespace}.yaml" || {
+              echo "::error::Failed to render $namespace"
+              exit 1
+            }
+            echo "::endgroup::"
+          done
+
+      - name: Run KubeLinter
+        uses: stackrox/kube-linter-action@v1
+        with:
+          directory: /tmp/rendered
+          config: .kube-linter.yaml
+
+      - name: Check Spot VM nodeSelector
+        run: ./scripts/check-spot-nodeselector.sh /tmp/rendered

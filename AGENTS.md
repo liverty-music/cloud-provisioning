@@ -208,6 +208,26 @@ kubectl kustomize --enable-helm k8s/<path>/overlays/<env>
 - A patch is missing from a resource that should have it (e.g., `nodeSelector: NOT SET` when expected)
 - A resource has unexpected field values
 
+### Dev Cost Optimization Protocol
+
+**MANDATORY**: When creating or modifying any Kubernetes workload manifest for `dev` environment:
+
+1. **Explicit resource requests/limits**: Every container MUST have explicit `resources.requests` and `resources.limits` for both CPU and memory. Never leave resources unset — GKE Autopilot assigns 500m CPU / 2Gi memory per container by default, which is extremely wasteful.
+
+2. **Spot VM nodeSelector**: Every Pod template MUST include:
+   ```yaml
+   nodeSelector:
+     cloud.google.com/compute-class: autopilot-spot
+   ```
+   Exception: Only if the workload genuinely requires on-demand reliability (none currently do in dev).
+
+3. **Disable non-essential sidecars/tools**: Debug tools (e.g., nats-box), test pods, and optional sidecars MUST be disabled in dev overlays unless actively needed.
+
+4. **Verify before commit**: When running Kustomize dry-run, also check that:
+   - No container has empty `resources: {}`
+   - All Deployments/StatefulSets/CronJobs have `autopilot-spot` nodeSelector
+   - No unnecessary Pods are rendered
+
 ### Pulumi Deployment Approval Protocol
 
 **CRITICAL REQUIREMENT**: Before executing `pulumi up` or any deployment command, you MUST follow this strict approval workflow:
