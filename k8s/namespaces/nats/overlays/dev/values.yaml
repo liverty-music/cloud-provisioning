@@ -9,8 +9,31 @@ config:
       dir: /data
       pvc:
         enabled: true
-        size: 5Gi
+        size: 10Gi
         storageClassName: premium-rwo
+
+container:
+  merge:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+reloader:
+  merge:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi
+
+natsBox:
+  enabled: false
 
 service:
   ports:
