@@ -1,0 +1,28 @@
+checks:
+  doNotAutoAddDefaults: true
+  include:
+    # Cost optimization (prevent GKE Autopilot default 500m/2Gi uplift)
+    - "unset-cpu-requirements"
+    - "unset-memory-requirements"
+    # Security best practices
+    - "privilege-escalation-container"
+    - "privileged-container"
+    - "sensitive-host-mounts"
+    - "host-network"
+    - "host-pid"
+    - "host-ipc"
+    # Configuration hygiene
+    - "mismatching-selector"
+    - "use-namespace"
+    - "duplicate-env-var"
+    - "non-existent-service-account"
+    - "deprecated-service-account-field"
+    # NOTE: The following checks are intentionally excluded for now because
+    # most 3rd-party Helm charts (ArgoCD, KEDA, NATS, etc.) do not comply:
+    #   - "no-rolling-update-strategy"  (Helm default omits strategy type)
+    #   - "no-read-only-root-fs"        (many charts don't set this)
+    #   - "run-as-non-root"             (many charts don't set this)
+    #   - "latest-tag"                  (ArgoCD Image Updater uses :latest + digest)
+    #   - "liveness-port"              (charts use probes on unexposed ports)
+    #   - "readiness-port"             (charts use probes on unexposed ports)
+    # These can be enabled after the manifests are hardened.
