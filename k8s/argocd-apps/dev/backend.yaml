@@ -3,6 +3,13 @@ kind: Application
 metadata:
   name: backend
   namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: server=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server, consumer=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
+    argocd-image-updater.argoproj.io/server.update-strategy: digest
+    argocd-image-updater.argoproj.io/server.allow-tags: regexp:^main$
+    argocd-image-updater.argoproj.io/consumer.update-strategy: digest
+    argocd-image-updater.argoproj.io/consumer.allow-tags: regexp:^main$
+    argocd-image-updater.argoproj.io/write-back-method: argocd
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
