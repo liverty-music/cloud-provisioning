@@ -20,9 +20,9 @@ for file in "${files[@]}"; do
   [ -f "$file" ] || continue
   namespace=$(basename "$file" .yaml)
 
-  if ! missing=$(python3 -c "
+  if ! missing=$(python3 - "$file" 2>&1 <<'PYEOF'
 import yaml, sys
-with open('$file') as f:
+with open(sys.argv[1]) as f:
     for doc in yaml.safe_load_all(f):
         if doc is None:
             continue
@@ -38,7 +38,8 @@ with open('$file') as f:
             ns = doc.get('spec', {}).get('jobTemplate', {}).get('spec', {}).get('template', {}).get('spec', {}).get('nodeSelector', {})
             if ns.get('cloud.google.com/compute-class') != 'autopilot-spot':
                 print(f'{kind}/{name}')
-" 2>&1); then
+PYEOF
+  ); then
     echo "ERROR: Python check failed for $file: $missing"
     failed=1
     continue
