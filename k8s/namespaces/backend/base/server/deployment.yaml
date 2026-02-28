@@ -13,6 +13,7 @@ spec:
     metadata:
       # Labels handled by commonLabels
     spec:
+      terminationGracePeriodSeconds: 60
       serviceAccountName: backend-app
       volumes:
       - name: zkp-verification-key
@@ -35,6 +36,10 @@ spec:
           mountPath: /configs/zkp/zkp-verification-key.json
           subPath: zkp-verification-key.json
           readOnly: true
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
         readinessProbe:
           grpc:
             port: 8080
