@@ -25,6 +25,7 @@ export type GoogleApis =
 	| 'dns.googleapis.com'
 	| 'artifactregistry.googleapis.com'
 	| 'secretmanager.googleapis.com'
+	| 'clouderrorreporting.googleapis.com'
 
 export class ApiService {
 	constructor(private project: gcp.organizations.Project) {}
