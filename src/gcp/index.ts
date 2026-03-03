@@ -213,13 +213,14 @@ export class Gcp {
 
 		// 8. Monitoring (Log-Based Alerts + Notification Channels)
 		if (gcpConfig.monitoring) {
+			const { slackNotificationChannels } = gcpConfig.monitoring
 			new MonitoringComponent('monitoring', {
 				project: this.project,
-				environment,
+				slackNotificationChannelIds: [
+					slackNotificationChannels.alertBackend,
+				],
 				clusterLocation: Regions.Osaka,
 				clusterName: `cluster-${RegionNames.Osaka}`,
-				chatSpaceId: gcpConfig.monitoring.chatSpaceId,
-				notificationEmail: gcpConfig.monitoring.notificationEmail,
 			})
 		}
 	}

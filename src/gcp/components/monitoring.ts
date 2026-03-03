@@ -11,24 +11,28 @@ interface Workload {
 
 export interface MonitoringComponentArgs {
 	project: gcp.organizations.Project
-	environment: string
+	/**
+	 * Notification channel IDs for backend error log alerts, created via GCP Console.
+	 *
+	 * Slack notification channels must be created manually through the GCP Console
+	 * because the API requires an OAuth flow with Slack that cannot be performed
+	 * via IaC tools (Pulumi/Terraform).
+	 */
+	slackNotificationChannelIds: string[]
 	/** GKE cluster location (e.g., "asia-northeast2"). */
 	clusterLocation: string
 	/** GKE cluster name (e.g., "cluster-osaka"). */
 	clusterName: string
-	/** Google Chat Space ID for alert notifications (e.g., "spaces/XXXXXXXXX"). */
-	chatSpaceId: string
-	/** Email address for alert notifications. */
-	notificationEmail: string
 }
 
 /**
- * MonitoringComponent provisions Cloud Monitoring notification channels
- * and log-based alert policies for backend workload ERROR log detection.
+ * MonitoringComponent provisions Cloud Monitoring log-based alert policies
+ * for backend workload ERROR log detection.
+ *
+ * Slack Notification Channels must be created beforehand via GCP Console
+ * and their channel IDs passed in as `slackNotificationChannelIds`.
  */
 export class MonitoringComponent extends pulumi.ComponentResource {
-	public readonly chatChannel: gcp.monitoring.NotificationChannel
-	public readonly emailChannel: gcp.monitoring.NotificationChannel
 	public readonly alertPolicies: gcp.monitoring.AlertPolicy[]
 
 	constructor(
@@ -40,46 +44,18 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 
 		const {
 			project,
+			slackNotificationChannelIds,
 			clusterLocation,
 			clusterName,
-			chatSpaceId,
-			notificationEmail,
 		} = args
 
-		// 1. Notification Channels
-		this.chatChannel = new gcp.monitoring.NotificationChannel(
-			'notification-google-chat',
-			{
-				displayName: `Google Chat`,
-				type: 'google_chat',
-				project: project.projectId,
-				labels: {
-					space_id: chatSpaceId,
-				},
-			},
-			{ parent: this },
-		)
-
-		this.emailChannel = new gcp.monitoring.NotificationChannel(
-			'notification-email',
-			{
-				displayName: `Email`,
-				type: 'email',
-				project: project.projectId,
-				labels: {
-					email_address: notificationEmail,
-				},
-			},
-			{ parent: this },
-		)
-
-		const notificationChannels = [
-			this.chatChannel.name,
-			this.emailChannel.name,
-		]
-
-		// 2. Log-Based Alert Policies (one per workload)
 		const projectId = project.projectId
+		const notificationChannels = slackNotificationChannelIds.map(
+			(id) =>
+				pulumi.interpolate`projects/${projectId}/notificationChannels/${id}`,
+		)
+
+		// Log-Based Alert Policies (one per workload)
 		const workloads: Workload[] = [
 			{ displayName: 'Server', appLabel: 'server' },
 			{ displayName: 'Consumer', appLabel: 'consumer' },
@@ -143,8 +119,6 @@ severity="ERROR"`,
 		)
 
 		this.registerOutputs({
-			chatChannelName: this.chatChannel.name,
-			emailChannelName: this.emailChannel.name,
 			alertPolicyCount: this.alertPolicies.length,
 		})
 	}
