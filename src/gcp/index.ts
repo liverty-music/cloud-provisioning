@@ -212,14 +212,15 @@ export class Gcp {
 		this.githubActionsSAEmail = wif.githubActionsSA.email
 
 		// 8. Monitoring (Log-Based Alerts + Notification Channels)
-		if (gcpConfig.monitoring) {
+		if (gcpConfig.monitoring?.slackNotificationChannels) {
+			const { slackNotificationChannels } = gcpConfig.monitoring
 			new MonitoringComponent('monitoring', {
 				project: this.project,
-				environment,
+				slackNotificationChannelIds: [
+					slackNotificationChannels.alertBackend,
+				],
 				clusterLocation: Regions.Osaka,
 				clusterName: `cluster-${RegionNames.Osaka}`,
-				chatSpaceId: gcpConfig.monitoring.chatSpaceId,
-				notificationEmail: gcpConfig.monitoring.notificationEmail,
 			})
 		}
 	}

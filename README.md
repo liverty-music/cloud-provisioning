@@ -34,6 +34,8 @@ This project provisions and manages cloud resources for Liverty Music, including
 - **Secret Manager** - Application secrets (e.g., `postgres-admin-password`)
 - **Artifact Registry** - Container image repositories for backend and frontend
 - **Cloud DNS** - Private zones for PSC endpoint resolution
+- **Cloud Monitoring** - Slack notification channel, log-based alert policies for ERROR detection
+- **Error Reporting** - Automatic error grouping and first-seen detection
 
 ### Kubernetes Resources (via ArgoCD)
 
@@ -100,6 +102,7 @@ This project provisions and manages cloud resources for Liverty Music, including
 │   │   │   ├── kubernetes.ts    # GKE Autopilot cluster
 │   │   │   ├── postgres.ts      # Cloud SQL PostgreSQL 18, PSC, IAM users
 │   │   │   ├── workload-identity.ts  # Workload Identity Federation
+│   │   │   ├── monitoring.ts    # Cloud Monitoring alerts + Slack notifications
 │   │   │   └── concert-data-store.ts # Vertex AI Search
 │   │   └── services/            # API enablement helpers
 │   └── github/                  # GitHub org & repo management
@@ -321,6 +324,81 @@ Add `.github/workflows/claude.yml` to each repository. See the `backend` reposit
 - **Interactive**: Respond to `@claude` mentions in PR/issue comments
 - **CLAUDE.md Aware**: Automatically reads repository `CLAUDE.md` for project-specific review rules
 - **Cost Control**: Use `--max-turns` in `claude_args` to limit API usage
+
+## Monitoring (Slack Alert Notifications)
+
+Cloud Monitoring log-based alert policies detect ERROR-level logs from backend workloads (server, consumer, concert-discovery) and send notifications to Slack.
+
+> **Note**: Slack Notification Channels cannot be created via Pulumi/Terraform due to a GCP API limitation that requires an OAuth flow with Slack through the GCP Console. The channel must be created manually, then its resource name is passed to Pulumi for alert policy configuration.
+
+### 1. Create Slack Channels
+
+Create the following channels in Slack (one per environment):
+
+| Environment | Channel |
+|---|---|
+| dev | `#alert-backend-dev` |
+| prod | `#alert-backend-prod` |
+
+### 2. Create Notification Channels via GCP Console (Per Environment)
+
+Slack Notification Channels must be created through the GCP Console because the GCP API requires an OAuth flow with Slack that cannot be performed via IaC tools. No separate Slack App is required — the GCP Console handles the Slack OAuth integration directly.
+
+1. Go to **Monitoring** → **Alerting** → **Edit notification channels**
+2. In the **Slack** section, click **Add new**
+3. Authorize the GCP Monitoring integration with your Slack workspace (OAuth flow)
+4. Enter the Slack channel name (e.g., `#alert-backend-dev`) and a display name
+5. Click **Save**
+6. Copy the **Notification Channel resource name**:
+
+   ```bash
+   # List all notification channels for the project
+   gcloud alpha monitoring channels list --project=liverty-music-dev \
+     --filter='type="slack"' \
+     --format='table(name, displayName, labels.channel_name)'
+   ```
+
+   The `name` column contains the resource name in the format:
+   `projects/liverty-music-dev/notificationChannels/CHANNEL_ID`
+
+7. Repeat for each environment (dev, prod)
+
+### 3. Store Configuration in Pulumi ESC
+
+Edit each environment's ESC definition (`esc env edit liverty-music/dev`) and add the channel IDs keyed by purpose:
+
+```yaml
+# In pulumiConfig.gcp.monitoring
+monitoring:
+  slackNotificationChannels:
+    alertBackend: "CHANNEL_ID"
+```
+
+Verify:
+
+```bash
+esc env get liverty-music/dev pulumiConfig.gcp.monitoring
+```
+
+### 4. Deploy with Pulumi
+
+```bash
+pulumi stack select dev
+pulumi up
+```
+
+This creates:
+- 3 Log-Based Alert Policies (one per workload: server, consumer, concert-discovery)
+- Error Reporting API enablement
+
+The Slack Notification Channel is referenced (not created) by Pulumi.
+
+### Alert Behavior
+
+- **Trigger**: Any ERROR-level log from backend workloads
+- **Rate Limit**: At most 1 notification per 12 hours per alert policy
+- **Auto-Close**: Incidents auto-close after 1 hour of no matching errors
+- **Labels**: `error_code` and `rpc_method` are extracted and included in notifications
 
 ## Kubernetes & ArgoCD Bootstrap
 

@@ -20,10 +20,14 @@ export interface GcpConfig {
 	vapidPrivateKey?: string
 	/** Monitoring alert notification settings. */
 	monitoring?: {
-		/** Google Chat Space ID for alert notifications (e.g., "spaces/XXXXXXXXX"). */
-		chatSpaceId: string
-		/** Email address for alert notifications. */
-		notificationEmail: string
+		/**
+		 * Slack Notification Channel IDs created via GCP Console, keyed by purpose.
+		 * Each value is the numeric channel ID from the GCP resource name.
+		 */
+		slackNotificationChannels: {
+			/** Channel ID for backend ERROR log alerts. */
+			alertBackend: string
+		}
 	}
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"
