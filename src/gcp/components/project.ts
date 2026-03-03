@@ -18,6 +18,13 @@ export interface GcpConfig {
 	postgresAdminPassword?: string
 	/** VAPID private key for Web Push notification signing (ECDSA P-256). */
 	vapidPrivateKey?: string
+	/** Monitoring alert notification settings. */
+	monitoring?: {
+		/** Google Chat Space ID for alert notifications (e.g., "spaces/XXXXXXXXX"). */
+		chatSpaceId: string
+		/** Email address for alert notifications. */
+		notificationEmail: string
+	}
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"
 	}
@@ -81,6 +88,7 @@ export class ProjectComponent extends pulumi.ComponentResource {
 			'cloudasset.googleapis.com', // Recommended for Gemini Cloud Assist.
 			'recommender.googleapis.com', // Recommended for Gemini Cloud Assist.
 			'artifactregistry.googleapis.com', // Required for container images.
+			'clouderrorreporting.googleapis.com', // Required for error grouping and first-seen detection.
 		])
 
 		// Register outputs.

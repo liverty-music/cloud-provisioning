@@ -2,6 +2,7 @@ import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import { KubernetesComponent } from './components/kubernetes.js'
+import { MonitoringComponent } from './components/monitoring.js'
 // import { ConcertDataStore } from './components/concert-data-store.js'
 import { NetworkComponent } from './components/network.js'
 import { PostgresComponent } from './components/postgres.js'
@@ -209,5 +210,17 @@ export class Gcp {
 		})
 		this.githubWorkloadIdentityProvider = wif.githubProvider.name
 		this.githubActionsSAEmail = wif.githubActionsSA.email
+
+		// 8. Monitoring (Log-Based Alerts + Notification Channels)
+		if (gcpConfig.monitoring) {
+			new MonitoringComponent('monitoring', {
+				project: this.project,
+				environment,
+				clusterLocation: Regions.Osaka,
+				clusterName: `cluster-${RegionNames.Osaka}`,
+				chatSpaceId: gcpConfig.monitoring.chatSpaceId,
+				notificationEmail: gcpConfig.monitoring.notificationEmail,
+			})
+		}
 	}
 }
