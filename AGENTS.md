@@ -2,9 +2,13 @@
   <responsibilities>GCP infrastructure via Pulumi (TypeScript). Kubernetes manifests
   managed by ArgoCD with Kustomize base/overlays. Multi-environment (dev/staging/prod).</responsibilities>
   <essential-commands>
-    pulumi preview                   # Preview infra changes
-    pulumi up                        # Deploy (requires user approval)
-    kubectl kustomize k8s/...        # Dry-run K8s manifests
+    make lint              # All linters: biome + tsc + kustomize render + kube-linter + spot check
+    make lint-ts           # TypeScript only: biome check + tsc (matches CI)
+    make lint-k8s          # K8s manifests: render + kube-linter + spot nodeSelector check
+    make fix               # Auto-fix formatting (biome check --write)
+    make check             # Pre-commit check (lint-ts; lint-k8s requires kustomize/kube-linter)
+    pulumi preview         # Preview infra changes
+    pulumi up              # Deploy (requires user approval)
   </essential-commands>
 </poly-repo-context>
 
