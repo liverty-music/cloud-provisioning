@@ -34,6 +34,7 @@ export interface MonitoringComponentArgs {
  */
 export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly alertPolicies: gcp.monitoring.AlertPolicy[]
+	public readonly atlasMigrationAlertPolicy: gcp.monitoring.AlertPolicy
 
 	constructor(
 		name: string,
@@ -116,6 +117,59 @@ severity="ERROR"`,
 					},
 					{ parent: this },
 				),
+		)
+
+		// Atlas Operator Migration Failure Alert
+		this.atlasMigrationAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-atlas-migration-failure',
+			{
+				displayName: 'Atlas Operator Migration Failure',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'Atlas migration TransientErr or BackoffLimitExceeded detected',
+						conditionMatchedLog: {
+							filter: pulumi.interpolate`resource.type="k8s_container"
+resource.labels.project_id="${projectId}"
+resource.labels.location="${clusterLocation}"
+resource.labels.cluster_name="${clusterName}"
+resource.labels.namespace_name="atlas-operator"
+resource.labels.container_name="manager"
+textPayload=~"\"reason\": \"(TransientErr|BackoffLimitExceeded)\""`,
+						},
+					},
+				],
+				alertStrategy: {
+					notificationRateLimit: {
+						period: '43200s', // 12 hours
+					},
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Atlas Operator Migration Failure Alert',
+						'',
+						'The Atlas Operator detected a migration failure in the `atlas-operator` namespace.',
+						'This typically means a schema migration could not be applied to the database.',
+						'',
+						'### Common Failure Reasons',
+						'- **TransientErr**: Migration failed due to a transient error (e.g., out-of-order migration files, SQL syntax error, connection timeout)',
+						'- **BackoffLimitExceeded**: The operator exhausted all retry attempts after repeated TransientErr failures',
+						'',
+						'### Triage Steps',
+						'1. Check the linked Cloud Logging entry for the full error message in `textPayload`',
+						'2. Look at the `AtlasMigration` resource status: `kubectl -n atlas-operator describe atlasmigration backend-migration`',
+						'3. Check the migration pod logs: `kubectl -n atlas-operator logs -l app.kubernetes.io/name=atlas-operator`',
+						'4. If the error is "non-linear" (out-of-order files), see: https://atlasgo.io/versioned/apply#non-linear-error',
+						'5. After fixing the root cause, the operator will automatically retry on the next reconciliation cycle',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
 		)
 
 		this.registerOutputs({
