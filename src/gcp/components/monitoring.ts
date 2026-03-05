@@ -137,7 +137,7 @@ resource.labels.location="${clusterLocation}"
 resource.labels.cluster_name="${clusterName}"
 resource.labels.namespace_name="atlas-operator"
 resource.labels.container_name="manager"
-textPayload=~"\"reason\": \"(TransientErr|BackoffLimitExceeded)\""`,
+textPayload=~"TransientErr|BackoffLimitExceeded"`,
 						},
 					},
 				],
