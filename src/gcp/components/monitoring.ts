@@ -137,7 +137,7 @@ resource.labels.location="${clusterLocation}"
 resource.labels.cluster_name="${clusterName}"
 resource.labels.namespace_name="atlas-operator"
 resource.labels.container_name="manager"
-textPayload=~"TransientErr|BackoffLimitExceeded"`,
+jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						},
 					},
 				],
@@ -160,7 +160,7 @@ textPayload=~"TransientErr|BackoffLimitExceeded"`,
 						'- **BackoffLimitExceeded**: The operator exhausted all retry attempts after repeated TransientErr failures',
 						'',
 						'### Triage Steps',
-						'1. Check the linked Cloud Logging entry for the full error message in `textPayload`',
+						'1. Check the linked Cloud Logging entry for the full error message in `jsonPayload`',
 						'2. Look at the `AtlasMigration` resource status: `kubectl -n atlas-operator describe atlasmigration backend-migration`',
 						'3. Check the migration pod logs: `kubectl -n atlas-operator logs -l app.kubernetes.io/name=atlas-operator`',
 						'4. If the error is "non-linear" (out-of-order files), see: https://atlasgo.io/versioned/apply#non-linear-error',
