@@ -14,3 +14,20 @@ helmCharts:
   namespace: atlas-operator
   includeCRDs: true
   valuesFile: values.yaml
+
+patches:
+- target:
+    kind: Deployment
+    name: atlas-operator
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: atlas-operator
+    spec:
+      template:
+        spec:
+          containers:
+          - name: manager
+            args:
+            - --zap-encoder=json
