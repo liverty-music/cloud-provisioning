@@ -46,6 +46,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly subnet: gcp.compute.Subnetwork
 	public readonly nodeServiceAccountEmail: pulumi.Output<string>
 	public readonly backendAppServiceAccountEmail: pulumi.Output<string>
+	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
 
 	constructor(
 		name: string,
@@ -243,6 +244,30 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 
+		// OTel Collector Service Account
+		const otelCollectorName = 'otel-collector'
+		const otelCollectorNamespace = 'otel-collector'
+		const otelCollectorSa = iamSvc.createServiceAccount(
+			otelCollectorName,
+			otelCollectorName,
+			'OTel Collector Service Account',
+			'Service account for OpenTelemetry Collector to export traces to Cloud Trace',
+			this,
+		)
+		this.otelCollectorServiceAccountEmail = otelCollectorSa.email
+		iamSvc.bindProjectRoles(
+			[Roles.CloudTrace.Agent],
+			otelCollectorName,
+			otelCollectorSa.email,
+			this,
+		)
+		iamSvc.bindKubernetesSaUser(
+			otelCollectorName,
+			otelCollectorSa,
+			otelCollectorNamespace,
+			this,
+		)
+
 		// 5. Dedicated Subnet for GKE
 		this.subnet = new gcp.compute.Subnetwork(
 			`cluster-subnet-${regionName}`,
@@ -321,6 +346,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			subnetId: this.subnet.id,
 			nodeServiceAccountEmail: this.nodeServiceAccountEmail,
 			backendAppServiceAccountEmail: this.backendAppServiceAccountEmail,
+			otelCollectorServiceAccountEmail:
+				this.otelCollectorServiceAccountEmail,
 		})
 	}
 }

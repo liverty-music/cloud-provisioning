@@ -60,3 +60,10 @@ metadata:
   name: keda
   labels:
     name: keda
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: otel-collector
+  labels:
+    name: otel-collector

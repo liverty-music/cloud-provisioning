@@ -1,0 +1,50 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+namespace: otel-collector
+
+patches:
+- path: serviceaccount_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: otel-collector
+
+# Spot VM nodeSelector for dev
+- target:
+    kind: Deployment
+    name: otel-collector
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: otel-collector
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/compute-class: "autopilot-spot"
+
+# Right-size resources for dev
+- target:
+    kind: Deployment
+    name: otel-collector
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: otel-collector
+    spec:
+      template:
+        spec:
+          containers:
+          - name: otel-collector
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi
