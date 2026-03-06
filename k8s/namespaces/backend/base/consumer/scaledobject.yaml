@@ -14,7 +14,7 @@ spec:
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
-      stream: "LIVERTY_MUSIC"
+      stream: "CONCERT"
       consumer: "consumer"
       lagThreshold: "10"
       activationLagThreshold: "1"
