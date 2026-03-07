@@ -4,11 +4,16 @@ metadata:
   name: backend
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/image-list: server=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server, consumer=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
+    argocd-image-updater.argoproj.io/image-list: server=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server, consumer=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer, concert-discovery=asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     argocd-image-updater.argoproj.io/server.update-strategy: digest
     argocd-image-updater.argoproj.io/server.allow-tags: regexp:^main$
+    argocd-image-updater.argoproj.io/server.kustomize.image-name: server
     argocd-image-updater.argoproj.io/consumer.update-strategy: digest
     argocd-image-updater.argoproj.io/consumer.allow-tags: regexp:^main$
+    argocd-image-updater.argoproj.io/consumer.kustomize.image-name: consumer
+    argocd-image-updater.argoproj.io/concert-discovery.update-strategy: digest
+    argocd-image-updater.argoproj.io/concert-discovery.allow-tags: regexp:^main$
+    argocd-image-updater.argoproj.io/concert-discovery.kustomize.image-name: concert-discovery
     argocd-image-updater.argoproj.io/write-back-method: argocd
   finalizers:
   - resources-finalizer.argocd.argoproj.io
