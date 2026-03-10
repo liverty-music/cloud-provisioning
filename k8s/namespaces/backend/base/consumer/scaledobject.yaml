@@ -15,6 +15,6 @@ spec:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "CONCERT"
-      consumer: "consumer"
+      consumer: "CONCERT_discovered"
       lagThreshold: "10"
       activationLagThreshold: "1"
