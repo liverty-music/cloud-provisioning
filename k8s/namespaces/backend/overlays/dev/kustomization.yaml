@@ -93,6 +93,18 @@ patches:
                 cpu: 200m
                 memory: 128Mi
 
+# Reduce maxReplicaCount for consumer ScaledObject in dev
+- target:
+    kind: ScaledObject
+    name: consumer-app
+  patch: |-
+    apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata:
+      name: consumer-app
+    spec:
+      maxReplicaCount: 2
+
 configMapGenerator:
 - name: config
   behavior: merge
