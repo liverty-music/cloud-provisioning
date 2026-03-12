@@ -26,6 +26,7 @@ export type GoogleApis =
 	| 'artifactregistry.googleapis.com'
 	| 'secretmanager.googleapis.com'
 	| 'clouderrorreporting.googleapis.com'
+	| 'places.googleapis.com'
 
 export class ApiService {
 	constructor(private project: gcp.organizations.Project) {}
