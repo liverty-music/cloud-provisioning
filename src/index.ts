@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi'
 import type { CloudflareConfig } from './cloudflare/config.js'
 import type { Environment } from './config.js'
-import type { GcpConfig } from './gcp/components/project.js'
+import type { BlockchainConfig, GcpConfig } from './gcp/components/project.js'
 import { Gcp } from './gcp/index.js'
 import {
 	type BufConfig,
@@ -18,6 +18,9 @@ const displayName = 'Liverty Music'
 const config = new pulumi.Config('liverty-music')
 const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
+const blockchainConfig = config.getObject('blockchain') as
+	| BlockchainConfig
+	| undefined
 const bufConfig = config.requireObject('buf') as BufConfig
 const zitadelConfig = config.requireObject('zitadel') as ZitadelConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
@@ -52,6 +55,7 @@ const gcp = new Gcp({
 	displayName,
 	environment: env,
 	gcpConfig,
+	blockchainConfig,
 	cloudflareConfig,
 })
 

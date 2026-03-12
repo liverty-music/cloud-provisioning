@@ -22,7 +22,7 @@ The ticket system requires three categories of configuration:
 |---------------------------|------------------------------------------------------------------------------|
 | `blockchain-deployer-private-key` | Private key of the EOA that deploys and mints TicketSBT NFTs on Base Sepolia |
 | `blockchain-rpc-url`    | JSON-RPC endpoint for the Base Sepolia testnet                               |
-| `bundler-api-key`         | ERC-4337 bundler API key (Pimlico or Alchemy Account Kit)                   |
+| `blockchain-bundler-api-key` | ERC-4337 bundler API key (Pimlico or Alchemy Account Kit)                |
 
 ### B. ZKP Circuit Artifacts (Entry Verification)
 
@@ -113,7 +113,7 @@ A balance of `0.05 ETH` or more is sufficient for development.
 
 You need two values from Alchemy:
 1. A **Base Sepolia RPC URL** (`blockchain-rpc-url`)
-2. A **Bundler API key** for ERC-4337 (`bundler-api-key`)
+2. A **Bundler API key** for ERC-4337 (`blockchain-bundler-api-key`)
 
 ### 3-a. Create an Alchemy account
 
@@ -145,28 +145,25 @@ Sign up at <https://dashboard.alchemy.com/> (free tier available).
    ```
    https://api.pimlico.io/v2/base-sepolia/rpc?apikey=<YOUR_API_KEY>
    ```
-   Use `<YOUR_API_KEY>` as the `bundler-api-key` secret value.
+   Use `<YOUR_API_KEY>` as the `blockchain-bundler-api-key` secret value.
 
 ---
 
 ## Step 4 — Register Secrets in Pulumi ESC
 
-Run from the `cloud-provisioning` directory with the correct stack selected:
+Use `esc env set` to store secrets in the correct ESC environment (not `pulumi config set`):
 
 ```bash
-# Select your target stack (e.g., dev)
-pulumi stack select dev
-
-# Set secrets (values are encrypted at rest by Pulumi)
-pulumi config set --path gcp.ticketSbtDeployerKey --secret <PRIVATE_KEY_HEX>
-pulumi config set --path gcp.baseSepoliaRpcUrl    --secret <RPC_URL>
-pulumi config set --path gcp.bundlerApiKey        --secret <API_KEY>
+# Set secrets (values are encrypted at rest by Pulumi ESC)
+esc env set liverty-music/dev pulumiConfig.blockchain.deployerPrivateKey "<PRIVATE_KEY_HEX>" --secret
+esc env set liverty-music/dev pulumiConfig.blockchain.rpcUrl             "<RPC_URL>"         --secret
+esc env set liverty-music/dev pulumiConfig.blockchain.bundlerApiKey      "<API_KEY>"         --secret
 ```
 
-Verify (values will appear as `[secret]`):
+Verify (secret values will appear as `[secret]`):
 
 ```bash
-pulumi config
+esc env get liverty-music/dev --value pulumiConfig.blockchain
 ```
 
 ---
