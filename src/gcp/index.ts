@@ -6,7 +6,11 @@ import { MonitoringComponent } from './components/monitoring.js'
 // import { ConcertDataStore } from './components/concert-data-store.js'
 import { NetworkComponent } from './components/network.js'
 import { PostgresComponent } from './components/postgres.js'
-import { type GcpConfig, ProjectComponent } from './components/project.js'
+import {
+	type BlockchainConfig,
+	type GcpConfig,
+	ProjectComponent,
+} from './components/project.js'
 import { WorkloadIdentityComponent } from './components/workload-identity.js'
 import { RegionNames, Regions } from './region.js'
 
@@ -15,6 +19,7 @@ export interface GcpArgs {
 	displayName: string
 	environment: 'dev' | 'staging' | 'prod'
 	gcpConfig: GcpConfig
+	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
 }
 
@@ -53,6 +58,7 @@ export class Gcp {
 			displayName,
 			environment,
 			gcpConfig,
+			blockchainConfig,
 			cloudflareConfig,
 		} = args
 
@@ -136,31 +142,31 @@ export class Gcp {
 							},
 						]
 					: []),
-				...(gcpConfig.ticketSbtDeployerKey
+				...(blockchainConfig?.deployerPrivateKey
 					? [
 							{
 								name: 'blockchain-deployer-private-key',
 								value: pulumi.secret(
-									gcpConfig.ticketSbtDeployerKey,
+									blockchainConfig.deployerPrivateKey,
 								),
 							},
 						]
 					: []),
-				...(gcpConfig.baseSepoliaRpcUrl
+				...(blockchainConfig?.rpcUrl
 					? [
 							{
 								name: 'blockchain-rpc-url',
-								value: pulumi.secret(
-									gcpConfig.baseSepoliaRpcUrl,
-								),
+								value: pulumi.secret(blockchainConfig.rpcUrl),
 							},
 						]
 					: []),
-				...(gcpConfig.bundlerApiKey
+				...(blockchainConfig?.bundlerApiKey
 					? [
 							{
-								name: 'bundler-api-key',
-								value: pulumi.secret(gcpConfig.bundlerApiKey),
+								name: 'blockchain-bundler-api-key',
+								value: pulumi.secret(
+									blockchainConfig.bundlerApiKey,
+								),
 							},
 						]
 					: []),
