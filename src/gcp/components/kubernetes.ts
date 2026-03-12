@@ -71,7 +71,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
 		const apiService = new ApiService(project)
 		const enabledApis = apiService.enableApis(
-			['container.googleapis.com', 'places-backend.googleapis.com'],
+			['container.googleapis.com', 'places.googleapis.com'],
 			this,
 		)
 		const enabledSecretManagerApi =
