@@ -14,6 +14,18 @@ spec:
       commonUpdateSettings:
         updateStrategy: digest
         pullSecret: ext:/scripts/auth.sh
+    - alias: consumer
+      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer:main
+      commonUpdateSettings:
+        updateStrategy: digest
+        forceUpdate: true
+        pullSecret: ext:/scripts/auth.sh
+    - alias: concert-discovery
+      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery:main
+      commonUpdateSettings:
+        updateStrategy: digest
+        forceUpdate: true
+        pullSecret: ext:/scripts/auth.sh
   - namePattern: frontend
     images:
     - alias: web-app
