@@ -141,6 +141,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				Roles.CloudTrace.Agent,
 				Roles.CloudSql.InstanceUser,
 				Roles.AiPlatform.User,
+				Roles.ServiceUsage.ServiceUsageConsumer,
 			],
 			backendApp,
 			backendAppSa.email,

@@ -32,6 +32,9 @@ export const Roles = {
 	AiPlatform: {
 		User: 'roles/aiplatform.user',
 	},
+	ServiceUsage: {
+		ServiceUsageConsumer: 'roles/serviceusage.serviceUsageConsumer',
+	},
 	ArtifactRegistry: {
 		Reader: 'roles/artifactregistry.reader',
 		Writer: 'roles/artifactregistry.writer',
