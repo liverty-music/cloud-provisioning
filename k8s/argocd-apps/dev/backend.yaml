@@ -7,6 +7,12 @@ metadata:
   - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    name: consumer-app
+    jsonPointers:
+    - /spec/replicas
   source:
     repoURL: https://github.com/liverty-music/cloud-provisioning.git
     targetRevision: main
