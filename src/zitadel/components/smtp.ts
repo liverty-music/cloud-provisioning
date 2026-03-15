@@ -38,7 +38,7 @@ export class SmtpComponent extends pulumi.ComponentResource {
 				tls: true,
 				host: 'smtp.postmarkapp.com:587',
 				user: smtpUser,
-				password: smtpPassword,
+				password: pulumi.secret(smtpPassword),
 			},
 			resourceOptions,
 		)

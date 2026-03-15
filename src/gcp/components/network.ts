@@ -372,22 +372,30 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				const mailSubdomain = `mail.${environment}`
 
 				// Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4169912)
-				new gcp.dns.RecordSet('postmark-dkim', {
-					name: `${postmarkConfig.dkimSelector}._domainkey.${mailSubdomain}.${tld}.`,
-					managedZone: publicZone.name,
-					type: 'TXT',
-					ttl: 300,
-					rrdatas: [`"k=rsa;p=${postmarkConfig.dkimPublicKey}"`],
-				})
+				new gcp.dns.RecordSet(
+					'postmark-dkim',
+					{
+						name: `${postmarkConfig.dkimSelector}._domainkey.${mailSubdomain}.${tld}.`,
+						managedZone: publicZone.name,
+						type: 'TXT',
+						ttl: 300,
+						rrdatas: [`"k=rsa;p=${postmarkConfig.dkimPublicKey}"`],
+					},
+					{ parent: this, dependsOn: enabledApis },
+				)
 
 				// Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/4169912)
-				new gcp.dns.RecordSet('postmark-return-path', {
-					name: `pm-bounces.${mailSubdomain}.${tld}.`,
-					managedZone: publicZone.name,
-					type: 'CNAME',
-					ttl: 300,
-					rrdatas: ['pm.mtasv.net.'],
-				})
+				new gcp.dns.RecordSet(
+					'postmark-return-path',
+					{
+						name: `pm-bounces.${mailSubdomain}.${tld}.`,
+						managedZone: publicZone.name,
+						type: 'CNAME',
+						ttl: 300,
+						rrdatas: ['pm.mtasv.net.'],
+					},
+					{ parent: this, dependsOn: enabledApis },
+				)
 			}
 
 			this.registerOutputs({
