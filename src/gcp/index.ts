@@ -4,7 +4,10 @@ import type { CloudflareConfig } from '../cloudflare/config.js'
 import { KubernetesComponent } from './components/kubernetes.js'
 import { MonitoringComponent } from './components/monitoring.js'
 // import { ConcertDataStore } from './components/concert-data-store.js'
-import { NetworkComponent } from './components/network.js'
+import {
+	NetworkComponent,
+	type PostmarkDnsConfig,
+} from './components/network.js'
 import { PostgresComponent } from './components/postgres.js'
 import {
 	type BlockchainConfig,
@@ -21,6 +24,7 @@ export interface GcpArgs {
 	gcpConfig: GcpConfig
 	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
+	postmarkConfig?: PostmarkDnsConfig
 }
 
 export const NetworkConfig = {
@@ -50,6 +54,7 @@ export class Gcp {
 	public readonly region: string = Regions.Osaka
 	public readonly githubActionsSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
+	public readonly publicZone: gcp.dns.ManagedZone | undefined
 	public readonly publicZoneNameservers: pulumi.Output<string[]> | undefined
 
 	constructor(args: GcpArgs) {
@@ -60,6 +65,7 @@ export class Gcp {
 			gcpConfig,
 			blockchainConfig,
 			cloudflareConfig,
+			postmarkConfig,
 		} = args
 
 		const cloudSqlUsers = gcpConfig.cloudSqlUsers ?? []
@@ -83,7 +89,9 @@ export class Gcp {
 			project: this.project,
 			environment,
 			cloudflareConfig,
+			postmarkConfig,
 		})
+		this.publicZone = network.publicZone
 		this.publicZoneNameservers = network.publicZoneNameservers
 
 		// 4. Concert Data Store (Vertex AI Search)

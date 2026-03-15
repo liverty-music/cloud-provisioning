@@ -1,15 +1,19 @@
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
 import { FrontendComponent } from './components/frontend.js'
+import { SmtpComponent } from './components/smtp.js'
 import { ActionsComponent } from './components/token-action.js'
 
 export * from './components/frontend.js'
+export * from './components/smtp.js'
 export * from './components/token-action.js'
 
 export interface ZitadelConfig {
 	orgId: string
 	domain: string
 	pulumiJwtProfileJson: string
+	smtpUser: string
+	smtpPassword: string
 }
 
 export interface ZitadelArgs {
@@ -24,6 +28,7 @@ export class Zitadel {
 	public readonly provider: zitadel.Provider
 	public readonly project: zitadel.Project
 	public readonly frontend: FrontendComponent
+	public readonly smtp: SmtpComponent
 	public readonly actions: ActionsComponent
 
 	constructor(name: string, args: ZitadelArgs) {
@@ -53,6 +58,13 @@ export class Zitadel {
 			env,
 			orgId: config.orgId,
 			projectId: this.project.id,
+			provider: this.provider,
+		})
+
+		this.smtp = new SmtpComponent(name, {
+			env,
+			smtpUser: config.smtpUser,
+			smtpPassword: config.smtpPassword,
 			provider: this.provider,
 		})
 
