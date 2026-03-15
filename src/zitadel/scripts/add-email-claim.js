@@ -26,6 +26,8 @@
 //   User object fields:     https://zitadel.com/docs/apis/actions/objects
 //   Code examples:          https://zitadel.com/docs/apis/actions/code-examples
 //
+var logger = require('zitadel/log')
+
 // biome-ignore lint/correctness/noUnusedVariables: called by Zitadel runtime by name, not imported
 function addEmailClaim(ctx, api) {
 	var user = ctx.v1.getUser()
@@ -36,5 +38,10 @@ function addEmailClaim(ctx, api) {
 			'email_verified',
 			user.human.isEmailVerified || false,
 		)
+		// biome-ignore lint/style/useTemplate: Zitadel Actions use ECMAScript 5.1; template literals are unavailable
+		logger.log('email claim set: ' + user.human.email)
+	} else {
+		// biome-ignore lint/style/useTemplate: Zitadel Actions use ECMAScript 5.1; template literals are unavailable
+		logger.warn('no email found: user=' + JSON.stringify(user))
 	}
 }
