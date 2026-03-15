@@ -5,6 +5,11 @@ import { toKebabCase } from '../../lib/lib.js'
 import type { Region, RegionName } from '../region.js'
 import { ApiService } from '../services/api.js'
 
+export interface PostmarkDnsConfig {
+	dkimSelector: string
+	dkimPublicKey: string
+}
+
 export interface NetworkComponentArgs {
 	region: Region
 	regionName: RegionName
@@ -14,6 +19,7 @@ export interface NetworkComponentArgs {
 		apiToken: pulumi.Input<string>
 		zoneId: pulumi.Input<string>
 	}
+	postmarkConfig?: PostmarkDnsConfig
 }
 
 export class NetworkComponent extends pulumi.ComponentResource {
@@ -21,6 +27,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 	public readonly router?: gcp.compute.Router
 	public readonly nat?: gcp.compute.RouterNat
 	public readonly sqlZone: gcp.dns.ManagedZone
+	public readonly publicZone: gcp.dns.ManagedZone | undefined
 	public readonly publicZoneNameservers: pulumi.Output<string[]> | undefined
 
 	constructor(
@@ -30,8 +37,14 @@ export class NetworkComponent extends pulumi.ComponentResource {
 	) {
 		super('gcp:liverty-music:NetworkComponent', name, args, opts)
 
-		const { region, regionName, project, cloudflareConfig, environment } =
-			args
+		const {
+			region,
+			regionName,
+			project,
+			cloudflareConfig,
+			environment,
+			postmarkConfig,
+		} = args
 
 		const apiService = new ApiService(project)
 		const enabledApis = apiService.enableApis(['dns.googleapis.com'], this)
@@ -66,7 +79,45 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// 3. API Gateway Infrastructure Context
+		// 3. Postmark Email DNS Records (prod: Cloudflare DNS)
+		if (environment === 'prod' && postmarkConfig) {
+			const cfProvider = new cloudflare.Provider(
+				'postmark-cloudflare-provider',
+				{ apiToken: cloudflareConfig.apiToken },
+				{ parent: this },
+			)
+
+			// Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4206868)
+			new cloudflare.DnsRecord(
+				'postmark-dkim',
+				{
+					zoneId: cloudflareConfig.zoneId,
+					name: `${postmarkConfig.dkimSelector}._domainkey.mail`,
+					type: 'TXT',
+					content: `k=rsa;p=${postmarkConfig.dkimPublicKey}`,
+					ttl: 300,
+					comment:
+						'Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4206868)',
+				},
+				{ parent: this, provider: cfProvider },
+			)
+
+			// Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/4206868)
+			new cloudflare.DnsRecord(
+				'postmark-return-path',
+				{
+					zoneId: cloudflareConfig.zoneId,
+					name: 'pm-bounces.mail',
+					type: 'CNAME',
+					content: 'pm.mtasv.net',
+					ttl: 300,
+					comment:
+						'Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/4206868)',
+				},
+				{ parent: this, provider: cfProvider },
+			)
+		}
+
 		// --- Prod Cost Reduction: Skip API Gateway infrastructure for production ---
 		if (environment === 'prod') {
 			this.registerOutputs({
@@ -131,6 +182,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{ parent: this, dependsOn: enabledApis },
 			)
 
+			this.publicZone = publicZone
 			this.publicZoneNameservers = publicZone.nameServers
 
 			const cloudflareProvider = new cloudflare.Provider(
@@ -314,6 +366,29 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
+
+			// Postmark Email DNS Records (dev/staging: GCP Cloud DNS)
+			if (postmarkConfig) {
+				const mailSubdomain = `mail.${environment}`
+
+				// Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4169912)
+				new gcp.dns.RecordSet('postmark-dkim', {
+					name: `${postmarkConfig.dkimSelector}._domainkey.${mailSubdomain}.${tld}.`,
+					managedZone: publicZone.name,
+					type: 'TXT',
+					ttl: 300,
+					rrdatas: [`"k=rsa;p=${postmarkConfig.dkimPublicKey}"`],
+				})
+
+				// Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/4169912)
+				new gcp.dns.RecordSet('postmark-return-path', {
+					name: `pm-bounces.${mailSubdomain}.${tld}.`,
+					managedZone: publicZone.name,
+					type: 'CNAME',
+					ttl: 300,
+					rrdatas: ['pm.mtasv.net.'],
+				})
+			}
 
 			this.registerOutputs({
 				publicZoneNameservers: publicZone.nameServers,
