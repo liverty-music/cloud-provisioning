@@ -94,7 +94,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 					zoneId: cloudflareConfig.zoneId,
 					name: `${postmarkConfig.dkimSelector}._domainkey.mail`,
 					type: 'TXT',
-					content: `k=rsa;p=${postmarkConfig.dkimPublicKey}`,
+					content: `"k=rsa;p=${postmarkConfig.dkimPublicKey}"`,
 					ttl: 300,
 					comment:
 						'Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4206868)',
