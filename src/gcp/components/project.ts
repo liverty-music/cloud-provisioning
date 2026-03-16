@@ -31,6 +31,15 @@ export interface GcpConfig {
 			/** Channel ID for backend ERROR log alerts. */
 			alertBackend: string
 		}
+		/**
+		 * Google Chat space IDs for alert notifications, keyed by purpose.
+		 * Each value is the space ID from the Chat space URL (after "space/").
+		 * Unlike Slack, these are used to create NotificationChannel resources via Pulumi.
+		 */
+		googleChatSpaces?: {
+			/** Space ID for backend ERROR log alerts. */
+			alertBackend: string
+		}
 	}
 	domains?: {
 		publicDomain: string // e.g., "liverty-music.app"

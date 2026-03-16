@@ -19,6 +19,12 @@ export interface MonitoringComponentArgs {
 	 * via IaC tools (Pulumi/Terraform).
 	 */
 	slackNotificationChannelIds: string[]
+	/**
+	 * Google Chat space IDs for alert notifications.
+	 * Each space ID is used to create a NotificationChannel resource (type: google_chat).
+	 * The Google Cloud Monitoring app must be installed in each Chat space beforehand.
+	 */
+	googleChatSpaceIds?: string[]
 	/** GKE cluster location (e.g., "asia-northeast2"). */
 	clusterLocation: string
 	/** GKE cluster name (e.g., "cluster-osaka"). */
@@ -31,10 +37,14 @@ export interface MonitoringComponentArgs {
  *
  * Slack Notification Channels must be created beforehand via GCP Console
  * and their channel IDs passed in as `slackNotificationChannelIds`.
+ *
+ * Google Chat Notification Channels are created as Pulumi resources
+ * using the space IDs passed in as `googleChatSpaceIds`.
  */
 export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly alertPolicies: gcp.monitoring.AlertPolicy[]
 	public readonly atlasMigrationAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 
 	constructor(
 		name: string,
@@ -46,15 +56,40 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 		const {
 			project,
 			slackNotificationChannelIds,
+			googleChatSpaceIds,
 			clusterLocation,
 			clusterName,
 		} = args
 
 		const projectId = project.projectId
-		const notificationChannels = slackNotificationChannelIds.map(
+
+		// Slack channels (referenced by ID, created via GCP Console)
+		const slackChannels = slackNotificationChannelIds.map(
 			(id) =>
 				pulumi.interpolate`projects/${projectId}/notificationChannels/${id}`,
 		)
+
+		// Google Chat channels (created as Pulumi resources)
+		this.googleChatChannels = (googleChatSpaceIds ?? []).map(
+			(spaceId) =>
+				new gcp.monitoring.NotificationChannel(
+					'notification-channel-google-chat-alert-backend',
+					{
+						project: projectId,
+						type: 'google_chat',
+						displayName: 'Google Chat Alert Backend',
+						labels: {
+							space_id: spaceId,
+						},
+					},
+					{ parent: this },
+				),
+		)
+
+		const notificationChannels = [
+			...slackChannels,
+			...this.googleChatChannels.map((ch) => ch.name),
+		]
 
 		// Log-Based Alert Policies (one per workload)
 		const workloads: Workload[] = [
