@@ -21,6 +21,8 @@ export interface GcpConfig {
 	postgresAdminPassword?: string
 	/** VAPID private key for Web Push notification signing (ECDSA P-256). */
 	vapidPrivateKey?: string
+	/** Google Chat incoming webhook URL for ArgoCD Notifications. */
+	argocdGoogleChatWebhookUrl?: string
 	/** Monitoring alert notification settings. */
 	monitoring?: {
 		/**
