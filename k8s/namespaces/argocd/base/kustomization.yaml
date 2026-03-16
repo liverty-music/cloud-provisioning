@@ -3,6 +3,9 @@ kind: Kustomization
 
 namespace: argocd
 
+resources:
+- external-secret.yaml
+
 helmCharts:
 - name: argo-cd
   repo: oci://ghcr.io/argoproj/argo-helm

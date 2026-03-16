@@ -209,6 +209,18 @@ export class Gcp {
 						]
 					: []),
 			],
+			esoOnlySecrets: [
+				...(gcpConfig.argocdGoogleChatWebhookUrl
+					? [
+							{
+								name: 'argocd-google-chat-webhook-url',
+								value: pulumi.secret(
+									gcpConfig.argocdGoogleChatWebhookUrl,
+								),
+							},
+						]
+					: []),
+			],
 		})
 
 		// 6. Cloud SQL Instance (Postgres)

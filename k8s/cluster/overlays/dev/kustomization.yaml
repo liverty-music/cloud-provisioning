@@ -9,3 +9,7 @@ patches:
   target:
     kind: ClusterSecretStore
     name: google-secret-manager
+- path: cluster-secret-store-argocd-patch.yaml
+  target:
+    kind: ClusterSecretStore
+    name: google-secret-manager-argocd

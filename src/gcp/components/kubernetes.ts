@@ -40,6 +40,12 @@ export interface KubernetesComponentArgs {
 	 * Each entry creates a secret, a version (value from Pulumi config), and an IAM accessor binding.
 	 */
 	secrets?: SecretConfig[]
+
+	/**
+	 * Secrets provisioned in GCP Secret Manager with ESO-only access (no backend-app SA binding).
+	 * Used for secrets consumed by non-backend workloads (e.g., ArgoCD) via ExternalSecret.
+	 */
+	esoOnlySecrets?: SecretConfig[]
 }
 
 export class KubernetesComponent extends pulumi.ComponentResource {
@@ -67,6 +73,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			masterCidr,
 			artifactRegistries,
 			secrets = [],
+			esoOnlySecrets = [],
 		} = args
 
 		const apiService = new ApiService(project)
@@ -74,8 +81,9 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			['container.googleapis.com', 'places.googleapis.com'],
 			this,
 		)
+		const allSecrets = [...secrets, ...esoOnlySecrets]
 		const enabledSecretManagerApi =
-			secrets.length > 0
+			allSecrets.length > 0
 				? apiService.enableApis(['secretmanager.googleapis.com'], this)
 				: []
 
@@ -207,6 +215,39 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				{ parent: this },
 			)
 			// ESO per-secret binding — avoids project-level secretAccessor
+			new gcp.secretmanager.SecretIamMember(
+				`${secret.name}-eso-accessor`,
+				{
+					secretId: secretResource.secretId,
+					project: project.projectId,
+					role: Roles.SecretManager.SecretAccessor,
+					member: pulumi.interpolate`serviceAccount:${esoSa.email}`,
+				},
+				{ parent: this },
+			)
+		}
+
+		// 3b. GCP Secret Manager secrets with ESO-only access
+		// These secrets are consumed by non-backend workloads (e.g., ArgoCD) via ExternalSecret.
+		// Only the ESO SA receives SecretAccessor — no backend-app SA binding.
+		for (const secret of esoOnlySecrets) {
+			const secretResource = new gcp.secretmanager.Secret(
+				secret.name,
+				{
+					secretId: secret.name,
+					project: project.projectId,
+					replication: { auto: {} },
+				},
+				{ parent: this, dependsOn: enabledSecretManagerApi },
+			)
+			new gcp.secretmanager.SecretVersion(
+				`${secret.name}-version`,
+				{
+					secret: secretResource.id,
+					secretData: secret.value,
+				},
+				{ parent: this },
+			)
 			new gcp.secretmanager.SecretIamMember(
 				`${secret.name}-eso-accessor`,
 				{
