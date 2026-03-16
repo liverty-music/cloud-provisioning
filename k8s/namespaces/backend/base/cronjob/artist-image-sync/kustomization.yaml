@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- cronjob.yaml
+
+namePrefix: artist-image-sync-
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: artist-image-sync
+
+images:
+- name: artist-image-sync
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
+  newTag: latest
+
+configMapGenerator:
+- name: job-config
+  envs:
+  - configmap.env

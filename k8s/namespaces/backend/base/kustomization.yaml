@@ -5,6 +5,7 @@ resources:
 - serviceaccount.yaml
 - server
 - cronjob/concert-discovery
+- cronjob/artist-image-sync
 - consumer
 
 namespace: backend

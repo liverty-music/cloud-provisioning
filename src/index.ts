@@ -18,6 +18,8 @@ const displayName = 'Liverty Music'
 const config = new pulumi.Config('liverty-music')
 const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
+const lastFmApiKey = config.getSecret('lastFmApiKey')
+const fanartTvApiKey = config.getSecret('fanartTvApiKey')
 const blockchainConfig = config.getObject('blockchain') as
 	| BlockchainConfig
 	| undefined
@@ -58,6 +60,8 @@ const gcp = new Gcp({
 	displayName,
 	environment: env,
 	gcpConfig,
+	lastFmApiKey,
+	fanartTvApiKey,
 	blockchainConfig,
 	cloudflareConfig,
 	postmarkConfig,

@@ -22,6 +22,8 @@ export interface GcpArgs {
 	displayName: string
 	environment: 'dev' | 'staging' | 'prod'
 	gcpConfig: GcpConfig
+	lastFmApiKey?: pulumi.Output<string>
+	fanartTvApiKey?: pulumi.Output<string>
 	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig?: PostmarkDnsConfig
@@ -63,6 +65,8 @@ export class Gcp {
 			displayName,
 			environment,
 			gcpConfig,
+			lastFmApiKey,
+			fanartTvApiKey,
 			blockchainConfig,
 			cloudflareConfig,
 			postmarkConfig,
@@ -142,11 +146,11 @@ export class Gcp {
 				frontendArtifactRegistry,
 			],
 			secrets: [
-				...(gcpConfig.lastFmApiKey
+				...(lastFmApiKey
 					? [
 							{
 								name: 'lastfm-api-key',
-								value: pulumi.secret(gcpConfig.lastFmApiKey),
+								value: lastFmApiKey,
 							},
 						]
 					: []),
@@ -193,6 +197,14 @@ export class Gcp {
 							{
 								name: 'vapid-private-key',
 								value: pulumi.secret(gcpConfig.vapidPrivateKey),
+							},
+						]
+					: []),
+				...(fanartTvApiKey
+					? [
+							{
+								name: 'fanarttv-api-key',
+								value: fanartTvApiKey,
 							},
 						]
 					: []),
