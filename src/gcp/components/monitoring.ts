@@ -71,13 +71,13 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 
 		// Google Chat channels (created as Pulumi resources)
 		this.googleChatChannels = (googleChatSpaceIds ?? []).map(
-			(spaceId, i) =>
+			(spaceId) =>
 				new gcp.monitoring.NotificationChannel(
-					`notification-channel-google-chat-${i}`,
+					'notification-channel-google-chat-alert-backend',
 					{
 						project: projectId,
 						type: 'google_chat',
-						displayName: `Google Chat Alert (${spaceId})`,
+						displayName: 'Google Chat Alert Backend',
 						labels: {
 							space_id: spaceId,
 						},
