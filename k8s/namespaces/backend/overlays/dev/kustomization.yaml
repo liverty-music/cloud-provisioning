@@ -110,10 +110,14 @@ configMapGenerator:
   behavior: merge
   envs:
   - server/configmap.env
-- name: job-config
+- name: concert-discovery-job-config
   behavior: merge
   envs:
   - cronjob/concert-discovery/configmap.env
+- name: artist-image-sync-job-config
+  behavior: merge
+  envs:
+  - cronjob/artist-image-sync/configmap.env
 - name: consumer-config
   behavior: merge
   envs:

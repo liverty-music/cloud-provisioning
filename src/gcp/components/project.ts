@@ -16,7 +16,6 @@ export interface GcpConfig {
 	organizationId: string
 	billingAccount: string
 	geminiApiKey?: string
-	lastFmApiKey?: string
 	cloudSqlUsers?: string[]
 	/** Password for the Cloud SQL built-in postgres admin user. */
 	postgresAdminPassword?: string
