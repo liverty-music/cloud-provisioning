@@ -3,3 +3,4 @@ kind: Kustomization
 
 resources:
 - cluster-secret-store.yaml
+- cluster-secret-store-argocd.yaml

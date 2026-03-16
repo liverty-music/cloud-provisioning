@@ -64,7 +64,70 @@ dex:
   enabled: false
 
 notifications:
-  enabled: false
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  secret:
+    # ESO creates argocd-notifications-secret via ExternalSecret
+    create: false
+
+  notifiers:
+    service.googlechat: |
+      webhooks:
+        alertSpace: $google-chat-webhook-url
+
+  templates:
+    template.app-sync-failed: |
+      message: |
+        Application {{.app.metadata.name}} sync has failed.
+        Error: {{.app.status.operationState.message}}
+        Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true
+    template.app-health-degraded: |
+      message: |
+        Application {{.app.metadata.name}} health has degraded.
+        Health Status: {{.app.status.health.status}}
+        {{range $c := .app.status.conditions}}
+        - {{$c.type}}: {{$c.message}}
+        {{end}}
+        Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+    template.app-sync-status-unknown: |
+      message: |
+        Application {{.app.metadata.name}} sync status is Unknown.
+        {{range $c := .app.status.conditions}}
+        - {{$c.type}}: {{$c.message}}
+        {{end}}
+        Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+
+  triggers:
+    trigger.on-sync-failed: |
+      - description: Application syncing has failed
+        send:
+        - app-sync-failed
+        when: app.status.operationState.phase in ['Error', 'Failed']
+    trigger.on-health-degraded: |
+      - description: Application has degraded
+        send:
+        - app-health-degraded
+        when: app.status.health.status == 'Degraded'
+    trigger.on-sync-status-unknown: |
+      - description: Application status is Unknown
+        send:
+        - app-sync-status-unknown
+        when: app.status.sync.status == 'Unknown'
+    defaultTriggers: |
+      - on-sync-failed
+      - on-health-degraded
+      - on-sync-status-unknown
+
+  subscriptions:
+  - recipients:
+    - googlechat:alertSpace
 
 applicationSet:
   resources:
