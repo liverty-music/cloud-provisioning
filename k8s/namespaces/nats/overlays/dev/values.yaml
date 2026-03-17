@@ -18,9 +18,16 @@ container:
       requests:
         cpu: 50m
         memory: 64Mi
+        ephemeral-storage: 1Gi
       limits:
         cpu: 200m
         memory: 256Mi
+        ephemeral-storage: 1Gi
+    # GKE Autopilot injects these security defaults
+    securityContext:
+      capabilities:
+        drop:
+        - NET_RAW
 
 reloader:
   merge:
@@ -28,9 +35,16 @@ reloader:
       requests:
         cpu: 10m
         memory: 16Mi
+        ephemeral-storage: 1Gi
       limits:
         cpu: 50m
         memory: 64Mi
+        ephemeral-storage: 1Gi
+    # GKE Autopilot injects these security defaults
+    securityContext:
+      capabilities:
+        drop:
+        - NET_RAW
 
 natsBox:
   enabled: false
