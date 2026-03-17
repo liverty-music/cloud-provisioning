@@ -4,8 +4,8 @@ import type { Environment } from '../../config.js'
 
 export interface SmtpComponentArgs {
 	env: Environment
-	smtpUser: string
-	smtpPassword: string
+	/** Postmark Server API Token, used as both SMTP username and password. */
+	serverApiToken: string
 	provider: zitadel.Provider
 }
 
@@ -27,9 +27,10 @@ export class SmtpComponent extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:Smtp', name, {}, opts)
 
-		const { env, smtpUser, smtpPassword, provider } = args
+		const { env, serverApiToken, provider } = args
 		const resourceOptions = { provider, parent: this }
 
+		// Postmark uses the same Server API Token for both SMTP username and password.
 		this.smtpConfig = new zitadel.SmtpConfig(
 			'postmark',
 			{
@@ -37,8 +38,8 @@ export class SmtpComponent extends pulumi.ComponentResource {
 				senderName: 'Liverty Music',
 				tls: true,
 				host: 'smtp.postmarkapp.com:587',
-				user: smtpUser,
-				password: pulumi.secret(smtpPassword),
+				user: serverApiToken,
+				password: pulumi.secret(serverApiToken),
 			},
 			resourceOptions,
 		)
