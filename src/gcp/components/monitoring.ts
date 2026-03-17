@@ -79,7 +79,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 						type: 'google_chat',
 						displayName: 'Google Chat Alert Backend',
 						labels: {
-							space: spaceId,
+							space: `spaces/${spaceId}`,
 						},
 					},
 					{ parent: this },
