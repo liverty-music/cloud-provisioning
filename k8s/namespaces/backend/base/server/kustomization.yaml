@@ -12,8 +12,6 @@ resources:
 configurations:
 - kustomizeconfig.yaml
 
-namePrefix: server-
-
 labels:
 - includeSelectors: true
   pairs:
@@ -25,9 +23,9 @@ images:
   newTag: latest
 
 configMapGenerator:
-- name: config
+- name: server-config
   envs:
   - configmap.env
-- name: zkp-verification-key
+- name: server-zkp-verification-key
   files:
   - zkp-verification-key.json

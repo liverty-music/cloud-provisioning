@@ -4,8 +4,6 @@ kind: Kustomization
 resources:
 - cronjob.yaml
 
-namePrefix: artist-image-sync-
-
 labels:
 - includeSelectors: true
   pairs:
@@ -17,6 +15,6 @@ images:
   newTag: latest
 
 configMapGenerator:
-- name: job-config
+- name: artist-image-sync-job-config
   envs:
   - configmap.env

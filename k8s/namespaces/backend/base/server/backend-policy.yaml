@@ -1,7 +1,7 @@
 apiVersion: networking.gke.io/v1
 kind: GCPBackendPolicy
 metadata:
-  name: policy
+  name: server-policy
 spec:
   default:
     timeoutSec: 30
@@ -10,4 +10,4 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: svc # Referenced via kustomizeconfig.yaml 'nameReference'
+    name: server-svc # Referenced via kustomizeconfig.yaml 'nameReference'

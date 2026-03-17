@@ -17,6 +17,12 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: nats
+  ignoreDifferences:
+  # GKE Autopilot injects ephemeral-storage requests/limits into all containers
+  - group: apps
+    kind: StatefulSet
+    jqPathExpressions:
+    - .spec.template.spec.containers[].resources
   syncPolicy:
     automated:
       prune: true

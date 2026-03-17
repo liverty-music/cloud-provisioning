@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app
+  name: consumer-app
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
@@ -18,7 +18,7 @@ spec:
           name: health
         envFrom:
         - configMapRef:
-            name: consumer-config
+            name: consumer-consumer-config
         - secretRef:
             name: backend-secrets
         lifecycle:

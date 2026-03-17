@@ -106,7 +106,7 @@ patches:
       maxReplicaCount: 2
 
 configMapGenerator:
-- name: config
+- name: server-config
   behavior: merge
   envs:
   - server/configmap.env
@@ -118,7 +118,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/artist-image-sync/configmap.env
-- name: consumer-config
+- name: consumer-consumer-config
   behavior: merge
   envs:
   - consumer/configmap.env
