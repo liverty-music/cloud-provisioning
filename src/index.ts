@@ -113,6 +113,7 @@ new GitHubRepositoryComponent({
 	environment: env,
 	variables: sharedVariables,
 	requiredStatusCheckContexts: [], // No required checks (only Gemini Review which is optional)
+	requireUpToDateBranch: true,
 })
 
 // Export common resources

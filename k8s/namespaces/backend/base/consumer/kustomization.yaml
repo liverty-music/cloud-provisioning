@@ -8,8 +8,6 @@ resources:
 configurations:
 - kustomizeconfig.yaml
 
-namePrefix: consumer-
-
 labels:
 - includeSelectors: true
   pairs:
@@ -21,6 +19,6 @@ images:
   newTag: latest
 
 configMapGenerator:
-- name: consumer-config
+- name: consumer-consumer-config
   envs:
   - configmap.env

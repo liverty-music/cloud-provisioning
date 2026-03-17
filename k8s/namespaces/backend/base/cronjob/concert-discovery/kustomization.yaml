@@ -4,8 +4,6 @@ kind: Kustomization
 resources:
 - cronjob.yaml
 
-namePrefix: concert-discovery-
-
 labels:
 - includeSelectors: true
   pairs:
@@ -17,6 +15,6 @@ images:
   newTag: latest
 
 configMapGenerator:
-- name: job-config
+- name: concert-discovery-job-config
   envs:
   - configmap.env

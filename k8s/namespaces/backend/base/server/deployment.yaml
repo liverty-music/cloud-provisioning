@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: app
+  name: server-app
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
@@ -18,7 +18,7 @@ spec:
       volumes:
       - name: zkp-verification-key
         configMap:
-          name: zkp-verification-key
+          name: server-zkp-verification-key
       containers:
       - name: server
         image: server
@@ -28,7 +28,7 @@ spec:
           name: http
         envFrom:
         - configMapRef:
-            name: config
+            name: server-config
         - secretRef:
             name: backend-secrets
         volumeMounts:

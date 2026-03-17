@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: app
+  name: artist-image-sync-app
 spec:
   schedule: "0 10 * * *" # 19:00 JST daily (1h after concert-discovery)
   concurrencyPolicy: Forbid
@@ -20,7 +20,7 @@ spec:
             imagePullPolicy: Always
             envFrom:
             - configMapRef:
-                name: job-config
+                name: artist-image-sync-job-config
             - secretRef:
                 name: backend-secrets
             resources:

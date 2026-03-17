@@ -86,7 +86,7 @@ notifications:
     template.app-sync-failed: |
       message: |
         Application {{.app.metadata.name}} sync has failed.
-        Error: {{.app.status.operationState.message}}
+        Error: {{ if .app.status.operationState }}{{.app.status.operationState.message}}{{ else }}unknown{{ end }}
         Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true
     template.app-health-degraded: |
       message: |
@@ -109,7 +109,7 @@ notifications:
       - description: Application syncing has failed
         send:
         - app-sync-failed
-        when: app.status.operationState.phase in ['Error', 'Failed']
+        when: app.status.operationState != nil && app.status.operationState.phase in ['Error', 'Failed']
     trigger.on-health-degraded: |
       - description: Application has degraded
         send:

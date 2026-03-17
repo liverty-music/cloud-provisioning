@@ -11,6 +11,12 @@ export interface GitHubRepositoryComponentArgs {
 	variables: Record<string, pulumi.Input<string>>
 	secrets?: Record<string, pulumi.Input<string>>
 	requiredStatusCheckContexts?: string[]
+	/**
+	 * Require the PR branch to be up-to-date with main before merging.
+	 * Prevents merging stale branches that may cause unintended resource deletions
+	 * (e.g., Pulumi removing resources added by a recently merged PR).
+	 */
+	requireUpToDateBranch?: boolean
 }
 
 export class GitHubRepositoryComponent extends pulumi.ComponentResource {
@@ -37,6 +43,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			variables,
 			secrets,
 			requiredStatusCheckContexts,
+			requireUpToDateBranch,
 		} = args
 
 		// Use a new provider instance to ensure we can use it in any stack
@@ -128,12 +135,21 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 						? {
 								requiredStatusChecks: [
 									{
-										strict: false,
+										strict: requireUpToDateBranch ?? false,
 										contexts: requiredStatusCheckContexts,
 									},
 								],
 							}
-						: {}),
+						: requireUpToDateBranch
+							? {
+									requiredStatusChecks: [
+										{
+											strict: true,
+											contexts: [],
+										},
+									],
+								}
+							: {}),
 					// Require pull requests before merging (blocks direct pushes)
 					requiredPullRequestReviews: [
 						{
