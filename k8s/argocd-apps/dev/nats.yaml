@@ -18,11 +18,13 @@ spec:
     server: https://kubernetes.default.svc
     namespace: nats
   ignoreDifferences:
-  # GKE Autopilot injects ephemeral-storage requests/limits into all containers
+  # GKE Autopilot injects ephemeral-storage, securityContext, and other defaults
   - group: apps
     kind: StatefulSet
     jqPathExpressions:
     - .spec.template.spec.containers[].resources
+    - .spec.template.spec.containers[].securityContext
+    - .spec.template.spec.securityContext
   syncPolicy:
     automated:
       prune: true
