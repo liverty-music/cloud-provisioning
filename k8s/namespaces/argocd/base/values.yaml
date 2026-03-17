@@ -7,6 +7,11 @@ configs:
     # Enable Helm template rendering inside kustomize overlays that use helmCharts:.
     # Required for external-secrets and reloader overlays.
     kustomize.buildOptions: "--enable-helm"
+  params:
+    # Use server-side diff for accurate sync status on GKE Autopilot.
+    # Without this, ArgoCD uses legacy 3-way diff which reports false
+    # OutOfSync for K8s server-side defaults (protocol, imagePullPolicy, etc.).
+    controller.diff.server.side: "true"
 
 server:
   service:
