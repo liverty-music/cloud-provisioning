@@ -26,7 +26,7 @@ export interface GcpArgs {
 	fanartTvApiKey?: pulumi.Output<string>
 	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
-	postmarkConfig?: PostmarkDnsConfig
+	postmarkConfig: PostmarkDnsConfig
 }
 
 export const NetworkConfig = {

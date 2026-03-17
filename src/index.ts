@@ -26,9 +26,9 @@ const blockchainConfig = config.getObject('blockchain') as
 const bufConfig = config.requireObject('buf') as BufConfig
 const zitadelConfig = config.requireObject('zitadel') as ZitadelConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
-const postmarkConfig = config.getObject('postmark') as
-	| import('./gcp/components/network.js').PostmarkDnsConfig
-	| undefined
+const postmarkConfig = config.requireObject(
+	'postmark',
+) as import('./gcp/components/network.js').PostmarkDnsConfig
 
 const env = pulumi.getStack() as Environment
 
