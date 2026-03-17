@@ -29,7 +29,7 @@ const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
 	'postmark',
 ) as import('./gcp/components/network.js').PostmarkDnsConfig & {
-	serverApiToken?: string
+	serverApiToken: string
 }
 
 const env = pulumi.getStack() as Environment
@@ -54,7 +54,7 @@ if (env === 'dev') {
 		env,
 		config: {
 			...zitadelConfig,
-			postmarkServerApiToken: postmarkConfig.serverApiToken ?? '',
+			postmarkServerApiToken: postmarkConfig.serverApiToken,
 		},
 	})
 }

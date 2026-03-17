@@ -38,7 +38,7 @@ export class SmtpComponent extends pulumi.ComponentResource {
 				senderName: 'Liverty Music',
 				tls: true,
 				host: 'smtp.postmarkapp.com:587',
-				user: serverApiToken,
+				user: pulumi.secret(serverApiToken),
 				password: pulumi.secret(serverApiToken),
 			},
 			resourceOptions,
