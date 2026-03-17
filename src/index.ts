@@ -28,7 +28,9 @@ const zitadelConfig = config.requireObject('zitadel') as ZitadelConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
 	'postmark',
-) as import('./gcp/components/network.js').PostmarkDnsConfig
+) as import('./gcp/components/network.js').PostmarkDnsConfig & {
+	serverApiToken: string
+}
 
 const env = pulumi.getStack() as Environment
 
@@ -50,7 +52,10 @@ if (env === 'prod') {
 if (env === 'dev') {
 	new Zitadel('liverty-music', {
 		env,
-		config: zitadelConfig,
+		config: {
+			...zitadelConfig,
+			postmarkServerApiToken: postmarkConfig.serverApiToken,
+		},
 	})
 }
 

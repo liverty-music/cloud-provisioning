@@ -12,8 +12,8 @@ export interface ZitadelConfig {
 	orgId: string
 	domain: string
 	pulumiJwtProfileJson: string
-	smtpUser: string
-	smtpPassword: string
+	/** Postmark Server API Token — used as both SMTP username and password. */
+	postmarkServerApiToken: string
 }
 
 export interface ZitadelArgs {
@@ -63,8 +63,7 @@ export class Zitadel {
 
 		this.smtp = new SmtpComponent(name, {
 			env,
-			smtpUser: config.smtpUser,
-			smtpPassword: config.smtpPassword,
+			serverApiToken: config.postmarkServerApiToken,
 			provider: this.provider,
 		})
 
