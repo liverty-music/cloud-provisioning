@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+data:
+  trigger.on-health-degraded: |
+    - description: Application has degraded (fires after 5 minutes)
+      send:
+      - app-health-degraded
+      when: app.status.health.status == 'Degraded' && time.Now().Sub(time.Parse(app.status.health.lastTransitionTime)).Minutes() >= 5

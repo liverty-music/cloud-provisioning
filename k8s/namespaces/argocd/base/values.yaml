@@ -111,10 +111,10 @@ notifications:
         - app-sync-failed
         when: app.status.operationState.phase in ['Error', 'Failed']
     trigger.on-health-degraded: |
-      - description: Application has degraded
+      - description: Application has degraded (fires after 3 minutes)
         send:
         - app-health-degraded
-        when: app.status.health.status == 'Degraded'
+        when: app.status.health.status == 'Degraded' && time.Now().Sub(time.Parse(app.status.health.lastTransitionTime)).Minutes() >= 3
     trigger.on-sync-status-unknown: |
       - description: Application status is Unknown
         send:

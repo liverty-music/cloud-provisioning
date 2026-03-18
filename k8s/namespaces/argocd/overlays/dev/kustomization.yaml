@@ -13,3 +13,8 @@ patches:
 - path: spot-vm_patch_statefulset.yaml
   target:
     kind: StatefulSet
+# Override health-degraded notification trigger grace period (5 min for dev)
+- path: notification-trigger_patch.yaml
+  target:
+    kind: ConfigMap
+    name: argocd-notifications-cm
