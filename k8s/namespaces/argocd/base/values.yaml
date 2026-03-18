@@ -114,7 +114,7 @@ notifications:
       - description: Application has degraded (fires after 3 minutes)
         send:
         - app-health-degraded
-        when: app.status.health.status == 'Degraded' && time.Now().Sub(time.Parse(app.status.health.lastTransitionTime)).Minutes() >= 3
+        when: app.status.health.status == 'Degraded' && now() - date(app.status.health.lastTransitionTime) >= duration("3m")
     trigger.on-sync-status-unknown: |
       - description: Application status is Unknown
         send:

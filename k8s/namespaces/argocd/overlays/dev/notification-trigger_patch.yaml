@@ -7,4 +7,4 @@ data:
     - description: Application has degraded (fires after 5 minutes)
       send:
       - app-health-degraded
-      when: app.status.health.status == 'Degraded' && time.Now().Sub(time.Parse(app.status.health.lastTransitionTime)).Minutes() >= 5
+      when: app.status.health.status == 'Degraded' && now() - date(app.status.health.lastTransitionTime) >= duration("5m")
