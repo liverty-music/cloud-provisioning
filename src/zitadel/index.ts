@@ -1,10 +1,13 @@
+import type * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
 import { FrontendComponent } from './components/frontend.js'
+import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
 import { ActionsComponent } from './components/token-action.js'
 
 export * from './components/frontend.js'
+export * from './components/machine-user.js'
 export * from './components/smtp.js'
 export * from './components/token-action.js'
 
@@ -30,6 +33,10 @@ export class Zitadel {
 	public readonly frontend: FrontendComponent
 	public readonly smtp: SmtpComponent
 	public readonly actions: ActionsComponent
+	public readonly machineUser: MachineUserComponent
+
+	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
+	public readonly machineKeyDetails: pulumi.Output<string>
 
 	constructor(name: string, args: ZitadelArgs) {
 		const { env, config } = args
@@ -72,5 +79,12 @@ export class Zitadel {
 			orgId: config.orgId,
 			provider: this.provider,
 		})
+
+		this.machineUser = new MachineUserComponent(name, {
+			orgId: config.orgId,
+			provider: this.provider,
+		})
+
+		this.machineKeyDetails = this.machineUser.keyDetails
 	}
 }

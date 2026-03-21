@@ -19,6 +19,12 @@ spec:
       - name: zkp-verification-key
         configMap:
           name: server-zkp-verification-key
+      - name: zitadel-machine-key
+        secret:
+          secretName: backend-secrets
+          items:
+          - key: zitadel-machine-key.json
+            path: zitadel-machine-key.json
       containers:
       - name: server
         image: server
@@ -35,6 +41,9 @@ spec:
         - name: zkp-verification-key
           mountPath: /configs/zkp/zkp-verification-key.json
           subPath: zkp-verification-key.json
+          readOnly: true
+        - name: zitadel-machine-key
+          mountPath: /secrets/zitadel
           readOnly: true
         lifecycle:
           preStop:

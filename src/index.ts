@@ -49,14 +49,16 @@ if (env === 'prod') {
 }
 
 // 4. Zitadel Identity
+let zitadelMachineKey: pulumi.Output<string> | undefined
 if (env === 'dev') {
-	new Zitadel('liverty-music', {
+	const zitadel = new Zitadel('liverty-music', {
 		env,
 		config: {
 			...zitadelConfig,
 			postmarkServerApiToken: postmarkConfig.serverApiToken,
 		},
 	})
+	zitadelMachineKey = zitadel.machineKeyDetails
 }
 
 // 2. GCP Infrastructure (All Environments)
@@ -70,6 +72,7 @@ const gcp = new Gcp({
 	blockchainConfig,
 	cloudflareConfig,
 	postmarkConfig,
+	zitadelMachineKey,
 })
 
 // 3. GitHub Repository Environments (All Environments)
