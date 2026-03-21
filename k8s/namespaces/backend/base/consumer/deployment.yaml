@@ -9,6 +9,13 @@ spec:
     spec:
       terminationGracePeriodSeconds: 90
       serviceAccountName: backend-app
+      volumes:
+      - name: zitadel-machine-key
+        secret:
+          secretName: backend-secrets
+          items:
+          - key: zitadel-machine-key.json
+            path: zitadel-machine-key.json
       containers:
       - name: consumer
         image: consumer
@@ -16,11 +23,18 @@ spec:
         ports:
         - containerPort: 8081
           name: health
+        env:
+        - name: ZITADEL_MACHINE_KEY_PATH
+          value: /secrets/zitadel/zitadel-machine-key.json
         envFrom:
         - configMapRef:
             name: consumer-consumer-config
         - secretRef:
             name: backend-secrets
+        volumeMounts:
+        - name: zitadel-machine-key
+          mountPath: /secrets/zitadel
+          readOnly: true
         lifecycle:
           preStop:
             exec:
