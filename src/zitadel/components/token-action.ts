@@ -23,14 +23,8 @@ export class ActionsComponent extends pulumi.ComponentResource {
 	/** Injects the `email` claim into every JWT access token before issuance. */
 	public readonly addEmailClaimAction: zitadel.Action
 
-	/** Auto-verifies user email during Self-Registration to skip the OTP step. */
-	public readonly autoVerifyEmailAction: zitadel.Action
-
 	/** Wires pre-access-token-creation actions to the customise-token flow. */
 	public readonly preAccessTokenTrigger: zitadel.TriggerActions
-
-	/** Wires pre-creation actions to the internal-authentication flow. */
-	public readonly preCreationTrigger: zitadel.TriggerActions
 
 	constructor(
 		name: string,
@@ -71,42 +65,6 @@ export class ActionsComponent extends pulumi.ComponentResource {
 			resourceOptions,
 		)
 
-		// Auto-verify email during Self-Registration.
-		// When SMTP is configured, Zitadel's Hosted Login blocks the OIDC
-		// flow with an email OTP step. By calling setEmailVerified(true) in
-		// PRE_CREATION, the user is created with email already verified and
-		// the OTP step is skipped entirely.
-		const autoVerifyEmailScript = readFileSync(
-			resolve(__dirname, '../scripts/auto-verify-email.js'),
-			'utf-8',
-		)
-
-		this.autoVerifyEmailAction = new zitadel.Action(
-			'auto-verify-email',
-			{
-				orgId,
-				name: 'autoVerifyEmail',
-				script: autoVerifyEmailScript,
-				timeout: '10s',
-				allowedToFail,
-			},
-			resourceOptions,
-		)
-
-		// Wire auto-verify to the internal authentication flow's PRE_CREATION
-		// trigger. This fires after the user fills in the registration form
-		// and before Zitadel creates the user record.
-		this.preCreationTrigger = new zitadel.TriggerActions(
-			'internal-auth-pre-creation',
-			{
-				orgId,
-				flowType: 'FLOW_TYPE_INTERNAL_AUTHENTICATION',
-				triggerType: 'TRIGGER_TYPE_PRE_CREATION',
-				actionIds: [this.autoVerifyEmailAction.id],
-			},
-			{ ...resourceOptions, dependsOn: [this.autoVerifyEmailAction] },
-		)
-
 		// TriggerActions wires one or more Actions to a specific point in
 		// Zitadel's OIDC lifecycle (flow + trigger).
 		//
@@ -135,9 +93,7 @@ export class ActionsComponent extends pulumi.ComponentResource {
 
 		this.registerOutputs({
 			addEmailClaimAction: this.addEmailClaimAction,
-			autoVerifyEmailAction: this.autoVerifyEmailAction,
 			preAccessTokenTrigger: this.preAccessTokenTrigger,
-			preCreationTrigger: this.preCreationTrigger,
 		})
 	}
 }
