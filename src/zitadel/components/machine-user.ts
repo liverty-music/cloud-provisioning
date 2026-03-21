@@ -61,7 +61,7 @@ export class MachineUserComponent extends pulumi.ComponentResource {
 				orgId,
 				userId: this.machineUser.id,
 				keyType: 'KEY_TYPE_JSON',
-				expirationDate: '2030-01-01T00:00:00Z',
+				expirationDate: '2519-04-01T08:45:00Z',
 			},
 			{ ...resourceOptions, dependsOn: [this.machineUser] },
 		)

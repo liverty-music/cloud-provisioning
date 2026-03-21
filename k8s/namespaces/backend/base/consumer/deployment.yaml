@@ -23,9 +23,6 @@ spec:
         ports:
         - containerPort: 8081
           name: health
-        env:
-        - name: ZITADEL_MACHINE_KEY_PATH
-          value: /secrets/zitadel/zitadel-machine-key.json
         envFrom:
         - configMapRef:
             name: consumer-consumer-config
