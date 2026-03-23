@@ -13,7 +13,7 @@ spec:
     metadata:
       # Labels handled by commonLabels
     spec:
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: 75
       serviceAccountName: backend-app
       volumes:
       - name: zkp-verification-key
