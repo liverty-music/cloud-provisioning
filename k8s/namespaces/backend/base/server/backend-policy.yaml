@@ -4,7 +4,7 @@ metadata:
   name: server-policy
 spec:
   default:
-    timeoutSec: 60
+    timeoutSec: 150
     connectionDraining:
       drainingTimeoutSec: 60
   targetRef:
