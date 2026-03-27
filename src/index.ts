@@ -100,7 +100,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: [], // No required checks (only Gemini Review which is optional)
+	requiredStatusCheckContexts: ['CI Success'],
 })
 
 // Specification Repository
@@ -120,7 +120,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.CLOUD_PROVISIONING,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: [], // No required checks (only Gemini Review which is optional)
+	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
 })
 
