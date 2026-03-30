@@ -154,6 +154,67 @@ severity="ERROR"`,
 				),
 		)
 
+		// Poison Queue Accumulation Alert
+		// Fires when the PoisonConsumer logs an ERROR for a dead-lettered message.
+		// This is a secondary safety net: the consumer workload alert above also
+		// fires on any consumer ERROR, but this policy is scoped to poison queue
+		// events specifically to aid triage.
+		const poisonQueueAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-poison-queue-message',
+			{
+				displayName: 'Consumer Poison Queue Message',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName: 'Message routed to poison queue',
+						conditionMatchedLog: {
+							filter: pulumi.interpolate`resource.type="k8s_container"
+resource.labels.project_id="${projectId}"
+resource.labels.location="${clusterLocation}"
+resource.labels.cluster_name="${clusterName}"
+resource.labels.namespace_name="backend"
+labels.k8s-pod/app="consumer"
+severity="ERROR"
+jsonPayload.msg="message routed to poison queue"`,
+							labelExtractors: {
+								topic: 'EXTRACT(jsonPayload.topic)',
+								uuid: 'EXTRACT(jsonPayload.uuid)',
+							},
+						},
+					},
+				],
+				alertStrategy: {
+					notificationRateLimit: {
+						period: '43200s', // 12 hours
+					},
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Consumer Poison Queue Message Alert',
+						'',
+						'A message was routed to the NATS Poison Queue after exhausting all Watermill retries.',
+						'This means a consumer handler failed permanently for this message.',
+						'',
+						'### Alert Labels',
+						'- `topic`: The original NATS subject the message was published to',
+						'- `uuid`: The Watermill message UUID for correlation in Cloud Logging',
+						'',
+						'### Triage Steps',
+						"1. Find the original handler failure: search Cloud Logging for the message `uuid` to find earlier ERROR/WARN logs from that message's processing",
+						'2. Check the `topic` label to identify which handler failed (e.g., `USER.created` → email verification)',
+						'3. Investigate the root cause (external API outage, misconfiguration, bad message payload)',
+						'4. If the message needs to be re-processed, use `nats stream get POISON <seq>` to inspect and manually republish to the original topic',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(poisonQueueAlertPolicy)
+
 		// Atlas Operator Migration Failure Alert
 		this.atlasMigrationAlertPolicy = new gcp.monitoring.AlertPolicy(
 			'alert-atlas-migration-failure',
