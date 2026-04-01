@@ -135,19 +135,6 @@ Store secrets in Pulumi ESC — hardcoded secrets in code are exposed in version
 - Use kebab-case for Pulumi resource names: `my-storage-bucket`
 - GCP region defaults to `asia-northeast2` via `DEFAULT_REGION` constant
 
-### GKE Standard Cluster Node Pool
-
-When creating a GKE Standard cluster node pool, always set `shieldedInstanceConfig` explicitly.
-GKE Autopilot enables Shielded GKE Nodes automatically, but Standard clusters do not — omitting
-this creates a security regression especially for public-node clusters (`enablePrivateNodes: false`):
-
-```typescript
-shieldedInstanceConfig: {
-  enableSecureBoot: true,
-  enableIntegrityMonitoring: true,
-},
-```
-
 ## Infrastructure Patterns
 
 1. **Organization/Project** (`project.ts`): Folders, projects, billing, Secret Manager
