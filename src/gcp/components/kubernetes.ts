@@ -409,6 +409,13 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 						workloadMetadataConfig: {
 							mode: 'GKE_METADATA',
 						},
+						// Autopilot enforces Shielded GKE Nodes automatically.
+						// Standard clusters do not — set explicitly to maintain the same
+						// security posture, especially critical for public nodes.
+						shieldedInstanceConfig: {
+							enableSecureBoot: true,
+							enableIntegrityMonitoring: true,
+						},
 						labels: {
 							'cloud.google.com/gke-spot': 'true',
 						},
