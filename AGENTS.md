@@ -52,17 +52,17 @@ Do not commit if `kubectl kustomize` returns an error or patches are missing.
 
 When creating or modifying Kubernetes workload manifests for `dev` environment:
 
-1. **Explicit resource requests/limits**: Every container needs `resources.requests` and `resources.limits` for CPU and memory. GKE Autopilot assigns 500m CPU / 2Gi memory by default, which is wasteful.
+1. **Explicit resource requests/limits**: Every container needs `resources.requests` and `resources.limits` for CPU and memory.
 
 2. **Spot VM nodeSelector**: Every Pod template needs:
    ```yaml
    nodeSelector:
-     cloud.google.com/compute-class: autopilot-spot
+     cloud.google.com/gke-spot: "true"
    ```
 
 3. **Disable non-essential sidecars**: Debug tools (e.g., nats-box), test pods, and optional sidecars should be disabled in dev overlays unless actively needed.
 
-4. **Verify before commit**: In the Kustomize dry-run, also check that no container has empty `resources: {}`, all workloads have `autopilot-spot` nodeSelector, and no unnecessary Pods are rendered.
+4. **Verify before commit**: In the Kustomize dry-run, also check that no container has empty `resources: {}`, all workloads have `gke-spot: "true"` nodeSelector, and no unnecessary Pods are rendered.
 
 ## ESC Secret Management
 
