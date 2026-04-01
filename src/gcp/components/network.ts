@@ -127,36 +127,40 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			return
 		}
 
-		// 4. Cloud Router (for NAT)
-		this.router = new gcp.compute.Router(
-			`nat-router-${regionName}`,
-			{
-				name: `nat-router-${regionName}`,
-				network: this.network.id,
-				region: region,
-			},
-			{ parent: this },
-		)
-
-		// 5. Cloud NAT
-		this.nat = new gcp.compute.RouterNat(
-			`nat-${regionName}`,
-			{
-				name: `nat-${regionName}`,
-				router: this.router.name,
-				region: region,
-				natIpAllocateOption: 'AUTO_ONLY',
-				sourceSubnetworkIpRangesToNat: 'ALL_SUBNETWORKS_ALL_IP_RANGES',
-				enableDynamicPortAllocation: true,
-				logConfig: {
-					enable: true,
-					filter: 'ERRORS_ONLY',
+		// 4. Cloud Router + Cloud NAT (staging only)
+		// Dev uses public nodes (enablePrivateNodes: false), so Cloud NAT is not needed.
+		// Staging retains private nodes and requires NAT for internet egress.
+		if (environment !== 'dev') {
+			this.router = new gcp.compute.Router(
+				`nat-router-${regionName}`,
+				{
+					name: `nat-router-${regionName}`,
+					network: this.network.id,
+					region: region,
 				},
-			},
-			{ parent: this },
-		)
+				{ parent: this },
+			)
 
-		// 6. Public DNS Zone (for dev/staging subdomain delegation)
+			this.nat = new gcp.compute.RouterNat(
+				`nat-${regionName}`,
+				{
+					name: `nat-${regionName}`,
+					router: this.router.name,
+					region: region,
+					natIpAllocateOption: 'AUTO_ONLY',
+					sourceSubnetworkIpRangesToNat:
+						'ALL_SUBNETWORKS_ALL_IP_RANGES',
+					enableDynamicPortAllocation: true,
+					logConfig: {
+						enable: true,
+						filter: 'ERRORS_ONLY',
+					},
+				},
+				{ parent: this },
+			)
+		}
+
+		// 5. Public DNS Zone (for dev/staging subdomain delegation)
 		// We use a dedicated zone for the delegated subdomain to maintain ownership
 		// without manual registrar updates.
 		if (environment !== 'prod') {

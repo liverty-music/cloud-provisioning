@@ -23,7 +23,7 @@ patches:
       template:
         spec:
           nodeSelector:
-            cloud.google.com/compute-class: autopilot-spot
+            cloud.google.com/gke-spot: "true"
 
 # Cost reduction: 1 replica is sufficient for dev
 - target:

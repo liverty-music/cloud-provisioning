@@ -24,7 +24,7 @@ patches:
       template:
         spec:
           nodeSelector:
-            cloud.google.com/compute-class: autopilot-spot
+            cloud.google.com/gke-spot: "true"
           # GKE Autopilot injects seccompProfile on all pods
           securityContext:
             seccompProfile:
