@@ -1,4 +1,6 @@
 global:
+  # Base nodeSelector — overridden by each overlay's JSON patch (op: replace).
+  # dev overlay replaces this with cloud.google.com/gke-spot: "true" (GKE Standard Spot).
   nodeSelector:
     cloud.google.com/compute-class: "autopilot-spot"
 
