@@ -382,6 +382,11 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					costManagementConfig: {
 						enabled: true,
 					},
+
+					// Gateway API (required for GKE Gateway resources)
+					gatewayApiConfig: {
+						channel: 'CHANNEL_STANDARD',
+					},
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
