@@ -27,6 +27,17 @@ Before executing `pulumi up` or any deployment command, follow this workflow:
 
 Never skip this workflow, even for small changes. Exception: the user has given explicit advance authorization for a specific deployment in the current session.
 
+### Pulumi Deployments (Automated)
+
+**dev**: Merging a PR to `main` with changes under `src/**` automatically
+triggers `pulumi up` via Pulumi Cloud Deployments.
+Never run `pulumi up` locally for dev — it conflicts with the automated job.
+Monitor: https://app.pulumi.com/pannpers/liverty-music/dev/deployments
+
+**prod**: PRs trigger `pulumi preview` only. `pulumi up` does not run
+automatically on merge. Trigger manually from the Pulumi Cloud console:
+https://app.pulumi.com/pannpers/liverty-music/prod/deployments
+
 ### Kubernetes Manifest Dry-Run
 
 Before committing any changes to `k8s/` manifests, run a Kustomize dry-run:
