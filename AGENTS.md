@@ -133,7 +133,6 @@ Store secrets in Pulumi ESC — hardcoded secrets in code are exposed in version
 ## Code Conventions
 
 - Use kebab-case for Pulumi resource names: `my-storage-bucket`
-- Include environment prefix: `dev-web-server`, `prod-database`
 - GCP region defaults to `asia-northeast2` via `DEFAULT_REGION` constant
 
 ## Infrastructure Patterns
