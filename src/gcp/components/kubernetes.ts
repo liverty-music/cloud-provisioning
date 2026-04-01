@@ -93,7 +93,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			`gke-node`,
 			`gke-node`,
 			`GKE Node Service Account`,
-			'Service Account for GKE Autopilot Nodes',
+			'Service Account for GKE Node Pool',
 			this,
 		)
 		this.nodeServiceAccountEmail = gkeNodeSa.email
@@ -337,44 +337,137 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			return
 		}
 
-		// 6. GKE Autopilot Cluster
+		if (environment === 'dev') {
+			// 6. GKE Standard Cluster (zonal, Spot node pool) — dev only
+			// Uses Standard mode instead of Autopilot to eliminate the $0.10/hr cluster
+			// management fee (¥10,800/month). Nodes are public (enablePrivateNodes: false)
+			// to remove the Cloud NAT dependency (¥5,292/month fixed cost).
+			const cluster = new gcp.container.Cluster(
+				`standard-cluster-${regionName}`,
+				{
+					name: `standard-cluster-${regionName}`,
+					location: `${region}-a`, // Zonal (single zone) — no management fee for first cluster
+					deletionProtection: false,
+					network: networkId,
+					subnetwork: this.subnet.id,
+					datapathProvider: 'ADVANCED_DATAPATH', // Dataplane V2
+
+					// Remove default node pool immediately; managed via separate NodePool resource
+					removeDefaultNodePool: true,
+					initialNodeCount: 1,
+
+					// Networking
+					ipAllocationPolicy: {
+						clusterSecondaryRangeName: 'pods-range',
+						servicesSecondaryRangeName: 'services-range',
+					},
+
+					// Public nodes — eliminates Cloud NAT requirement
+					privateClusterConfig: {
+						enablePrivateNodes: false,
+						enablePrivateEndpoint: false,
+					},
+
+					// Workload Identity
+					workloadIdentityConfig: {
+						workloadPool: pulumi.interpolate`${project.projectId}.svc.id.goog`,
+					},
+
+					// Release Channel
+					releaseChannel: {
+						channel: 'REGULAR',
+					},
+
+					// Cost Management
+					costManagementConfig: {
+						enabled: true,
+					},
+				},
+				{ parent: this, dependsOn: enabledApis },
+			)
+
+			// 7. Spot Node Pool (e2-standard-2)
+			new gcp.container.NodePool(
+				`spot-pool-${regionName}`,
+				{
+					name: `spot-pool-${regionName}`,
+					cluster: cluster.id,
+					location: `${region}-a`,
+
+					autoscaling: {
+						minNodeCount: 1,
+						maxNodeCount: 4,
+					},
+
+					nodeConfig: {
+						machineType: 'e2-standard-2',
+						spot: true,
+						serviceAccount: gkeNodeSa.email,
+						oauthScopes: [
+							'https://www.googleapis.com/auth/cloud-platform',
+						],
+						workloadMetadataConfig: {
+							mode: 'GKE_METADATA',
+						},
+						labels: {
+							'cloud.google.com/gke-spot': 'true',
+						},
+					},
+
+					management: {
+						autoRepair: true,
+						autoUpgrade: true,
+					},
+				},
+				{ parent: this, dependsOn: [cluster] },
+			)
+
+			this.registerOutputs({
+				clusterName: cluster.name,
+				clusterEndpoint: cluster.endpoint,
+				subnetId: this.subnet.id,
+				nodeServiceAccountEmail: this.nodeServiceAccountEmail,
+				backendAppServiceAccountEmail:
+					this.backendAppServiceAccountEmail,
+				otelCollectorServiceAccountEmail:
+					this.otelCollectorServiceAccountEmail,
+			})
+			return
+		}
+
+		// 6. GKE Autopilot Cluster (staging)
 		const cluster = new gcp.container.Cluster(
 			`cluster-${regionName}`,
 			{
 				name: `cluster-${regionName}`,
 				location: region,
 				enableAutopilot: true,
-				deletionProtection: environment !== 'dev',
+				deletionProtection: true,
 				network: networkId,
 				subnetwork: this.subnet.id,
-				datapathProvider: 'ADVANCED_DATAPATH', // Dataplane V2 (default for Autopilot)
+				datapathProvider: 'ADVANCED_DATAPATH',
 
-				// Use custom service account for nodes (Autopilot)
 				clusterAutoscaling: {
 					autoProvisioningDefaults: {
 						serviceAccount: gkeNodeSa.email,
 					},
 				},
 
-				// Networking
 				ipAllocationPolicy: {
 					clusterSecondaryRangeName: 'pods-range',
 					servicesSecondaryRangeName: 'services-range',
 				},
 
-				// Security
 				privateClusterConfig: {
 					enablePrivateNodes: true,
-					enablePrivateEndpoint: false, // Public endpoint enabled for development access
+					enablePrivateEndpoint: false,
 					masterIpv4CidrBlock: masterCidr,
 				},
 
-				// Release Channel
 				releaseChannel: {
 					channel: 'REGULAR',
 				},
 
-				// Cost Management
 				costManagementConfig: {
 					enabled: true,
 				},

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Check that all Deployments/StatefulSets/DaemonSets/CronJobs in rendered
-# K8s manifests have the autopilot-spot nodeSelector set.
+# K8s manifests have the GKE Spot nodeSelector set.
+#
+# Accepts either label (cluster type depends on environment):
+#   cloud.google.com/gke-spot: "true"          (Standard cluster — dev)
+#   cloud.google.com/compute-class: autopilot-spot  (Autopilot — staging/prod)
 #
 # Usage:
 #   ./scripts/check-spot-nodeselector.sh /tmp/rendered
@@ -31,12 +35,20 @@ with open(sys.argv[1]) as f:
         # Deployment, StatefulSet, DaemonSet: spec.template.spec.nodeSelector
         if kind in ('Deployment', 'StatefulSet', 'DaemonSet'):
             ns = doc.get('spec', {}).get('template', {}).get('spec', {}).get('nodeSelector', {})
-            if ns.get('cloud.google.com/compute-class') != 'autopilot-spot':
+            has_spot = (
+                ns.get('cloud.google.com/gke-spot') == 'true' or
+                ns.get('cloud.google.com/compute-class') == 'autopilot-spot'
+            )
+            if not has_spot:
                 print(f'{kind}/{name}')
         # CronJob: spec.jobTemplate.spec.template.spec.nodeSelector
         elif kind == 'CronJob':
             ns = doc.get('spec', {}).get('jobTemplate', {}).get('spec', {}).get('template', {}).get('spec', {}).get('nodeSelector', {})
-            if ns.get('cloud.google.com/compute-class') != 'autopilot-spot':
+            has_spot = (
+                ns.get('cloud.google.com/gke-spot') == 'true' or
+                ns.get('cloud.google.com/compute-class') == 'autopilot-spot'
+            )
+            if not has_spot:
                 print(f'{kind}/{name}')
 PYEOF
   ); then
@@ -47,7 +59,7 @@ PYEOF
 
   if [ -n "$missing" ]; then
     for resource in $missing; do
-      echo "ERROR: [${namespace}] ${resource} is missing nodeSelector 'cloud.google.com/compute-class: autopilot-spot'"
+      echo "ERROR: [${namespace}] ${resource} is missing Spot VM nodeSelector"
     done
     failed=1
   fi
@@ -57,8 +69,10 @@ if [ "$failed" -eq 1 ]; then
   echo ""
   echo "All dev workloads must use Spot VMs. Add to pod template:"
   echo "  nodeSelector:"
-  echo "    cloud.google.com/compute-class: autopilot-spot"
+  echo "    cloud.google.com/gke-spot: \"true\"          # Standard cluster (dev)"
+  echo "  or:"
+  echo "    cloud.google.com/compute-class: autopilot-spot  # Autopilot (staging/prod)"
   exit 1
 fi
 
-echo "OK: All workloads have autopilot-spot nodeSelector."
+echo "OK: All workloads have Spot VM nodeSelector."
