@@ -86,13 +86,20 @@ export class NetworkComponent extends pulumi.ComponentResource {
 		// Note: dev nodes have external IPs (enablePrivateNodes: false) so PGA has no
 		// effect there per GCP docs — zones are added to all environments for code
 		// simplicity but only benefit staging/prod (private nodes + NAT).
+		//
+		// Structure follows GCP documentation exactly (one zone, CNAME + A records):
+		// https://cloud.google.com/vpc/docs/configure-private-google-access
+		//   *.googleapis.com  CNAME  restricted.googleapis.com.    (in googleapis.com zone)
+		//   restricted.googleapis.com  A  199.36.153.4/30           (same zone)
+		// Both records MUST be in the same zone — Cloud DNS does not follow CNAMEs
+		// that point to names in a different private zone.
 		const pgaGoogleapisZone = new gcp.dns.ManagedZone(
 			'pga-googleapis-zone',
 			{
 				name: 'pga-googleapis-zone',
 				dnsName: 'googleapis.com.',
 				description:
-					'Private zone for Private Google Access — routes *.googleapis.com to restricted.googleapis.com VIP',
+					'Private zone for Private Google Access (restricted VIP). Contains CNAME + A records per https://cloud.google.com/vpc/docs/configure-private-google-access',
 				visibility: 'private',
 				privateVisibilityConfig: {
 					networks: [{ networkUrl: this.network.id }],
@@ -101,7 +108,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// Wildcard CNAME: *.googleapis.com → restricted.googleapis.com
+		// Wildcard CNAME: *.googleapis.com → restricted.googleapis.com (same zone)
 		new gcp.dns.RecordSet(
 			'pga-googleapis-cname',
 			{
@@ -114,28 +121,14 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// Private zone for restricted.googleapis.com VIP resolution
-		const pgaRestrictedZone = new gcp.dns.ManagedZone(
-			'pga-restricted-googleapis-zone',
-			{
-				name: 'pga-restricted-googleapis-zone',
-				dnsName: 'restricted.googleapis.com.',
-				description:
-					'Private zone for restricted.googleapis.com — A records pointing to 199.36.153.4/30 (VPC SC-compatible APIs only)',
-				visibility: 'private',
-				privateVisibilityConfig: {
-					networks: [{ networkUrl: this.network.id }],
-				},
-			},
-			{ parent: this, dependsOn: enabledApis },
-		)
-
-		// A record: restricted.googleapis.com → 199.36.153.4/30 (all 4 IPs in the range)
+		// A record for restricted.googleapis.com in the SAME googleapis.com zone.
+		// Must be in the same zone as the CNAME above — intra-zone resolution works,
+		// cross-zone CNAME resolution does not in Cloud DNS private zones.
 		new gcp.dns.RecordSet(
 			'pga-restricted-googleapis-a',
 			{
 				name: 'restricted.googleapis.com.',
-				managedZone: pgaRestrictedZone.name,
+				managedZone: pgaGoogleapisZone.name,
 				type: 'A',
 				ttl: 300,
 				rrdatas: [
