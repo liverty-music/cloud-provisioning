@@ -79,7 +79,76 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// 3. Postmark Email DNS Records (prod: Cloudflare DNS)
+		// 3. Private Google Access DNS zones
+		// Completes the PGA configuration (subnet flag is already set in kubernetes.ts).
+		// Without these zones, *.googleapis.com resolves to public IPs and traffic is
+		// forced through Cloud NAT even though privateIpGoogleAccess: true is set.
+		// Note: dev nodes have external IPs (enablePrivateNodes: false) so PGA has no
+		// effect there per GCP docs — zones are added to all environments for code
+		// simplicity but only benefit staging/prod (private nodes + NAT).
+		const pgaGoogleapisZone = new gcp.dns.ManagedZone(
+			'pga-googleapis-zone',
+			{
+				name: 'pga-googleapis-zone',
+				dnsName: 'googleapis.com.',
+				description:
+					'Private zone for Private Google Access — routes *.googleapis.com to restricted.googleapis.com VIP',
+				visibility: 'private',
+				privateVisibilityConfig: {
+					networks: [{ networkUrl: this.network.id }],
+				},
+			},
+			{ parent: this, dependsOn: enabledApis },
+		)
+
+		// Wildcard CNAME: *.googleapis.com → restricted.googleapis.com
+		new gcp.dns.RecordSet(
+			'pga-googleapis-cname',
+			{
+				name: '*.googleapis.com.',
+				managedZone: pgaGoogleapisZone.name,
+				type: 'CNAME',
+				ttl: 300,
+				rrdatas: ['restricted.googleapis.com.'],
+			},
+			{ parent: this, dependsOn: enabledApis },
+		)
+
+		// Private zone for restricted.googleapis.com VIP resolution
+		const pgaRestrictedZone = new gcp.dns.ManagedZone(
+			'pga-restricted-googleapis-zone',
+			{
+				name: 'pga-restricted-googleapis-zone',
+				dnsName: 'restricted.googleapis.com.',
+				description:
+					'Private zone for restricted.googleapis.com — A records pointing to 199.36.153.4/30 (VPC SC-compatible APIs only)',
+				visibility: 'private',
+				privateVisibilityConfig: {
+					networks: [{ networkUrl: this.network.id }],
+				},
+			},
+			{ parent: this, dependsOn: enabledApis },
+		)
+
+		// A record: restricted.googleapis.com → 199.36.153.4/30 (all 4 IPs in the range)
+		new gcp.dns.RecordSet(
+			'pga-restricted-googleapis-a',
+			{
+				name: 'restricted.googleapis.com.',
+				managedZone: pgaRestrictedZone.name,
+				type: 'A',
+				ttl: 300,
+				rrdatas: [
+					'199.36.153.4',
+					'199.36.153.5',
+					'199.36.153.6',
+					'199.36.153.7',
+				],
+			},
+			{ parent: this, dependsOn: enabledApis },
+		)
+
+		// 4. Postmark Email DNS Records (prod: Cloudflare DNS)
 		if (environment === 'prod') {
 			const cfProvider = new cloudflare.Provider(
 				'postmark-cloudflare-provider',
