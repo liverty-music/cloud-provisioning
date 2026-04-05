@@ -101,15 +101,23 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// Wildcard CNAME: *.googleapis.com → restricted.googleapis.com
+		// Wildcard A record: *.googleapis.com → 199.36.153.4/30 directly.
+		// A CNAME pointing to restricted.googleapis.com. (a separate private zone)
+		// does not resolve correctly — Cloud DNS does not follow cross-zone CNAMEs in
+		// private zones. Use A records instead per GCP documentation.
 		new gcp.dns.RecordSet(
-			'pga-googleapis-cname',
+			'pga-googleapis-a',
 			{
 				name: '*.googleapis.com.',
 				managedZone: pgaGoogleapisZone.name,
-				type: 'CNAME',
+				type: 'A',
 				ttl: 300,
-				rrdatas: ['restricted.googleapis.com.'],
+				rrdatas: [
+					'199.36.153.4',
+					'199.36.153.5',
+					'199.36.153.6',
+					'199.36.153.7',
+				],
 			},
 			{ parent: this, dependsOn: enabledApis },
 		)
