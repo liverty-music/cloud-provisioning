@@ -23,6 +23,8 @@ export interface GcpConfig {
 	vapidPrivateKey?: string
 	/** Google Chat incoming webhook URL for ArgoCD Notifications. */
 	argocdGoogleChatWebhookUrl?: string
+	/** Email address to receive Cloud Billing Budget alerts. */
+	billingAlertEmail?: string
 	/** Monitoring alert notification settings. */
 	monitoring?: {
 		/**
