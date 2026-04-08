@@ -52,6 +52,10 @@ patches:
             resources:
               requests:
                 cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
 
 - target:
     kind: Deployment
@@ -69,6 +73,10 @@ patches:
             resources:
               requests:
                 cpu: 10m
+                memory: 52Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
 
 - target:
     kind: Deployment
@@ -86,3 +94,7 @@ patches:
             resources:
               requests:
                 cpu: 10m
+                memory: 52Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
