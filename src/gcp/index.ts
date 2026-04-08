@@ -305,7 +305,7 @@ export class Gcp {
 						displayName: 'liverty-music-dev monthly budget',
 						budgetFilter: {
 							projects: [
-								pulumi.interpolate`projects/${this.projectId}`,
+								pulumi.interpolate`projects/${this.project.number}`,
 							],
 						},
 						amount: {
