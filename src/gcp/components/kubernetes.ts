@@ -411,7 +411,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
 					autoscaling: {
 						minNodeCount: 1,
-						maxNodeCount: 2,
+						maxNodeCount: 3,
 					},
 
 					nodeConfig: {
