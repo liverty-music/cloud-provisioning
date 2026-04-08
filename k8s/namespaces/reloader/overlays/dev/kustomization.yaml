@@ -18,3 +18,25 @@ patches:
         spec:
           nodeSelector:
             cloud.google.com/gke-spot: "true"
+
+# Right-size CPU request for dev
+- target:
+    kind: Deployment
+    name: reloader-reloader
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: reloader-reloader
+    spec:
+      template:
+        spec:
+          containers:
+          - name: reloader-reloader
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi

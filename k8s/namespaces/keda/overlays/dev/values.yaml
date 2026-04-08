@@ -1,21 +1,21 @@
 resources:
   operator:
     requests:
-      cpu: 50m
+      cpu: 10m
       memory: 64Mi
     limits:
       cpu: 200m
       memory: 256Mi
   metricServer:
     requests:
-      cpu: 50m
+      cpu: 10m
       memory: 64Mi
     limits:
       cpu: 200m
       memory: 256Mi
   webhooks:
     requests:
-      cpu: 50m
+      cpu: 10m
       memory: 64Mi
     limits:
       cpu: 200m

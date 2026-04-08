@@ -51,8 +51,8 @@ patches:
           - name: server
             resources:
               requests:
-                cpu: 50m
-                memory: 64Mi
+                cpu: 10m
+                memory: 60Mi
               limits:
                 cpu: 200m
                 memory: 256Mi
@@ -87,8 +87,8 @@ patches:
           - name: consumer
             resources:
               requests:
-                cpu: 50m
-                memory: 64Mi
+                cpu: 10m
+                memory: 20Mi
               limits:
                 cpu: 200m
                 memory: 128Mi
@@ -103,7 +103,7 @@ patches:
     metadata:
       name: consumer-app
     spec:
-      maxReplicaCount: 2
+      maxReplicaCount: 1
 
 configMapGenerator:
 - name: server-config

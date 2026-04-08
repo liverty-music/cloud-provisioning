@@ -27,7 +27,7 @@ patches:
           - name: caddy
             resources:
               requests:
-                cpu: 50m
+                cpu: 10m
                 memory: 52Mi
               limits:
                 cpu: 100m

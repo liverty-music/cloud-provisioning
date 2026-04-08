@@ -17,3 +17,21 @@ patches:
         spec:
           nodeSelector:
             cloud.google.com/gke-spot: "true"
+
+# Right-size CPU request for dev
+- target:
+    kind: Deployment
+    name: atlas-operator
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: atlas-operator
+    spec:
+      template:
+        spec:
+          containers:
+          - name: manager
+            resources:
+              requests:
+                cpu: 10m
