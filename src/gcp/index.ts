@@ -276,5 +276,87 @@ export class Gcp {
 				clusterName: `cluster-${RegionNames.Osaka}`,
 			})
 		}
+
+		// 9. Cost Guardrails (Dev only)
+		// Billing budget alert and per-API quota overrides to cap runaway external
+		// API costs. These are intentionally restricted to dev where quota limits
+		// are low enough to be meaningful as a safeguard.
+		if (environment === 'dev') {
+			// Billing Budget: alert at 50%/90%/100% of ¥3,000/month (~$20 USD)
+			if (gcpConfig.billingAlertEmail) {
+				const billingEmailChannel =
+					new gcp.monitoring.NotificationChannel(
+						'dev-billing-alert-email',
+						{
+							project: this.projectId,
+							displayName: 'Billing alert email',
+							type: 'email',
+							labels: {
+								email_address: gcpConfig.billingAlertEmail,
+							},
+						},
+						{ parent: this.project },
+					)
+
+				new gcp.billing.Budget(
+					'dev-cost-budget',
+					{
+						billingAccount: gcpConfig.billingAccount,
+						displayName: 'liverty-music-dev monthly budget',
+						budgetFilter: {
+							projects: [
+								pulumi.interpolate`projects/${this.project.number}`,
+							],
+						},
+						amount: {
+							specifiedAmount: {
+								currencyCode: 'JPY',
+								units: '3000',
+							},
+						},
+						thresholdRules: [
+							{ thresholdPercent: 0.5 },
+							{ thresholdPercent: 0.9 },
+							{ thresholdPercent: 1.0 },
+						],
+						allUpdatesRule: {
+							disableDefaultIamRecipients: false,
+							monitoringNotificationChannels: [
+								billingEmailChannel.name,
+							],
+						},
+					},
+					{ parent: this.project },
+				)
+			}
+
+			// Places API (New): 20 requests/day
+			new gcp.serviceusage.ConsumerQuotaOverride(
+				'dev-places-api-quota',
+				{
+					project: this.projectId,
+					service: 'places.googleapis.com',
+					metric: 'places.googleapis.com%2Fv1%2Fplaces_requests',
+					limit: '%2Fproject%2Fday',
+					overrideValue: '20',
+					force: true,
+				},
+				{ parent: this.project },
+			)
+
+			// Vertex AI (Gemini GenerateContent): 5 requests/minute
+			new gcp.serviceusage.ConsumerQuotaOverride(
+				'dev-vertex-ai-quota',
+				{
+					project: this.projectId,
+					service: 'aiplatform.googleapis.com',
+					metric: 'aiplatform.googleapis.com%2Fgenerate_content_requests',
+					limit: '%2Fproject%2Fregion%2Fbase_model%2Fminute',
+					overrideValue: '5',
+					force: true,
+				},
+				{ parent: this.project },
+			)
+		}
 	}
 }
