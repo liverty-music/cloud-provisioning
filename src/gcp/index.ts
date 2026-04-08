@@ -284,6 +284,20 @@ export class Gcp {
 		if (environment === 'dev') {
 			// Billing Budget: alert at 50%/90%/100% of ¥3,000/month (~$20 USD)
 			if (gcpConfig.billingAlertEmail) {
+				const billingEmailChannel =
+					new gcp.monitoring.NotificationChannel(
+						'dev-billing-alert-email',
+						{
+							project: this.projectId,
+							displayName: 'Billing alert email',
+							type: 'email',
+							labels: {
+								email_address: gcpConfig.billingAlertEmail,
+							},
+						},
+						{ parent: this.project },
+					)
+
 				new gcp.billing.Budget(
 					'dev-cost-budget',
 					{
@@ -307,7 +321,9 @@ export class Gcp {
 						],
 						allUpdatesRule: {
 							disableDefaultIamRecipients: false,
-							monitoringNotificationChannels: [],
+							monitoringNotificationChannels: [
+								billingEmailChannel.name,
+							],
 						},
 					},
 					{ parent: this.project },
