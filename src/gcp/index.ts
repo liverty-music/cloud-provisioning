@@ -329,34 +329,6 @@ export class Gcp {
 					{ parent: this.project },
 				)
 			}
-
-			// Places API (New): 20 requests/day
-			new gcp.serviceusage.ConsumerQuotaOverride(
-				'dev-places-api-quota',
-				{
-					project: this.projectId,
-					service: 'places.googleapis.com',
-					metric: 'places.googleapis.com%2Fv1%2Fplaces_requests',
-					limit: '%2Fproject%2Fday',
-					overrideValue: '20',
-					force: true,
-				},
-				{ parent: this.project },
-			)
-
-			// Vertex AI (Gemini GenerateContent): 5 requests/minute
-			new gcp.serviceusage.ConsumerQuotaOverride(
-				'dev-vertex-ai-quota',
-				{
-					project: this.projectId,
-					service: 'aiplatform.googleapis.com',
-					metric: 'aiplatform.googleapis.com%2Fgenerate_content_requests',
-					limit: '%2Fproject%2Fregion%2Fbase_model%2Fminute',
-					overrideValue: '5',
-					force: true,
-				},
-				{ parent: this.project },
-			)
 		}
 	}
 }
