@@ -350,8 +350,6 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					deletionProtection: false,
 					network: networkId,
 					subnetwork: this.subnet.id,
-					datapathProvider: 'ADVANCED_DATAPATH', // Dataplane V2
-
 					// Remove default node pool immediately; managed via separate NodePool resource
 					removeDefaultNodePool: true,
 					initialNodeCount: 1,
@@ -387,6 +385,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					gatewayApiConfig: {
 						channel: 'CHANNEL_STANDARD',
 					},
+
+					// Restrict logging/monitoring to system components; disable GMP (dev has
+					// no metric-based alerts — all alerts are log-based).
+					loggingConfig: {
+						enableComponents: ['SYSTEM_COMPONENTS'],
+					},
+					monitoringConfig: {
+						enableComponents: ['SYSTEM_COMPONENTS'],
+						managedPrometheus: {
+							enabled: false,
+						},
+					},
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
@@ -401,11 +411,11 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
 					autoscaling: {
 						minNodeCount: 1,
-						maxNodeCount: 4,
+						maxNodeCount: 2,
 					},
 
 					nodeConfig: {
-						machineType: 'e2-standard-2',
+						machineType: 'e2-medium',
 						spot: true,
 						serviceAccount: gkeNodeSa.email,
 						oauthScopes: [
