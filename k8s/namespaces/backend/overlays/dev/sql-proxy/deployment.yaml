@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-sql-proxy
+  labels:
+    app: cloud-sql-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloud-sql-proxy
+  template:
+    metadata:
+      labels:
+        app: cloud-sql-proxy
+    spec:
+      serviceAccountName: backend-app
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      containers:
+      - name: cloud-sql-proxy
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+        args:
+        - --psc
+        - --auto-iam-authn
+        - --port=5432
+        - --address=0.0.0.0
+        - liverty-music-dev:asia-northeast2:postgres-osaka
+        ports:
+        - containerPort: 5432
+          name: postgres
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65532
+          allowPrivilegeEscalation: false
+        readinessProbe:
+          tcpSocket:
+            port: 5432
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
