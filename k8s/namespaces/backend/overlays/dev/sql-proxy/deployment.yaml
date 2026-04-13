@@ -24,7 +24,7 @@ spec:
         - --psc
         - --auto-iam-authn
         - --port=5432
-        - --address=0.0.0.0
+        - --address=127.0.0.1
         - liverty-music-dev:asia-northeast2:postgres-osaka
         ports:
         - containerPort: 5432
@@ -33,12 +33,6 @@ spec:
           runAsNonRoot: true
           runAsUser: 65532
           allowPrivilegeEscalation: false
-        readinessProbe:
-          tcpSocket:
-            port: 5432
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          failureThreshold: 3
         resources:
           requests:
             cpu: 10m
