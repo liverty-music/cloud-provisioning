@@ -83,14 +83,24 @@ export class NetworkComponent extends pulumi.ComponentResource {
 		// Completes the PGA configuration (subnet flag is already set in kubernetes.ts).
 		// Without these zones, *.googleapis.com resolves to public IPs and traffic is
 		// forced through Cloud NAT even though privateIpGoogleAccess: true is set.
-		// Note: dev nodes have external IPs (enablePrivateNodes: false) so PGA has no
-		// effect there per GCP docs — zones are added to all environments for code
-		// simplicity but only benefit staging/prod (private nodes + NAT).
+		//
+		// VIP selection: private.googleapis.com (199.36.153.8/30)
+		//   - Allows access to most Google APIs including services NOT protected by
+		//     VPC Service Controls (e.g., Firebase Cloud Messaging).
+		//   - Switch to restricted.googleapis.com (199.36.153.4/30) only if/when
+		//     adopting VPC Service Controls — the restricted VIP actively blocks
+		//     services not on the VPC-SC supported product list.
+		//   - This project does not use VPC-SC; the restricted VIP was previously
+		//     configured by mistake, causing FCM Web Push delivery to return 403.
+		//
+		// The private DNS zone redirects traffic for ALL nodes regardless of whether
+		// they have external IPs. Cloud DNS resolution is consulted before public DNS,
+		// so even dev nodes (enablePrivateNodes: false) are affected.
 		//
 		// Structure follows GCP documentation exactly (one zone, CNAME + A records):
 		// https://cloud.google.com/vpc/docs/configure-private-google-access
-		//   *.googleapis.com  CNAME  restricted.googleapis.com.    (in googleapis.com zone)
-		//   restricted.googleapis.com  A  199.36.153.4/30           (same zone)
+		//   *.googleapis.com  CNAME  private.googleapis.com.    (in googleapis.com zone)
+		//   private.googleapis.com  A  199.36.153.8/30           (same zone)
 		// Both records MUST be in the same zone — Cloud DNS does not follow CNAMEs
 		// that point to names in a different private zone.
 		const pgaGoogleapisZone = new gcp.dns.ManagedZone(
@@ -99,7 +109,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				name: 'pga-googleapis-zone',
 				dnsName: 'googleapis.com.',
 				description:
-					'Private zone for Private Google Access (restricted VIP). Contains CNAME + A records per https://cloud.google.com/vpc/docs/configure-private-google-access',
+					'Private zone for Private Google Access (private VIP). Contains CNAME + A records per https://cloud.google.com/vpc/docs/configure-private-google-access',
 				visibility: 'private',
 				privateVisibilityConfig: {
 					networks: [{ networkUrl: this.network.id }],
@@ -108,7 +118,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// Wildcard CNAME: *.googleapis.com → restricted.googleapis.com (same zone)
+		// Wildcard CNAME: *.googleapis.com → private.googleapis.com (same zone)
 		new gcp.dns.RecordSet(
 			'pga-googleapis-cname',
 			{
@@ -116,26 +126,26 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				managedZone: pgaGoogleapisZone.name,
 				type: 'CNAME',
 				ttl: 300,
-				rrdatas: ['restricted.googleapis.com.'],
+				rrdatas: ['private.googleapis.com.'],
 			},
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// A record for restricted.googleapis.com in the SAME googleapis.com zone.
+		// A record for private.googleapis.com in the SAME googleapis.com zone.
 		// Must be in the same zone as the CNAME above — intra-zone resolution works,
 		// cross-zone CNAME resolution does not in Cloud DNS private zones.
 		new gcp.dns.RecordSet(
-			'pga-restricted-googleapis-a',
+			'pga-private-googleapis-a',
 			{
-				name: 'restricted.googleapis.com.',
+				name: 'private.googleapis.com.',
 				managedZone: pgaGoogleapisZone.name,
 				type: 'A',
 				ttl: 300,
 				rrdatas: [
-					'199.36.153.4',
-					'199.36.153.5',
-					'199.36.153.6',
-					'199.36.153.7',
+					'199.36.153.8',
+					'199.36.153.9',
+					'199.36.153.10',
+					'199.36.153.11',
 				],
 			},
 			{ parent: this, dependsOn: enabledApis },
