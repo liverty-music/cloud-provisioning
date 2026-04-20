@@ -16,7 +16,7 @@ patches:
 - path: spot-vm_patch_job.yaml
   target:
     kind: Job
-# Override health-degraded notification trigger grace period (5 min for dev)
+# Override health-degraded notification trigger grace period (30 min for dev to filter Spot preemption noise)
 - path: notification-trigger_patch.yaml
   target:
     kind: ConfigMap
