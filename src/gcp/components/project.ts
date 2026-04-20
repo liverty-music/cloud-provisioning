@@ -109,6 +109,7 @@ export class ProjectComponent extends pulumi.ComponentResource {
 			'recommender.googleapis.com', // Recommended for Gemini Cloud Assist.
 			'artifactregistry.googleapis.com', // Required for container images.
 			'clouderrorreporting.googleapis.com', // Required for error grouping and first-seen detection.
+			'aiplatform.googleapis.com', // Required for Vertex AI Gemini email parsing.
 		])
 
 		// Register outputs.
