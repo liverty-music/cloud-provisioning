@@ -4,7 +4,7 @@ metadata:
   name: argocd-notifications-cm
 data:
   trigger.on-health-degraded: |
-    - description: Application has degraded (fires after 5 minutes)
+    - description: Application has degraded (fires after 30 minutes to filter transient Spot VM preemption noise)
       send:
       - app-health-degraded
-      when: app.status.health.status == 'Degraded' && now() - date(app.status.health.lastTransitionTime) >= duration("5m")
+      when: app.status.health.status == 'Degraded' && now() - date(app.status.health.lastTransitionTime) >= duration("30m")
