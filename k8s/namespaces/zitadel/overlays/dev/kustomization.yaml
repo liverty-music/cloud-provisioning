@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+
+configMapGenerator:
+- name: zitadel-config
+  behavior: merge
+  envs:
+  - configmap-patch.env
+
+patches:
+# Dev-only replica count + spot-pool nodeSelector + reduced resource requests.
+- path: deployment-patch.yaml
+  target:
+    kind: Deployment
+    name: zitadel
+- path: deployment-login-patch.yaml
+  target:
+    kind: Deployment
+    name: zitadel-login

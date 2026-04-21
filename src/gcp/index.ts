@@ -27,8 +27,6 @@ export interface GcpArgs {
 	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
-	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
-	zitadelMachineKey?: pulumi.Output<string>
 }
 
 export const NetworkConfig = {
@@ -60,6 +58,12 @@ export class Gcp {
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
 	public readonly publicZone: gcp.dns.ManagedZone | undefined
 	public readonly publicZoneNameservers: pulumi.Output<string[]> | undefined
+	/** Backend application GCP SA email — exposed so callers can grant per-secret bindings. */
+	public readonly backendAppServiceAccountEmail: pulumi.Output<string>
+	/** Self-hosted Zitadel GCP SA email — exposed so Zitadel-scoped secrets can bind. */
+	public readonly zitadelServiceAccountEmail: pulumi.Output<string>
+	/** External Secrets Operator GCP SA email — exposed for ESO per-secret bindings. */
+	public readonly esoServiceAccountEmail: pulumi.Output<string>
 
 	constructor(args: GcpArgs) {
 		const {
@@ -72,7 +76,6 @@ export class Gcp {
 			blockchainConfig,
 			cloudflareConfig,
 			postmarkConfig,
-			zitadelMachineKey,
 		} = args
 
 		const cloudSqlUsers = gcpConfig.cloudSqlUsers ?? []
@@ -211,14 +214,6 @@ export class Gcp {
 							},
 						]
 					: []),
-				...(zitadelMachineKey
-					? [
-							{
-								name: 'zitadel-machine-key',
-								value: pulumi.secret(zitadelMachineKey),
-							},
-						]
-					: []),
 			],
 			esoOnlySecrets: [
 				...(gcpConfig.argocdGoogleChatWebhookUrl
@@ -234,6 +229,11 @@ export class Gcp {
 			],
 		})
 
+		this.backendAppServiceAccountEmail =
+			kubernetes.backendAppServiceAccountEmail
+		this.zitadelServiceAccountEmail = kubernetes.zitadelServiceAccountEmail
+		this.esoServiceAccountEmail = kubernetes.esoServiceAccountEmail
+
 		// 6. Cloud SQL Instance (Postgres)
 		new PostgresComponent('postgres', {
 			project: this.project,
@@ -245,6 +245,7 @@ export class Gcp {
 			pscEndpointIp: osakaConfig.postgresPscIp,
 			dnsZoneName: network.sqlZone.name,
 			appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
+			zitadelServiceAccountEmail: kubernetes.zitadelServiceAccountEmail,
 			iamDatabaseUsers: cloudSqlUsers,
 			postgresAdminPassword: gcpConfig.postgresAdminPassword
 				? pulumi.secret(gcpConfig.postgresAdminPassword)

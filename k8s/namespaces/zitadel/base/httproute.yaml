@@ -1,0 +1,31 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: zitadel-route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  hostnames:
+  - auth.dev.liverty-music.app
+  rules:
+  # Login UI path — route BEFORE the catch-all rule so the more specific
+  # prefix match wins. Zitadel v4 Login V2 serves everything under
+  # `/ui/v2/login/*` from the separate login container on port 3000.
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /ui/v2/login
+    backendRefs:
+    - name: zitadel-login
+      port: 80
+  # Everything else — OIDC (`/oauth/v2`, `/oidc/v1`), gRPC v2 APIs (`/v2`,
+  # `/zitadel.*.v2.*`), legacy APIs (`/saml/v2`, `/assets/v1`), Admin Console
+  # (`/ui/console`), and health probes (`/debug/*`) — reaches the API.
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: zitadel
+      port: 80

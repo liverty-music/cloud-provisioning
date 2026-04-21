@@ -28,6 +28,12 @@ export interface PostgresComponentArgs {
 	 */
 	appServiceAccountEmail: pulumi.Input<string>
 	/**
+	 * GCP Service Account email for self-hosted Zitadel. When provided, a
+	 * dedicated `zitadel` database and matching IAM SQL user are created so
+	 * Zitadel can connect through Cloud SQL Auth Proxy with IAM authentication.
+	 */
+	zitadelServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * Human user emails that require IAM database authentication access.
 	 */
 	iamDatabaseUsers?: string[]
@@ -72,6 +78,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			pscEndpointIp,
 			dnsZoneName,
 			appServiceAccountEmail,
+			zitadelServiceAccountEmail,
 			iamDatabaseUsers = [],
 			postgresAdminPassword,
 		} = args
@@ -219,6 +226,46 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			},
 			{ parent: this, dependsOn: [instance] },
 		)
+
+		// 7b. Zitadel database + IAM SQL user
+		// Self-hosted Zitadel connects via Cloud SQL Auth Proxy with --auto-iam-authn,
+		// so no password is ever held. The `zitadel` database is pre-created here because
+		// IAM SA users lack CREATE DATABASE / CREATE ROLE; Zitadel runs with
+		// Database.postgres.Admin.ExistingDatabase=true to skip those superuser queries.
+		// Ownership of the `zitadel` database is granted to the IAM user by a separate
+		// Atlas/SQL task because Cloud SQL IAM users cannot be made OWNER via the
+		// gcp.sql.User resource directly.
+		if (zitadelServiceAccountEmail) {
+			const zitadelDb = new gcp.sql.Database(
+				'zitadel',
+				{
+					name: 'zitadel',
+					project: project.projectId,
+					instance: instance.name,
+					charset: 'UTF8',
+					collation: 'en_US.UTF8',
+				},
+				{ parent: this },
+			)
+
+			const zitadelIamUserName = pulumi
+				.output(zitadelServiceAccountEmail)
+				.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+			new gcp.sql.User(
+				'zitadel-sa',
+				{
+					name: zitadelIamUserName,
+					project: project.projectId,
+					instance: instance.name,
+					type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+				},
+				{
+					parent: this,
+					dependsOn: [instance, zitadelDb],
+				},
+			)
+		}
 
 		// 8. Create Cloud IAM SQL Users for human access (e.g., Cloud SQL Studio)
 		for (const email of iamDatabaseUsers) {
