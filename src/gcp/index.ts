@@ -27,6 +27,8 @@ export interface GcpArgs {
 	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
+	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
+	zitadelMachineKey?: pulumi.Output<string>
 }
 
 export const NetworkConfig = {
@@ -76,6 +78,7 @@ export class Gcp {
 			blockchainConfig,
 			cloudflareConfig,
 			postmarkConfig,
+			zitadelMachineKey,
 		} = args
 
 		const cloudSqlUsers = gcpConfig.cloudSqlUsers ?? []
@@ -211,6 +214,14 @@ export class Gcp {
 							{
 								name: 'fanarttv-api-key',
 								value: fanartTvApiKey,
+							},
+						]
+					: []),
+				...(zitadelMachineKey
+					? [
+							{
+								name: 'zitadel-machine-key',
+								value: pulumi.secret(zitadelMachineKey),
 							},
 						]
 					: []),
