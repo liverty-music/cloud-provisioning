@@ -1,35 +1,25 @@
 import type * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
-import { ActionsV2Component } from './components/actions-v2.js'
 import { FrontendComponent } from './components/frontend.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
+import { ActionsComponent } from './components/token-action.js'
 
 export * from './components/actions-v2.js'
 export * from './components/frontend.js'
 export * from './components/machine-user.js'
 export * from './components/secrets.js'
 export * from './components/smtp.js'
+export * from './components/token-action.js'
 export * from './dynamic/index.js'
 
 export interface ZitadelConfig {
 	orgId: string
-	/** Zitadel domain (self-hosted). In dev this is `auth.dev.liverty-music.app`. */
 	domain: string
-	/**
-	 * Admin machine user JWT profile JSON used by `@pulumiverse/zitadel` and by
-	 * the Dynamic Resource providers. In self-hosted mode this is sourced from
-	 * the GCP Secret Manager secret `zitadel-admin-sa-key`, populated by the
-	 * in-cluster bootstrap Job on first boot.
-	 */
-	pulumiJwtProfileJson: pulumi.Input<string>
+	pulumiJwtProfileJson: string
 	/** Postmark Server API Token — used as both SMTP username and password. */
 	postmarkServerApiToken: string
-	/** In-cluster URL of the backend `/pre-access-token` webhook handler. */
-	preAccessTokenEndpoint: string
-	/** In-cluster URL of the backend auto-verify-email webhook handler. */
-	autoVerifyEmailEndpoint: string
 }
 
 export interface ZitadelArgs {
@@ -38,22 +28,24 @@ export interface ZitadelArgs {
 }
 
 /**
- * Zitadel orchestrates the configuration-phase Zitadel resources against an
- * already-running Zitadel instance (whether self-hosted in-cluster or Zitadel
- * Cloud — the shape is the same, only the `domain` and `pulumiJwtProfileJson`
- * inputs differ).
+ * Zitadel orchestrates all Zitadel identity resources against a Zitadel
+ * Management API (currently the Zitadel Cloud dev tenant; migrates to the
+ * in-cluster self-hosted instance in a follow-up "cutover" PR).
  *
- * Infra-phase resources (masterkey + admin-sa-key GSM secrets) live in
- * `./components/secrets.ts` and are instantiated before this class so the
- * in-cluster bootstrap Job can populate the admin SA key that this class
- * consumes for Management API auth.
+ * During the migration window, the self-hosted infra (GSM secret shells,
+ * Cloud SQL DB/user, K8s manifests) is provisioned alongside this class by
+ * `SecretsComponent` and the `k8s/namespaces/zitadel/` Kustomize base — but
+ * this class continues to configure the Cloud tenant to keep dev auth
+ * functional. The cutover PR swaps this class's `ActionsComponent` (v1) for
+ * `ActionsV2Component` (v2) at the same time the provider `domain` input
+ * flips to the self-hosted hostname.
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider
 	public readonly project: zitadel.Project
 	public readonly frontend: FrontendComponent
 	public readonly smtp: SmtpComponent
-	public readonly actions: ActionsV2Component
+	public readonly actions: ActionsComponent
 	public readonly machineUser: MachineUserComponent
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
@@ -95,12 +87,9 @@ export class Zitadel {
 			provider: this.provider,
 		})
 
-		this.actions = new ActionsV2Component(name, {
+		this.actions = new ActionsComponent(name, {
 			env,
-			domain: config.domain,
-			jwtProfileJson: config.pulumiJwtProfileJson,
-			preAccessTokenEndpoint: config.preAccessTokenEndpoint,
-			autoVerifyEmailEndpoint: config.autoVerifyEmailEndpoint,
+			orgId: config.orgId,
 			provider: this.provider,
 		})
 
