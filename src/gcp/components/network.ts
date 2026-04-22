@@ -321,10 +321,13 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			// Certificate Manager: DNS Authorization for self-hosted Zitadel
 			// (`auth.<managedZoneName>`). Needed so the Google-managed cert can
 			// cover the Zitadel issuer hostname alongside api/web domains.
-			const authDnsAuth = new gcp.certificatemanager.DnsAuthorization(
-				'auth-dns-auth',
+			// Naming mirrors the sibling `backend-server-dns-auth` / `web-app-dns-auth`
+			// resources: the service name (`zitadel`) is the scope, not the
+			// subdomain prefix.
+			const zitadelDnsAuth = new gcp.certificatemanager.DnsAuthorization(
+				'zitadel-dns-auth',
 				{
-					name: 'auth-dns-auth',
+					name: 'zitadel-dns-auth',
 					location: 'global',
 					domain: `auth.${managedZoneName}`,
 				},
@@ -347,7 +350,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 						dnsAuthorizations: [
 							backendServerDnsAuth.id,
 							webAppDnsAuth.id,
-							authDnsAuth.id,
+							zitadelDnsAuth.id,
 						],
 					},
 				},
@@ -377,9 +380,9 @@ export class NetworkComponent extends pulumi.ComponentResource {
 
 			// Certificate Manager: Certificate Map Entry for self-hosted Zitadel
 			new gcp.certificatemanager.CertificateMapEntry(
-				'auth-cert-map-entry',
+				'zitadel-cert-map-entry',
 				{
-					name: 'auth-cert-map-entry',
+					name: 'zitadel-cert-map-entry',
 					map: certMap.name,
 					certificates: [cert.id],
 					hostname: `auth.${managedZoneName}`,
@@ -470,17 +473,17 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{ parent: this, dependsOn: enabledApis },
 			)
 
-			// DNS CNAME record for auth.<managedZoneName> ACME challenge validation
+			// DNS CNAME record for self-hosted Zitadel ACME challenge validation
 			new gcp.dns.RecordSet(
-				'auth-dns-auth-cname',
+				'zitadel-dns-auth-cname',
 				{
-					name: authDnsAuth.dnsResourceRecords.apply(
+					name: zitadelDnsAuth.dnsResourceRecords.apply(
 						(r) => r[0].name,
 					),
 					managedZone: publicZone.name,
 					type: 'CNAME',
 					ttl: 300,
-					rrdatas: authDnsAuth.dnsResourceRecords.apply((r) => [
+					rrdatas: zitadelDnsAuth.dnsResourceRecords.apply((r) => [
 						r[0].data,
 					]),
 				},
@@ -491,7 +494,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			// with api/web. The HTTPRoute in k8s/namespaces/zitadel/base/httproute.yaml
 			// routes traffic to the zitadel Service based on the Host header.
 			new gcp.dns.RecordSet(
-				'auth-a-record',
+				'zitadel-a-record',
 				{
 					name: `auth.${managedZoneName}.`,
 					managedZone: publicZone.name,
