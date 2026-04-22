@@ -36,8 +36,22 @@ spec:
       # splits traffic so non-login paths reach the API container instead.
       # ZITADEL_API_URL points at the in-cluster API Service so the login UI
       # can call the API without egressing the cluster.
+      #
+      # Image path: `zitadel-login`, not `login`. The Zitadel monorepo
+      # publishes the Login V2 UI at `ghcr.io/zitadel/zitadel-login`, not
+      # `ghcr.io/zitadel/login` (the latter 404s). The upstream Helm chart
+      # default is the same path (see zitadel-charts@main values.yaml).
+      #
+      # Tag: `latest`. The zitadel-login container publishes semver tags only
+      # up to v4.7.3; v4.8+ ship as git-SHA tags only. The Helm chart's
+      # appVersion (v4.13.0) expects `login:v4.13.0`, but that tag does not
+      # exist. Using `latest` in dev accepts the risk of upstream drift in
+      # exchange for avoiding a SHA-pinning runbook. `imagePullPolicy:
+      # IfNotPresent` prevents every restart from re-pulling. For
+      # staging/prod, pin a specific SHA after validating compatibility.
       - name: zitadel-login
-        image: ghcr.io/zitadel/login:v4.13.1
+        image: ghcr.io/zitadel/zitadel-login:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
           name: http
