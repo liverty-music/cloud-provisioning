@@ -313,16 +313,22 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 
-		// Self-hosted Zitadel Service Account
+		// Self-hosted Zitadel Service Account.
 		// Used by the Zitadel API Pod and its Cloud SQL Auth Proxy sidecar to:
 		//   - Authenticate to Cloud SQL as an IAM SQL user (cloudsql.instanceUser + client)
 		//   - Write the bootstrap admin SA key to GSM on first run (secretVersionAdder
 		//     binding is applied at the per-secret level in the Zitadel component)
-		const zitadelSaK8sName = 'zitadel'
+		//
+		// Naming mirrors the `backend-app` pattern (K8s SA name == GCP SA id ==
+		// SQL User resource name). The `k8s-` prefix used for `k8s-external-secrets`
+		// and `k8s-argocd-image-updater` is *not* applied here because our
+		// manifest owns the K8s SA name (`zitadel`), so there is no naming
+		// collision with a Helm-chart-imposed name that the prefix would resolve.
+		const zitadelApp = 'zitadel'
 		const zitadelNamespace = 'zitadel'
 		const zitadelSa = iamSvc.createServiceAccount(
-			'k8s-zitadel',
-			'k8s-zitadel',
+			zitadelApp,
+			zitadelApp,
 			'Zitadel Service Account',
 			'Service account for self-hosted Zitadel (DB IAM auth + bootstrap)',
 			this,
@@ -330,12 +336,12 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		this.zitadelServiceAccountEmail = zitadelSa.email
 		iamSvc.bindProjectRoles(
 			[Roles.CloudSql.Client, Roles.CloudSql.InstanceUser],
-			'zitadel',
+			zitadelApp,
 			zitadelSa.email,
 			this,
 		)
 		iamSvc.bindKubernetesSaUser(
-			zitadelSaK8sName,
+			zitadelApp,
 			zitadelSa,
 			zitadelNamespace,
 			this,

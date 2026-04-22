@@ -235,11 +235,17 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		// Ownership of the `zitadel` database is granted to the IAM user by a separate
 		// Atlas/SQL task because Cloud SQL IAM users cannot be made OWNER via the
 		// gcp.sql.User resource directly.
+		//
+		// Naming mirrors the `backendApp` pattern above: single logical name
+		// (`zitadel`) applied to the GCP SA id, the SQL User resource, and the
+		// K8s SA — derived from `zitadelServiceAccountEmail` for the SQL user's
+		// `name` field (IAM-auth format: `<id>@<project>.iam`).
 		if (zitadelServiceAccountEmail) {
+			const zitadelApp = 'zitadel'
 			const zitadelDb = new gcp.sql.Database(
-				'zitadel',
+				zitadelApp,
 				{
-					name: 'zitadel',
+					name: zitadelApp,
 					project: project.projectId,
 					instance: instance.name,
 					charset: 'UTF8',
@@ -253,7 +259,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				.apply((email) => email.replace('.gserviceaccount.com', ''))
 
 			new gcp.sql.User(
-				'zitadel-sa',
+				zitadelApp,
 				{
 					name: zitadelIamUserName,
 					project: project.projectId,
