@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: server-webhook-svc
+  labels:
+    # Kustomize commonLabels already applies `app: server`, but we override
+    # the selector below so the webhook Service targets the same Pods as
+    # `server-svc` without sharing its port.
+spec:
+  type: ClusterIP
+  selector:
+    app: server
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: webhook
+    # Zitadel Actions v2 Targets POST JSON to this endpoint with HTTP/1.1,
+    # so h2c is not needed here.
