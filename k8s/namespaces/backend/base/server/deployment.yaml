@@ -32,6 +32,8 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        - containerPort: 9090
+          name: webhook
         envFrom:
         - configMapRef:
             name: server-config

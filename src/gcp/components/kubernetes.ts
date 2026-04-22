@@ -452,7 +452,15 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
 					autoscaling: {
 						minNodeCount: 1,
-						maxNodeCount: 2,
+						// Raised 2 → 3 so the newly-added Zitadel API + Login
+						// Deployments (each `replicas: 2` with hostname
+						// anti-affinity) can schedule alongside existing
+						// backend/ArgoCD/ESO/etc. workloads that already consume
+						// ~96% of the previous 2-node CPU budget. Keeping
+						// design D8's `required` anti-affinity (spot death must
+						// not take both pods) means dev needs ≥3 spot nodes
+						// to host api×2 + login×2 on distinct hostnames.
+						maxNodeCount: 3,
 					},
 
 					nodeConfig: {
