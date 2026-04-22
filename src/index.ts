@@ -10,7 +10,11 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
-import { Zitadel, type ZitadelConfig } from './zitadel/index.js'
+import {
+	SecretsComponent,
+	Zitadel,
+	type ZitadelConfig,
+} from './zitadel/index.js'
 
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'
@@ -49,6 +53,11 @@ if (env === 'prod') {
 }
 
 // 4. Zitadel Identity
+// Currently targets the Zitadel Cloud dev tenant (as `zitadelConfig.domain`).
+// The cutover PR swaps `domain` for the self-hosted hostname and re-sources
+// `pulumiJwtProfileJson` from GSM once the in-cluster bootstrap Job has
+// populated `zitadel-admin-sa-key`. Keeping this instantiation unconditional
+// in the reshape PR preserves the existing Cloud-tenant state until cutover.
 let zitadelMachineKey: pulumi.Output<string> | undefined
 if (env === 'dev') {
 	const zitadel = new Zitadel('liverty-music', {
@@ -74,6 +83,21 @@ const gcp = new Gcp({
 	postmarkConfig,
 	zitadelMachineKey,
 })
+
+// 5. Self-hosted Zitadel infra phase (dev only).
+// Provisions GSM secret shells (masterkey, empty admin-sa-key) that the
+// in-cluster Zitadel pod's bootstrap sidecar will populate on first boot.
+// The cutover PR reads `zitadel-admin-sa-key` from GSM to reconfigure the
+// Zitadel Pulumi provider at the self-hosted hostname. Always running this
+// phase (even before cutover) is safe: the secret shells don't affect the
+// Cloud-tenant Zitadel resources above.
+if (env === 'dev') {
+	new SecretsComponent('zitadel-secrets', {
+		project: gcp.project,
+		zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
+		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
+	})
+}
 
 // 3. GitHub Repository Environments (All Environments)
 const sharedVariables = {

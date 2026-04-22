@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: zitadel
+  labels:
+    app: zitadel
+    component: api
+spec:
+  type: ClusterIP
+  selector:
+    app: zitadel
+    component: api
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+    # Zitadel serves gRPC + HTTP on 8080 via h2c when TLS is terminated
+    # externally by the Gateway. Keeping h2c preserves HTTP/2 multiplexing
+    # for backend JWKS fetches and Management API calls.
+    appProtocol: kubernetes.io/h2c

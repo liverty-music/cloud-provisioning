@@ -53,6 +53,9 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly nodeServiceAccountEmail: pulumi.Output<string>
 	public readonly backendAppServiceAccountEmail: pulumi.Output<string>
 	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
+	public readonly zitadelServiceAccountEmail: pulumi.Output<string>
+	/** ESO controller's GCP SA email — exposed so callers can grant per-secret accessor bindings. */
+	public readonly esoServiceAccountEmail: pulumi.Output<string>
 
 	constructor(
 		name: string,
@@ -310,6 +313,44 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 
+		// Self-hosted Zitadel Service Account.
+		// Used by the Zitadel API Pod and its Cloud SQL Auth Proxy sidecar to:
+		//   - Authenticate to Cloud SQL as an IAM SQL user (cloudsql.instanceUser + client)
+		//   - Write the bootstrap admin SA key to GSM on first run (secretVersionAdder
+		//     binding is applied at the per-secret level in the Zitadel component)
+		//
+		// Naming mirrors the `backend-app` pattern (K8s SA name == GCP SA id ==
+		// SQL User resource name). The `k8s-` prefix used for `k8s-external-secrets`
+		// and `k8s-argocd-image-updater` is *not* applied here because our
+		// manifest owns the K8s SA name (`zitadel`), so there is no naming
+		// collision with a Helm-chart-imposed name that the prefix would resolve.
+		const zitadelApp = 'zitadel'
+		const zitadelNamespace = 'zitadel'
+		const zitadelSa = iamSvc.createServiceAccount(
+			zitadelApp,
+			zitadelApp,
+			'Zitadel Service Account',
+			'Service account for self-hosted Zitadel (DB IAM auth + bootstrap)',
+			this,
+		)
+		this.zitadelServiceAccountEmail = zitadelSa.email
+		iamSvc.bindProjectRoles(
+			[Roles.CloudSql.Client, Roles.CloudSql.InstanceUser],
+			zitadelApp,
+			zitadelSa.email,
+			this,
+		)
+		iamSvc.bindKubernetesSaUser(
+			zitadelApp,
+			zitadelSa,
+			zitadelNamespace,
+			this,
+		)
+
+		// Expose ESO SA email so callers (Zitadel secrets component) can attach
+		// per-secret accessor bindings without re-creating the ESO SA.
+		this.esoServiceAccountEmail = esoSa.email
+
 		// 5. Dedicated Subnet for GKE
 		this.subnet = new gcp.compute.Subnetwork(
 			`cluster-subnet-${regionName}`,
@@ -453,6 +494,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					this.backendAppServiceAccountEmail,
 				otelCollectorServiceAccountEmail:
 					this.otelCollectorServiceAccountEmail,
+				zitadelServiceAccountEmail: this.zitadelServiceAccountEmail,
+				esoServiceAccountEmail: this.esoServiceAccountEmail,
 			})
 			return
 		}
@@ -505,6 +548,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			backendAppServiceAccountEmail: this.backendAppServiceAccountEmail,
 			otelCollectorServiceAccountEmail:
 				this.otelCollectorServiceAccountEmail,
+			zitadelServiceAccountEmail: this.zitadelServiceAccountEmail,
+			esoServiceAccountEmail: this.esoServiceAccountEmail,
 		})
 	}
 }

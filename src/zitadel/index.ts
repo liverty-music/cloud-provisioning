@@ -6,10 +6,13 @@ import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
 import { ActionsComponent } from './components/token-action.js'
 
+export * from './components/actions-v2.js'
 export * from './components/frontend.js'
 export * from './components/machine-user.js'
+export * from './components/secrets.js'
 export * from './components/smtp.js'
 export * from './components/token-action.js'
+export * from './dynamic/index.js'
 
 export interface ZitadelConfig {
 	orgId: string
@@ -25,7 +28,17 @@ export interface ZitadelArgs {
 }
 
 /**
- * Zitadel orchestrates all Zitadel identity resources.
+ * Zitadel orchestrates all Zitadel identity resources against a Zitadel
+ * Management API (currently the Zitadel Cloud dev tenant; migrates to the
+ * in-cluster self-hosted instance in a follow-up "cutover" PR).
+ *
+ * During the migration window, the self-hosted infra (GSM secret shells,
+ * Cloud SQL DB/user, K8s manifests) is provisioned alongside this class by
+ * `SecretsComponent` and the `k8s/namespaces/zitadel/` Kustomize base — but
+ * this class continues to configure the Cloud tenant to keep dev auth
+ * functional. The cutover PR swaps this class's `ActionsComponent` (v1) for
+ * `ActionsV2Component` (v2) at the same time the provider `domain` input
+ * flips to the self-hosted hostname.
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider

@@ -1,0 +1,13 @@
+# Dev overlay for the Zitadel API Deployment:
+#   - replicaCount 2 to satisfy PDB minAvailable=1 + honor D8 design
+#   - spot-pool nodeSelector to match the cluster cost posture
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zitadel
+spec:
+  replicas: 2
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"

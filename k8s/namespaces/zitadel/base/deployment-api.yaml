@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zitadel
+  labels:
+    app: zitadel
+    component: api
+  annotations:
+    # Restart on configmap/secret changes so masterkey / env updates land
+    # without a manual rollout.
+    reloader.stakater.com/auto: "true"
+spec:
+  selector:
+    matchLabels:
+      app: zitadel
+      component: api
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: zitadel
+        component: api
+    spec:
+      serviceAccountName: zitadel
+      terminationGracePeriodSeconds: 60
+      # Keep both replicas on different nodes so a single Spot preemption
+      # cannot take the entire API plane down.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: zitadel
+                component: api
+            topologyKey: kubernetes.io/hostname
+      volumes:
+      - name: bootstrap
+        emptyDir: {}
+      containers:
+      # Main Zitadel API container. `start-from-init` is idempotent — on an
+      # empty database it runs init + setup; on an initialized database it
+      # runs setup (pending migrations) + start. FIRSTINSTANCE env vars in
+      # the configmap are consumed only on the first run.
+      - name: zitadel
+        image: ghcr.io/zitadel/zitadel:v4.13.1
+        args:
+        - start-from-init
+        - --masterkeyFromEnv
+        - --tlsMode
+        - external
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: zitadel-config
+        - secretRef:
+            name: zitadel-secrets
+        volumeMounts:
+        - name: bootstrap
+          mountPath: /var/zitadel/bootstrap
+        readinessProbe:
+          httpGet:
+            path: /debug/ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /debug/healthz
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+      # Cloud SQL Auth Proxy sidecar — brokers IAM auth to Cloud SQL over PSC.
+      # Mirrors the backend's sql-proxy pattern: --auto-iam-authn uses the
+      # pod's Workload Identity SA (zitadel-sa@...) to sign DB tokens.
+      - name: cloud-sql-proxy
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+        args:
+        - --psc
+        - --auto-iam-authn
+        - --port=5432
+        - --address=127.0.0.1
+        - liverty-music-dev:asia-northeast2:postgres-osaka
+        ports:
+        - containerPort: 5432
+          name: postgres
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65532
+          allowPrivilegeEscalation: false
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+      # Bootstrap uploader — on first boot, Zitadel writes the admin machine
+      # user's JSON key to the shared emptyDir via `FIRSTINSTANCE_MACHINEKEYPATH`.
+      # This sidecar watches for the file, compares to the currently stored
+      # GSM version, uploads a new version when different, then idles so the
+      # pod stays healthy. Idempotent across pod restarts.
+      - name: bootstrap-uploader
+        image: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          KEY_FILE=/var/zitadel/bootstrap/admin-sa.json
+          SECRET_NAME=zitadel-admin-sa-key
+          echo "bootstrap-uploader: waiting for $KEY_FILE"
+          while [ ! -f "$KEY_FILE" ]; do sleep 2; done
+          if existing=$(gcloud secrets versions access latest --secret="$SECRET_NAME" 2>/dev/null); then
+            if [ "$existing" = "$(cat "$KEY_FILE")" ]; then
+              echo "bootstrap-uploader: stored version already matches, skipping upload"
+              exec tail -f /dev/null
+            fi
+          fi
+          echo "bootstrap-uploader: uploading new admin-sa key"
+          gcloud secrets versions add "$SECRET_NAME" --data-file="$KEY_FILE"
+          echo "bootstrap-uploader: upload complete"
+          exec tail -f /dev/null
+        volumeMounts:
+        - name: bootstrap
+          mountPath: /var/zitadel/bootstrap
+          readOnly: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
