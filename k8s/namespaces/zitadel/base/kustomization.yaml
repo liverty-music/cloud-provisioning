@@ -13,6 +13,8 @@ resources:
 - httproute.yaml
 - pdb.yaml
 - external-secret.yaml
+- external-secret-postgres-admin.yaml
+- job-grant-db.yaml
 
 configMapGenerator:
 - name: zitadel-config

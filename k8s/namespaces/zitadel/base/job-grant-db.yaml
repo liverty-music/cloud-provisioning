@@ -1,0 +1,117 @@
+# One-shot Job that grants database ownership to the IAM user Zitadel
+# connects as. Runs every sync via the ArgoCD `Sync` hook and is
+# idempotent (GRANT / ALTER OWNER are no-ops when already applied).
+#
+# Why this is needed:
+#   * Cloud SQL's CREATE DATABASE API runs as `cloudsqlsuperuser`, which
+#     owns the resulting database. IAM users created via `gcp.sql.User`
+#     get the `cloudsqliamuser` role but no ownership or CREATE on the
+#     pre-existing `zitadel` database.
+#   * Zitadel's `start-from-init` routine needs to CREATE SCHEMA
+#     (`projections`, `eventstore`, `system`, `auth`, `adminapi`) inside
+#     that database. Without ownership it fails with
+#     `permission denied for database zitadel (SQLSTATE 42501)`.
+#
+# Why not Pulumi:
+#   * Cloud SQL is PSC-only. Pulumi Cloud Deployments runs outside the
+#     VPC, so the `postgresql` provider can't reach the instance.
+#     Running grants from inside the cluster (this Job) mirrors the
+#     atlas-operator pattern backend already uses.
+#
+# The sidecar is a K8s 1.28+ native sidecar (`initContainers` with
+# `restartPolicy: Always`) so it terminates automatically when the main
+# container exits — required for Jobs.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zitadel-db-grant
+  annotations:
+    # ArgoCD re-runs this Job on every sync. The Job spec is immutable
+    # once created, so `Replace=true` is required for ArgoCD to delete
+    # and recreate it. `BeforeHookCreation` ensures the previous run is
+    # cleaned up before the new one starts.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: zitadel-db-grant
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: zitadel
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      initContainers:
+      # Native sidecar. Terminates when the main container exits.
+      # No `--auto-iam-authn`: the Job authenticates as the built-in
+      # `postgres` superuser with a password (required to run
+      # `ALTER DATABASE OWNER` — IAM users lack that privilege).
+      - name: cloud-sql-proxy
+        restartPolicy: Always
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+        args:
+        - --psc
+        - --port=5432
+        - --address=127.0.0.1
+        - liverty-music-dev:asia-northeast2:postgres-osaka
+        ports:
+        - containerPort: 5432
+          name: postgres
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+      containers:
+      - name: psql
+        image: postgres:17-alpine
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          export PGPASSWORD="$POSTGRES_ADMIN_PASSWORD"
+
+          echo "db-grant: waiting for cloud-sql-proxy tunnel..."
+          for i in $(seq 1 30); do
+            if psql -h 127.0.0.1 -p 5432 -U postgres -d postgres \
+                 -c 'SELECT 1' >/dev/null 2>&1; then
+              echo "db-grant: tunnel ready"
+              break
+            fi
+            sleep 2
+          done
+
+          echo "db-grant: applying grants to 'zitadel' database..."
+          psql -h 127.0.0.1 -p 5432 -U postgres -d zitadel \
+               -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER DATABASE zitadel OWNER TO "zitadel@liverty-music-dev.iam";
+          GRANT ALL ON SCHEMA public TO "zitadel@liverty-music-dev.iam";
+          SQL
+
+          echo "db-grant: done"
+        env:
+        - name: POSTGRES_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-admin-credentials
+              key: postgres-admin-password
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
