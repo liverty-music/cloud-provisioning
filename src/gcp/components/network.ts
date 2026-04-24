@@ -334,30 +334,64 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{ parent: this, dependsOn: certManagerApi },
 			)
 
-			// Certificate Manager: Google-managed Certificate (covers api, web, auth)
-			const cert = new gcp.certificatemanager.Certificate(
-				'api-gateway-cert',
+			// Certificate Manager: per-service Google-managed Certificates.
+			//
+			// Each service owns a single-hostname Certificate rather than a
+			// shared SAN cert. Rationale:
+			//   - GCP managed certs treat `domains` / `dnsAuthorizations` as
+			//     immutable — adding a hostname forces a replace (delete+create).
+			//     Delete is blocked by any CertificateMapEntry still pointing at
+			//     the cert, producing a hard deadlock when onboarding a new
+			//     hostname (as we hit when adding `auth.<tld>` for Zitadel).
+			//   - Matches the per-service granularity already established for
+			//     DnsAuthorization, CertificateMapEntry, and DNS records.
+			//   - Isolates ACME provisioning / rate-limit / rotation failures to
+			//     a single hostname.
+			const backendServerCert = new gcp.certificatemanager.Certificate(
+				'backend-server-cert',
 				{
-					name: 'api-gateway-cert',
+					name: 'backend-server-cert',
 					location: 'global',
 					scope: 'DEFAULT',
 					managed: {
-						domains: [
-							`api.${managedZoneName}`,
-							`${managedZoneName}`,
-							`auth.${managedZoneName}`,
-						],
-						dnsAuthorizations: [
-							backendServerDnsAuth.id,
-							webAppDnsAuth.id,
-							zitadelDnsAuth.id,
-						],
+						domains: [`api.${managedZoneName}`],
+						dnsAuthorizations: [backendServerDnsAuth.id],
 					},
 				},
 				{ parent: this, dependsOn: certManagerApi },
 			)
 
-			// Certificate Manager: Certificate Map
+			const webAppCert = new gcp.certificatemanager.Certificate(
+				'web-app-cert',
+				{
+					name: 'web-app-cert',
+					location: 'global',
+					scope: 'DEFAULT',
+					managed: {
+						domains: [`${managedZoneName}`],
+						dnsAuthorizations: [webAppDnsAuth.id],
+					},
+				},
+				{ parent: this, dependsOn: certManagerApi },
+			)
+
+			const zitadelCert = new gcp.certificatemanager.Certificate(
+				'zitadel-cert',
+				{
+					name: 'zitadel-cert',
+					location: 'global',
+					scope: 'DEFAULT',
+					managed: {
+						domains: [`auth.${managedZoneName}`],
+						dnsAuthorizations: [zitadelDnsAuth.id],
+					},
+				},
+				{ parent: this, dependsOn: certManagerApi },
+			)
+
+			// Certificate Manager: Certificate Map. The map itself is shared
+			// across services — it is the binding between the Gateway listener
+			// and the per-hostname certs below.
 			const certMap = new gcp.certificatemanager.CertificateMap(
 				'api-gateway-cert-map',
 				{
@@ -372,7 +406,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{
 					name: 'backend-server-cert-map-entry',
 					map: certMap.name,
-					certificates: [cert.id],
+					certificates: [backendServerCert.id],
 					hostname: `api.${managedZoneName}`,
 				},
 				{ parent: this, dependsOn: certManagerApi },
@@ -384,7 +418,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{
 					name: 'zitadel-cert-map-entry',
 					map: certMap.name,
-					certificates: [cert.id],
+					certificates: [zitadelCert.id],
 					hostname: `auth.${managedZoneName}`,
 				},
 				{ parent: this, dependsOn: certManagerApi },
@@ -396,7 +430,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{
 					name: 'web-app-cert-map-entry',
 					map: certMap.name,
-					certificates: [cert.id],
+					certificates: [webAppCert.id],
 					hostname: `${managedZoneName}`,
 				},
 				{ parent: this, dependsOn: certManagerApi },
@@ -536,7 +570,6 @@ export class NetworkComponent extends pulumi.ComponentResource {
 
 			this.registerOutputs({
 				publicZoneNameservers: publicZone.nameServers,
-				certificate: cert.id,
 			})
 		}
 
