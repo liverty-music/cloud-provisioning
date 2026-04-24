@@ -93,8 +93,15 @@ spec:
           done
 
           echo "db-grant: applying grants to 'zitadel' database..."
+          # Cloud SQL's built-in `postgres` is `cloudsqlsuperuser` — not
+          # a true PG SUPERUSER. ALTER DATABASE OWNER therefore requires
+          # the current user to be a member of the new owner role.
+          # `cloudsqlsuperuser` implicitly has ADMIN OPTION on
+          # `cloudsqliamuser` (which every IAM user inherits), so it can
+          # grant the IAM role to itself to unlock the ownership transfer.
           psql -h 127.0.0.1 -p 5432 -U postgres -d zitadel \
                -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT "zitadel@liverty-music-dev.iam" TO postgres;
           ALTER DATABASE zitadel OWNER TO "zitadel@liverty-music-dev.iam";
           GRANT ALL ON SCHEMA public TO "zitadel@liverty-music-dev.iam";
           SQL
