@@ -27,6 +27,14 @@ spec:
     spec:
       serviceAccountName: zitadel
       terminationGracePeriodSeconds: 60
+      # Disable K8s legacy service-discovery env vars. Without this, the
+      # `zitadel` Service in this namespace injects `ZITADEL_PORT=tcp://<ip>:80`
+      # into every pod, which Viper then parses as the top-level Zitadel
+      # config field `Port` (expected uint16) — causing startup to fail with
+      # `'Port' cannot parse value as 'uint16': strconv.ParseUint: invalid syntax`.
+      # DNS-based service discovery (zitadel.zitadel.svc.cluster.local) works
+      # regardless of this flag.
+      enableServiceLinks: false
       # Keep both replicas on different nodes so a single Spot preemption
       # cannot take the entire API plane down.
       affinity:
