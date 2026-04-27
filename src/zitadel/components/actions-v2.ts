@@ -36,9 +36,19 @@ export interface ActionsV2ComponentArgs {
  * Both Targets use `PAYLOAD_TYPE_JWT` so the backend verifies incoming webhook
  * requests with its existing JWKS validator — no shared HMAC secret needed.
  *
- * In `dev`, `interruptOnError: false` allows the flow to fall back to OTP / no
- * claim if the backend webhook is unavailable. In staging/prod this flips to
- * `true` so operational failures fail closed.
+ * `interruptOnError` is set per-Target rather than globally because the two
+ * flows have asymmetric tolerances:
+ *
+ *   - Email-claim injection MUST always fail closed. Every backend code path
+ *     reads `email` from the access token; a tokens-without-email outage is
+ *     a hard auth failure across the whole product. The identity-management
+ *     spec calls this a hard invariant.
+ *
+ *   - Auto-verify-email is a UX shortcut. In `dev`, falling back to the
+ *     Zitadel OTP step when the webhook is briefly unavailable is acceptable
+ *     — the alternative (blocking sign-up entirely) is worse for solo dev
+ *     iteration. In staging / prod, sign-up consistency matters more, so the
+ *     same Target fails closed.
  */
 export class ActionsV2Component extends pulumi.ComponentResource {
 	public readonly preAccessTokenTarget: ZitadelTarget
@@ -61,7 +71,11 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			autoVerifyEmailEndpoint,
 			provider,
 		} = args
-		const interruptOnError = env !== 'dev'
+
+		// Email claim is a hard invariant in every environment — see class doc.
+		const emailClaimInterruptOnError = true
+		// Auto-verify is dev-tolerant; staging / prod fail closed.
+		const autoVerifyInterruptOnError = env !== 'dev'
 
 		// 1. Email-claim injection Target + ExecutionFunction
 		// REST_CALL waits for the response so the token can be complemented
@@ -77,7 +91,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 				targetType: 'REST_CALL',
 				timeout: '10s',
 				payloadType: 'PAYLOAD_TYPE_JWT',
-				interruptOnError,
+				interruptOnError: emailClaimInterruptOnError,
 			},
 			{ parent: this, dependsOn: [provider] },
 		)
@@ -111,7 +125,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 				targetType: 'REST_CALL',
 				timeout: '5s',
 				payloadType: 'PAYLOAD_TYPE_JWT',
-				interruptOnError,
+				interruptOnError: autoVerifyInterruptOnError,
 			},
 			{ parent: this, dependsOn: [provider] },
 		)
