@@ -20,3 +20,6 @@ patches:
   target:
     kind: Deployment
     name: zitadel-login
+# Relax both PDBs to minAvailable=0 so the single dev replica can be
+# voluntarily evicted (rollout, drain, Spot preemption).
+- path: pdb-patch.yaml

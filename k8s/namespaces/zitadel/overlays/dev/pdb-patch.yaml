@@ -1,0 +1,23 @@
+# Dev overlay relaxes both Zitadel PDBs to minAvailable=0. With dev replicas
+# reduced to 1 (deployment-patch.yaml, deployment-login-patch.yaml), the base
+# minAvailable=1 would permanently block voluntary disruption — Spot
+# preemption graceful drain, node auto-upgrade, and rolling updates would all
+# stall waiting for a second pod that never exists.
+#
+# Setting minAvailable=0 keeps the PDB resource present (so prod/staging
+# still inherit the base minAvailable=1) while letting dev evict its single
+# pod cleanly. The next pod starts on whichever node satisfies the spot
+# nodeSelector; brief (≤90s) downtime per disruption is acceptable for dev.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zitadel
+spec:
+  minAvailable: 0
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zitadel-login
+spec:
+  minAvailable: 0

@@ -1,12 +1,14 @@
 # Dev overlay for the Zitadel API Deployment:
-#   - replicaCount 2 to satisfy PDB minAvailable=1 + honor D8 design
-#   - spot-pool nodeSelector to match the cluster cost posture
+#   - replicaCount 1 to keep dev Compute Engine cost low; the base PDB is
+#     relaxed to minAvailable=0 in pdb-patch.yaml so a single replica can
+#     still be voluntarily evicted (Spot preemption, node drain, rollouts).
+#   - spot-pool nodeSelector to match the cluster cost posture.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: zitadel
 spec:
-  replicas: 2
+  replicas: 1
   template:
     spec:
       nodeSelector:
