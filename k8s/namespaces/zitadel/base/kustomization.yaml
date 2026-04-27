@@ -11,6 +11,7 @@ resources:
 - service-api.yaml
 - service-login.yaml
 - httproute.yaml
+- healthcheckpolicy.yaml
 - pdb.yaml
 - external-secret.yaml
 - external-secret-postgres-admin.yaml

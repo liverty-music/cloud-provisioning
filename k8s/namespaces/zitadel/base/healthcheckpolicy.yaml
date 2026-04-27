@@ -1,0 +1,50 @@
+# GCP Gateway health checks for Zitadel API and Login V2 UI.
+#
+# The default GCLB health check for a NEG-backed Service probes `GET /`
+# expecting a 2xx response. Both Zitadel components serve non-2xx on `/`:
+#   * API (`/`)          → 302 (redirect to login)
+#   * Login V2 (`/`)     → 404 (only `/ui/v2/login/*` is served)
+# …so GCLB marks every endpoint UNHEALTHY and the Gateway returns 503
+# regardless of whether the pods are K8s-Ready.
+#
+# Explicit HealthCheckPolicy resources override the probe path to match
+# each component's actual health endpoint. Mirrors the pattern used by
+# `backend/server-policy` (see k8s/namespaces/backend/base/server/).
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: zitadel-api-policy
+  labels:
+    app: zitadel
+    component: api
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8080
+        requestPath: /debug/healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: zitadel
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: zitadel-login-policy
+  labels:
+    app: zitadel
+    component: login
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 3000
+        requestPath: /ui/v2/login
+  targetRef:
+    group: ""
+    kind: Service
+    name: zitadel-login
