@@ -1,11 +1,12 @@
-# Dev overlay for the Zitadel Login V2 Deployment — same spot posture as the
-# API deployment.
+# Dev overlay for the Zitadel Login V2 Deployment — same posture as the
+# API deployment: replicaCount 1 + spot-pool nodeSelector. The base PDB is
+# relaxed to minAvailable=0 in pdb-patch.yaml.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: zitadel-login
 spec:
-  replicas: 2
+  replicas: 1
   template:
     spec:
       nodeSelector:

@@ -466,6 +466,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					nodeConfig: {
 						machineType: 'e2-medium',
 						spot: true,
+						// 30 GB pd-standard. The GKE default is 100 GB pd-balanced,
+						// which dominated dev Compute Engine cost (~45% of the SKU
+						// at 3 nodes). E2 does not support any Hyperdisk variant
+						// (per cloud.google.com/compute/docs/disks/hyperdisks), so
+						// pd-standard is the cheapest available type for this
+						// machine series. 30 GB is GKE's recommended minimum and
+						// comfortably fits the cluster's image cache (Zitadel +
+						// cloud-sql-proxy + backend + frontend + ArgoCD + KEDA +
+						// Atlas + ESO + Reloader + OTel) without triggering
+						// DiskPressure evictions.
+						diskSizeGb: 30,
+						diskType: 'pd-standard',
 						serviceAccount: gkeNodeSa.email,
 						oauthScopes: [
 							'https://www.googleapis.com/auth/cloud-platform',
