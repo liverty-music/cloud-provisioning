@@ -1,69 +1,120 @@
-import type * as pulumi from '@pulumi/pulumi'
+import * as gcp from '@pulumi/gcp'
+import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
+import { ActionsV2Component } from './components/actions-v2.js'
 import { FrontendComponent } from './components/frontend.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
-import { ActionsComponent } from './components/token-action.js'
+import {
+	AUTO_VERIFY_EMAIL_PATH,
+	BACKEND_WEBHOOK_BASE_URL,
+	PRE_ACCESS_TOKEN_PATH,
+	ZITADEL_DEV_DEFAULT_ORG_ID,
+	zitadelDomainMap,
+} from './constants.js'
 
 export * from './components/actions-v2.js'
 export * from './components/frontend.js'
 export * from './components/machine-user.js'
 export * from './components/secrets.js'
 export * from './components/smtp.js'
-export * from './components/token-action.js'
+export * from './constants.js'
 export * from './dynamic/index.js'
 
-export interface ZitadelConfig {
-	orgId: string
-	domain: string
-	pulumiJwtProfileJson: string
+export interface ZitadelArgs {
+	env: Environment
+	/** GCP project ID (e.g. `liverty-music-dev`) holding the GSM secret
+	 *  `zitadel-admin-sa-key` populated by the in-cluster bootstrap-uploader. */
+	gcpProjectId: pulumi.Input<string>
 	/** Postmark Server API Token — used as both SMTP username and password. */
 	postmarkServerApiToken: string
 }
 
-export interface ZitadelArgs {
-	env: Environment
-	config: ZitadelConfig
-}
-
 /**
- * Zitadel orchestrates all Zitadel identity resources against a Zitadel
- * Management API (currently the Zitadel Cloud dev tenant; migrates to the
- * in-cluster self-hosted instance in a follow-up "cutover" PR).
+ * Zitadel orchestrates all Zitadel identity resources against the in-cluster
+ * self-hosted Zitadel instance reachable at the env-specific issuer hostname
+ * (e.g. `https://auth.dev.liverty-music.app` for dev).
  *
- * During the migration window, the self-hosted infra (GSM secret shells,
- * Cloud SQL DB/user, K8s manifests) is provisioned alongside this class by
- * `SecretsComponent` and the `k8s/namespaces/zitadel/` Kustomize base — but
- * this class continues to configure the Cloud tenant to keep dev auth
- * functional. The cutover PR swaps this class's `ActionsComponent` (v1) for
- * `ActionsV2Component` (v2) at the same time the provider `domain` input
- * flips to the self-hosted hostname.
+ * Cutover from Zitadel Cloud → self-hosted happened in cloud-provisioning's
+ * `self-hosted-zitadel-cutover` PR. The provider's `domain` input now reads
+ * from `constants.ts:zitadelDomainMap[env]`, and `jwtProfileJson` is sourced
+ * from the GSM secret `zitadel-admin-sa-key` that the in-cluster Zitadel
+ * pod's `bootstrap-uploader` sidecar wrote on first boot.
+ *
+ * The Cloud tenant's Zitadel resources are intentionally NOT torn down by
+ * this class — per OpenSpec D10, the Cloud tenant is retained as a rollback
+ * target for two weeks. Pulumi state for those resources must be removed
+ * manually before merging the cutover PR (see runbook in proposal.md).
+ *
+ * Cutover scope is dev-only (D10). The `env` guard below makes a staging /
+ * prod attempt fail loudly until those environments get their own
+ * `ZITADEL_DEFAULT_ORG_ID` (and any other env-specific bootstrap state)
+ * threaded through.
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider
 	public readonly project: zitadel.Project
 	public readonly frontend: FrontendComponent
 	public readonly smtp: SmtpComponent
-	public readonly actions: ActionsComponent
+	public readonly actionsV2: ActionsV2Component
 	public readonly machineUser: MachineUserComponent
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
 
 	constructor(name: string, args: ZitadelArgs) {
-		const { env, config } = args
+		const { env, gcpProjectId, postmarkServerApiToken } = args
+
+		if (env !== 'dev') {
+			// Self-hosted Zitadel cutover is dev-only per OpenSpec D10.
+			// Extending to staging / prod requires:
+			//   - An env-keyed default-org-id source (constants.ts or
+			//     a Dynamic Resource that discovers it from the admin SA key).
+			//   - A bootstrapped self-hosted instance with admin-sa-key in
+			//     that environment's GSM.
+			//   - A separate cutover PR per environment.
+			throw new Error(
+				`Zitadel self-hosted cutover is dev-only; got env=${env}. ` +
+					'See OpenSpec change "self-hosted-zitadel" §13 (cutover scope) ' +
+					'and §15 (cooldown) for the staging/prod migration plan.',
+			)
+		}
+
+		const orgId = ZITADEL_DEV_DEFAULT_ORG_ID
+		const domain = zitadelDomainMap[env]
+
+		// Pull the bootstrap-uploaded admin machine user JWT-profile JSON from
+		// GSM. `secretData` is a `pulumi.Output<string>` that resolves at
+		// preview/up time via the GCP Secret Manager API — no Pulumi-graph
+		// dependency on `SecretsComponent` is needed (the secret is created
+		// by SecretsComponent and populated out-of-band by the bootstrap
+		// sidecar; we only read the latest version here).
+		//
+		// CRITICAL: wrap the result in `pulumi.secret()` so Pulumi marks the
+		// value `[secret]` in state and preview output. Without this, the RSA
+		// private key embedded in the JWT-profile JSON leaks into preview
+		// logs, CI output, and Pulumi service history.
+		const jwtProfileJson = pulumi.secret(
+			gcp.secretmanager
+				.getSecretVersionOutput({
+					project: gcpProjectId,
+					secret: 'zitadel-admin-sa-key',
+					version: 'latest',
+				})
+				.apply((v) => v.secretData),
+		)
 
 		this.provider = new zitadel.Provider(`${name}-provider`, {
-			domain: config.domain,
-			jwtProfileJson: config.pulumiJwtProfileJson,
+			domain,
+			jwtProfileJson,
 		})
 
 		this.project = new zitadel.Project(
 			name,
 			{
 				name: name,
-				orgId: config.orgId,
+				orgId,
 				// Minimal role settings for initial setup
 				projectRoleAssertion: false,
 				projectRoleCheck: false,
@@ -76,25 +127,28 @@ export class Zitadel {
 
 		this.frontend = new FrontendComponent(name, {
 			env,
-			orgId: config.orgId,
+			orgId,
 			projectId: this.project.id,
 			provider: this.provider,
 		})
 
 		this.smtp = new SmtpComponent(name, {
 			env,
-			serverApiToken: config.postmarkServerApiToken,
+			serverApiToken: postmarkServerApiToken,
 			provider: this.provider,
 		})
 
-		this.actions = new ActionsComponent(name, {
+		this.actionsV2 = new ActionsV2Component(name, {
 			env,
-			orgId: config.orgId,
+			domain,
+			jwtProfileJson,
+			preAccessTokenEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${PRE_ACCESS_TOKEN_PATH}`,
+			autoVerifyEmailEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${AUTO_VERIFY_EMAIL_PATH}`,
 			provider: this.provider,
 		})
 
 		this.machineUser = new MachineUserComponent(name, {
-			orgId: config.orgId,
+			orgId,
 			provider: this.provider,
 		})
 

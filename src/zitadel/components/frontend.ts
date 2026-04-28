@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../../config.js'
+import { baseDomainMap } from '../constants.js'
 
 export interface FrontendComponentArgs {
 	env: Environment
@@ -23,13 +24,7 @@ export class FrontendComponent extends pulumi.ComponentResource {
 		const { env, orgId, projectId, provider } = args
 		const resourceOptions = { provider, parent: this }
 
-		// Environment-specific domains
-		const domainMap: Record<Environment, string> = {
-			dev: 'dev.liverty-music.app',
-			staging: 'staging.liverty-music.app',
-			prod: 'liverty-music.app',
-		}
-		const domain = domainMap[env]
+		const domain = baseDomainMap[env]
 
 		const redirectUris = [`https://${domain}/auth/callback`]
 		const postLogoutRedirectUris = [`https://${domain}/`]

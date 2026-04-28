@@ -10,11 +10,7 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
-import {
-	SecretsComponent,
-	Zitadel,
-	type ZitadelConfig,
-} from './zitadel/index.js'
+import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'
@@ -28,7 +24,6 @@ const blockchainConfig = config.getObject('blockchain') as
 	| BlockchainConfig
 	| undefined
 const bufConfig = config.requireObject('buf') as BufConfig
-const zitadelConfig = config.requireObject('zitadel') as ZitadelConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
 	'postmark',
@@ -52,20 +47,18 @@ if (env === 'prod') {
 	})
 }
 
-// 4. Zitadel Identity
-// Currently targets the Zitadel Cloud dev tenant (as `zitadelConfig.domain`).
-// The cutover PR swaps `domain` for the self-hosted hostname and re-sources
-// `pulumiJwtProfileJson` from GSM once the in-cluster bootstrap Job has
-// populated `zitadel-admin-sa-key`. Keeping this instantiation unconditional
-// in the reshape PR preserves the existing Cloud-tenant state until cutover.
+// 4. Zitadel Identity (self-hosted, dev only post-cutover).
+// Provider points at `https://auth.dev.liverty-music.app`; admin SA key is
+// pulled from GSM `zitadel-admin-sa-key` (populated once by the in-cluster
+// bootstrap-uploader sidecar). Cutover scope is dev-only (OpenSpec D10);
+// the env guard inside the Zitadel class throws if invoked from staging /
+// prod until those environments get their own self-hosted instance.
 let zitadelMachineKey: pulumi.Output<string> | undefined
 if (env === 'dev') {
 	const zitadel = new Zitadel('liverty-music', {
 		env,
-		config: {
-			...zitadelConfig,
-			postmarkServerApiToken: postmarkConfig.serverApiToken,
-		},
+		gcpProjectId: `${brandId}-${env}`,
+		postmarkServerApiToken: postmarkConfig.serverApiToken,
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails
 }
