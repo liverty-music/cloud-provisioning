@@ -1,0 +1,31 @@
+# Dev override for the GKE-managed kube-dns-autoscaler ConfigMap.
+#
+# The cluster-proportional-autoscaler reads `data.linear` as a single JSON
+# string. We replace the entire string here so all linear-policy fields are
+# explicit; the only behavioral change vs. GKE's default is flipping
+# `preventSinglePointFailure` from `true` to `false`.
+#
+# Why dev-only:
+#   - With 6 vCPU / 3 spot nodes, the formula
+#       max(ceil(6/256), ceil(3/16), 1)
+#     yields 1 desired kube-dns replica. GKE's `preventSinglePointFailure: true`
+#     forces ≥2 instead, costing ~270m CPU and pinning a 3rd spot node that
+#     the cluster autoscaler would otherwise retire.
+#   - Disabling the guard accepts brief DNS gaps during pod reschedule
+#     (Spot preemption, drain). `node-local-dns` cache + client retries
+#     hide this for typical dev workloads. Unacceptable for prod/staging,
+#     so this override stays scoped to the dev overlay.
+#
+# Source-of-truth notes:
+#   - GKE doc explicitly endorses ConfigMap edits for kube-dns scaling:
+#     https://cloud.google.com/kubernetes-engine/docs/concepts/kube-dns
+#   - ArgoCD's `core` Application syncs this overlay continuously
+#     (sync-wave: 1, automated.selfHeal: true), so any GKE-side reset
+#     during cluster upgrades is reverted within minutes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-dns-autoscaler
+  namespace: kube-system
+data:
+  linear: '{"coresPerReplica":256,"includeUnschedulableNodes":true,"nodesPerReplica":16,"preventSinglePointFailure":false}'

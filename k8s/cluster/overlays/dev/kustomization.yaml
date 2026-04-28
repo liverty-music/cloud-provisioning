@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
 - ../../base
+- kube-dns-autoscaler.yaml
 
 patches:
 - path: cluster-secret-store-patch.yaml
