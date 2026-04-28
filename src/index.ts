@@ -10,7 +10,12 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
-import { SecretsComponent, Zitadel } from './zitadel/index.js'
+import {
+	SecretsComponent,
+	ZITADEL_DEV_DEFAULT_ORG_ID,
+	Zitadel,
+	zitadelDomainMap,
+} from './zitadel/index.js'
 
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'
@@ -54,6 +59,7 @@ if (env === 'prod') {
 // the env guard inside the Zitadel class throws if invoked from staging /
 // prod until those environments get their own self-hosted instance.
 let zitadelMachineKey: pulumi.Output<string> | undefined
+let zitadelApplicationClientId: pulumi.Output<string> | undefined
 if (env === 'dev') {
 	const zitadel = new Zitadel('liverty-music', {
 		env,
@@ -61,6 +67,7 @@ if (env === 'dev') {
 		postmarkServerApiToken: postmarkConfig.serverApiToken,
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails
+	zitadelApplicationClientId = zitadel.applicationClientId
 }
 
 // 2. GCP Infrastructure (All Environments)
@@ -111,12 +118,34 @@ new GitHubRepositoryComponent({
 })
 
 // Frontend Repository
+//
+// Vite-baked OIDC client config for the SPA. These are environment
+// **variables** (not secrets) because they are public values that Vite
+// inlines into the deployed bundle at build time. Adding the client_id as a
+// Pulumi-managed variable removes the only manual step from the
+// self-hosted-zitadel cutover runbook (previously: hand-copy from Pulumi
+// outputs to GitHub UI). When Pulumi (re)creates the `web-frontend`
+// ApplicationOidc, the client_id output flows here in the same `pulumi up`
+// — the next frontend CI run picks up the fresh value automatically.
+//
+// Cutover scope is dev-only (OpenSpec D10), matching the Zitadel class's
+// own env guard. The Vite vars are skipped on staging / prod stacks until
+// those environments cut over to their own self-hosted instances.
+const frontendVariables: Record<string, pulumi.Input<string>> = {
+	...sharedVariables,
+}
+if (env === 'dev' && zitadelApplicationClientId) {
+	frontendVariables.VITE_ZITADEL_ISSUER = `https://${zitadelDomainMap[env]}`
+	frontendVariables.VITE_ZITADEL_CLIENT_ID = zitadelApplicationClientId
+	frontendVariables.VITE_ZITADEL_ORG_ID = ZITADEL_DEV_DEFAULT_ORG_ID
+}
+
 new GitHubRepositoryComponent({
 	brandId,
 	githubConfig,
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
-	variables: sharedVariables,
+	variables: frontendVariables,
 	requiredStatusCheckContexts: ['CI Success'],
 })
 

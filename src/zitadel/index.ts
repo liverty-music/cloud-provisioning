@@ -63,6 +63,12 @@ export class Zitadel {
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
 
+	/** OIDC client ID issued by Zitadel for the frontend SPA. Wire into the
+	 *  frontend GitHub Actions environment (`VITE_ZITADEL_CLIENT_ID`) so a
+	 *  Vite rebuild bakes the new value into the deployed bundle whenever
+	 *  Pulumi (re)creates the `web-frontend` ApplicationOidc. */
+	public readonly applicationClientId: pulumi.Output<string>
+
 	constructor(name: string, args: ZitadelArgs) {
 		const { env, gcpProjectId, postmarkServerApiToken } = args
 
@@ -153,5 +159,6 @@ export class Zitadel {
 		})
 
 		this.machineKeyDetails = this.machineUser.keyDetails
+		this.applicationClientId = this.frontend.application.clientId
 	}
 }
