@@ -54,6 +54,7 @@ if (env === 'prod') {
 // the env guard inside the Zitadel class throws if invoked from staging /
 // prod until those environments get their own self-hosted instance.
 let zitadelMachineKey: pulumi.Output<string> | undefined
+let zitadelLoginPat: pulumi.Output<string> | undefined
 if (env === 'dev') {
 	const zitadel = new Zitadel('liverty-music', {
 		env,
@@ -61,6 +62,7 @@ if (env === 'dev') {
 		postmarkServerApiToken: postmarkConfig.serverApiToken,
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails
+	zitadelLoginPat = zitadel.loginClientToken
 }
 
 // 2. GCP Infrastructure (All Environments)
@@ -75,6 +77,7 @@ const gcp = new Gcp({
 	cloudflareConfig,
 	postmarkConfig,
 	zitadelMachineKey,
+	zitadelLoginPat,
 })
 
 // 5. Self-hosted Zitadel infra phase (dev only).

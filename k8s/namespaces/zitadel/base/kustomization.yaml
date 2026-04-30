@@ -15,6 +15,7 @@ resources:
 - pdb.yaml
 - external-secret.yaml
 - external-secret-postgres-admin.yaml
+- external-secret-login-pat.yaml
 - job-grant-db.yaml
 
 configMapGenerator:

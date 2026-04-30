@@ -60,6 +60,21 @@ spec:
           value: http://zitadel.zitadel.svc.cluster.local
         - name: NEXT_PUBLIC_BASE_PATH
           value: /ui/v2/login
+        # Personal Access Token used by the Login V2 UI Next.js server to
+        # authenticate against the Zitadel API for SSR-side calls (instance
+        # settings, cross-org user search, session management). Provisioned
+        # by Pulumi `LoginClientComponent`, mirrored from GSM into a K8s
+        # Secret by `external-secret-login-pat.yaml`, mounted as a file —
+        # not as an env var — so it does not appear in `kubectl describe pod`
+        # output.
+        # Upstream contract:
+        #   https://zitadel.com/docs/self-hosting/manage/login-client
+        - name: ZITADEL_SERVICE_USER_TOKEN_FILE
+          value: /var/run/zitadel/login-client.pat
+        volumeMounts:
+        - name: login-pat
+          mountPath: /var/run/zitadel
+          readOnly: true
         readinessProbe:
           httpGet:
             path: /ui/v2/login
@@ -83,3 +98,13 @@ spec:
           limits:
             cpu: 500m
             memory: 512Mi
+      volumes:
+      - name: login-pat
+        secret:
+          secretName: zitadel-login-pat
+          # `secretKey: token` (set in external-secret-login-pat.yaml) lands
+          # the PAT at /var/run/zitadel/token by default. Project it to
+          # `login-client.pat` to match ZITADEL_SERVICE_USER_TOKEN_FILE.
+          items:
+          - key: token
+            path: login-client.pat
