@@ -56,8 +56,28 @@ spec:
         - containerPort: 3000
           name: http
         env:
+        # ZITADEL_API_URL must be the **public** issuer URL, not the
+        # cluster-internal Service URL. Zitadel v4 selects the virtual
+        # instance from the request's Host header and matches it against
+        # the configured InstanceDomains; the cluster-internal hostname
+        # `zitadel.zitadel.svc.cluster.local` is not in that list, so
+        # internal calls return HTTP 404 ("Failed to fetch security
+        # settings from API ... status:404").
+        #
+        # Setting the public URL here makes the login UI's outbound calls
+        # carry `Host: auth.dev.liverty-music.app`. The request still stays
+        # within the cluster: it goes Gateway → HTTPRoute (`/` catch-all
+        # rule) → `zitadel` Service → API container. The Gateway round-trip
+        # adds ~10ms but avoids any cluster-DNS rewrite hacks.
+        #
+        # An alternative (not used) is registering the internal hostname
+        # as an InstanceDomain via the API; deferred because that adds an
+        # imperative bootstrap step outside of Pulumi/Kustomize.
+        #
+        # Refs:
+        #   https://zitadel.com/docs/self-hosting/manage/custom-domain
         - name: ZITADEL_API_URL
-          value: http://zitadel.zitadel.svc.cluster.local
+          value: https://auth.dev.liverty-music.app
         - name: NEXT_PUBLIC_BASE_PATH
           value: /ui/v2/login
         # Personal Access Token used by the Login V2 UI Next.js server to
