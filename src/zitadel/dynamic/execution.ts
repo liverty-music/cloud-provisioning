@@ -46,7 +46,7 @@ async function setExecution(opts: {
 		path: '/v2/actions/executions',
 		body: {
 			condition: opts.condition,
-			targets: opts.targetIds.map((id) => ({ target: id })),
+			targets: opts.targetIds,
 		},
 	})
 	if (res.statusCode < 200 || res.statusCode >= 300) {
