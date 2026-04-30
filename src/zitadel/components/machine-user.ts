@@ -61,7 +61,27 @@ export class MachineUserComponent extends pulumi.ComponentResource {
 				orgId,
 				userId: this.machineUser.id,
 				keyType: 'KEY_TYPE_JSON',
-				expirationDate: '2519-04-01T08:45:00Z',
+				// Effectively never expires for dev. The far-future date
+				// avoids the "silent breakage on day N" failure mode that a
+				// short expiration would create — there is no automated
+				// rotation path here today, so an expired key would lock
+				// out the backend until manual rotation. For prod (when the
+				// self-hosted cutover extends beyond dev) this MUST be
+				// replaced with a real expiration + rotation runbook.
+				//
+				// Bumped from a magic placeholder ('2519-04-01T08:45:00Z',
+				// the upstream example value) to a clean far-future date.
+				// The change also force-replaces the MachineKey, which is
+				// intentional in this PR: state drift from the post-cutover
+				// merged-state import left GSM holding a stale Cloud-era
+				// key that does not match any AuthNKey row in the
+				// self-hosted Zitadel DB, so backend → Zitadel API calls
+				// (e.g. ResendEmailVerification) fail with `Errors.Internal
+				// (OIDC-AhX2u) parent: Errors.AuthNKey.NotFound`. Replacing
+				// the MachineKey re-mints the key, propagates fresh
+				// keyDetails into the GSM SecretVersion, and aligns all
+				// three sources of truth (Zitadel DB, GSM, Pulumi state).
+				expirationDate: '2099-01-01T00:00:00Z',
 			},
 			{ ...resourceOptions, dependsOn: [this.machineUser] },
 		)
