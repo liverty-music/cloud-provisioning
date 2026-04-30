@@ -1,22 +1,14 @@
 import * as pulumi from '@pulumi/pulumi'
 import type * as zitadel from '@pulumiverse/zitadel'
-import type { Environment } from '../../config.js'
-import {
-	ZitadelExecutionFunction,
-	ZitadelExecutionRequest,
-	ZitadelTarget,
-} from '../dynamic/index.js'
+import { ZitadelExecutionFunction, ZitadelTarget } from '../dynamic/index.js'
 
 export interface ActionsV2ComponentArgs {
-	env: Environment
 	/** Zitadel domain hosting the Management API (e.g. `auth.dev.liverty-music.app`). */
 	domain: pulumi.Input<string>
 	/** Admin machine user JWT profile JSON, used by Dynamic Resources for REST auth. */
 	jwtProfileJson: pulumi.Input<string>
 	/** In-cluster URL of the backend `/pre-access-token` webhook handler. */
 	preAccessTokenEndpoint: pulumi.Input<string>
-	/** In-cluster URL of the backend auto-verify-email webhook handler. */
-	autoVerifyEmailEndpoint: pulumi.Input<string>
 	/** Pulumi Zitadel v1 provider — required as a `dependsOn` marker so executions
 	 *  are created after the Management API is reachable via the provider. */
 	provider: zitadel.Provider
@@ -26,35 +18,52 @@ export interface ActionsV2ComponentArgs {
  * ActionsV2Component provisions the Zitadel Actions v2 Targets and Execution
  * bindings that replace the deprecated Actions v1 JavaScript mechanism.
  *
- * Two flows are wired:
- *   1. `preaccesstoken` — injects the `email` claim into JWT access tokens
- *      before issuance (replaces `addEmailClaim` v1 Action).
- *   2. `AddHumanUser` request — marks new users' emails as verified during
- *      Self-Registration (replaces the `INTERNAL_AUTHENTICATION/PRE_CREATION`
- *      v1 Action that called `api.setEmailVerified(true)`).
+ * Currently wires only the `preaccesstoken` flow — injects the `email` claim
+ * into JWT access tokens before issuance (replaces `addEmailClaim` v1 Action).
+ * Email-claim injection MUST always fail closed: every backend code path
+ * reads `email` from the access token, so a tokens-without-email outage is
+ * a hard auth failure across the whole product (identity-management spec
+ * hard invariant).
  *
- * Both Targets use `PAYLOAD_TYPE_JWT` so the backend verifies incoming webhook
- * requests with its existing JWKS validator — no shared HMAC secret needed.
+ * The Target uses `PAYLOAD_TYPE_JWT` so the backend verifies incoming
+ * webhook requests with its existing JWKS validator — no shared HMAC secret
+ * needed.
  *
- * `interruptOnError` is set per-Target rather than globally because the two
- * flows have asymmetric tolerances:
+ * ## Removed: auto-verify-email Action
  *
- *   - Email-claim injection MUST always fail closed. Every backend code path
- *     reads `email` from the access token; a tokens-without-email outage is
- *     a hard auth failure across the whole product. The identity-management
- *     spec calls this a hard invariant.
+ * The previous version provisioned a second Action — an `ExecutionRequest`
+ * on `/zitadel.user.v2.UserService/AddHumanUser` that called a backend
+ * webhook returning `{ email: { is_verified: true } }` to mark new users'
+ * emails as verified during Self-Registration (replacing the
+ * `INTERNAL_AUTHENTICATION/PRE_CREATION` v1 Action).
  *
- *   - Auto-verify-email is a UX shortcut. In `dev`, falling back to the
- *     Zitadel OTP step when the webhook is briefly unavailable is acceptable
- *     — the alternative (blocking sign-up entirely) is worse for solo dev
- *     iteration. In staging / prod, sign-up consistency matters more, so the
- *     same Target fails closed.
+ * That binding has been removed because:
+ *
+ *   1. Zitadel v4 Actions v2 `request:*` Executions REPLACE the request body
+ *      with the webhook response (not merge-patch). Returning only `{email:
+ *      {is_verified: true}}` therefore strips Profile, the rest of Email,
+ *      Phone, etc. from the AddHumanUser request, causing the API to fail
+ *      with `invalid AddHumanUserRequest.Profile: value is required`. See
+ *      https://github.com/zitadel/zitadel/issues/9748 for the analogous bug
+ *      report on `RetrieveIdentityProviderIntent`.
+ *
+ *   2. Empirically the Action also failed to mark emails as verified even
+ *      under the old Zitadel Cloud setup — users were still prompted for
+ *      the email-verification OTP during sign-up, despite the Action
+ *      supposedly returning `is_verified: true`. The mechanism never
+ *      actually delivered the intended UX.
+ *
+ * Email verification therefore proceeds via Zitadel's default OTP step.
+ * If we want passkey-only sign-ups to skip the email-verification screen
+ * later, the proper fix is either:
+ *   - Disable the email-verification step at the LoginPolicy level, or
+ *   - Reconstruct the full AddHumanUserRequest in the webhook response
+ *     (parse the JWT body, mutate `email.is_verified`, return the entire
+ *     request payload).
  */
 export class ActionsV2Component extends pulumi.ComponentResource {
 	public readonly preAccessTokenTarget: ZitadelTarget
 	public readonly preAccessTokenExecution: ZitadelExecutionFunction
-	public readonly autoVerifyEmailTarget: ZitadelTarget
-	public readonly autoVerifyEmailExecution: ZitadelExecutionRequest
 
 	constructor(
 		name: string,
@@ -63,24 +72,15 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:ActionsV2', name, {}, opts)
 
-		const {
-			env,
-			domain,
-			jwtProfileJson,
-			preAccessTokenEndpoint,
-			autoVerifyEmailEndpoint,
-			provider,
-		} = args
+		const { domain, jwtProfileJson, preAccessTokenEndpoint, provider } =
+			args
 
-		// Email claim is a hard invariant in every environment — see class doc.
-		const emailClaimInterruptOnError = true
-		// Auto-verify is dev-tolerant; staging / prod fail closed.
-		const autoVerifyInterruptOnError = env !== 'dev'
-
-		// 1. Email-claim injection Target + ExecutionFunction
+		// Email-claim injection Target + ExecutionFunction.
 		// REST_CALL waits for the response so the token can be complemented
 		// with claims. PAYLOAD_TYPE_JWT lets the backend verify with its
-		// existing Zitadel JWKS validator.
+		// existing Zitadel JWKS validator. `interruptOnError` is true in all
+		// environments because every backend code path requires the email
+		// claim — token issuance must fail closed if injection fails.
 		this.preAccessTokenTarget = new ZitadelTarget(
 			'pre-access-token-webhook',
 			{
@@ -91,7 +91,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 				targetType: 'REST_CALL',
 				timeout: '10s',
 				payloadType: 'PAYLOAD_TYPE_JWT',
-				interruptOnError: emailClaimInterruptOnError,
+				interruptOnError: true,
 			},
 			{ parent: this, dependsOn: [provider] },
 		)
@@ -110,43 +110,8 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			},
 		)
 
-		// 2. Auto-verify-email Target + ExecutionRequest
-		// REST_CALL on the AddHumanUser request mutates the incoming payload
-		// to set `email.is_verified = true` before Zitadel persists the user.
-		// Method path pinned to v2 UserService; adjust here if Zitadel renames
-		// the gRPC service in a future release.
-		this.autoVerifyEmailTarget = new ZitadelTarget(
-			'auto-verify-email-webhook',
-			{
-				domain,
-				jwtProfileJson,
-				name: 'auto-verify-email-webhook',
-				endpoint: autoVerifyEmailEndpoint,
-				targetType: 'REST_CALL',
-				timeout: '5s',
-				payloadType: 'PAYLOAD_TYPE_JWT',
-				interruptOnError: autoVerifyInterruptOnError,
-			},
-			{ parent: this, dependsOn: [provider] },
-		)
-
-		this.autoVerifyEmailExecution = new ZitadelExecutionRequest(
-			'auto-verify-email-execution',
-			{
-				domain,
-				jwtProfileJson,
-				method: '/zitadel.user.v2.UserService/AddHumanUser',
-				targetIds: [this.autoVerifyEmailTarget.targetId],
-			},
-			{
-				parent: this,
-				dependsOn: [this.autoVerifyEmailTarget],
-			},
-		)
-
 		this.registerOutputs({
 			preAccessTokenTargetId: this.preAccessTokenTarget.targetId,
-			autoVerifyEmailTargetId: this.autoVerifyEmailTarget.targetId,
 		})
 	}
 }
