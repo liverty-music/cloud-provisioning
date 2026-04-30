@@ -4,6 +4,7 @@ import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
 import { ActionsV2Component } from './components/actions-v2.js'
 import { FrontendComponent } from './components/frontend.js'
+import { LoginClientComponent } from './components/login-client.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
 import {
@@ -16,6 +17,7 @@ import {
 
 export * from './components/actions-v2.js'
 export * from './components/frontend.js'
+export * from './components/login-client.js'
 export * from './components/machine-user.js'
 export * from './components/secrets.js'
 export * from './components/smtp.js'
@@ -59,9 +61,15 @@ export class Zitadel {
 	public readonly smtp: SmtpComponent
 	public readonly actionsV2: ActionsV2Component
 	public readonly machineUser: MachineUserComponent
+	public readonly loginClient: LoginClientComponent
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
+
+	/** Personal Access Token for the zitadel-login (Login V2 UI) container.
+	 *  Store in Secret Manager and mount via ExternalSecret as a file
+	 *  (consumed by `ZITADEL_SERVICE_USER_TOKEN_FILE`). */
+	public readonly loginClientToken: pulumi.Output<string>
 
 	constructor(name: string, args: ZitadelArgs) {
 		const { env, gcpProjectId, postmarkServerApiToken } = args
@@ -153,5 +161,12 @@ export class Zitadel {
 		})
 
 		this.machineKeyDetails = this.machineUser.keyDetails
+
+		this.loginClient = new LoginClientComponent(name, {
+			orgId,
+			provider: this.provider,
+		})
+
+		this.loginClientToken = this.loginClient.token
 	}
 }

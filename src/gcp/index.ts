@@ -29,6 +29,10 @@ export interface GcpArgs {
 	postmarkConfig: PostmarkDnsConfig
 	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
 	zitadelMachineKey?: pulumi.Output<string>
+	/** Personal Access Token for the zitadel-login (Login V2 UI) container.
+	 *  Stored in Secret Manager and mounted into the zitadel-login pod via
+	 *  ExternalSecret as a file referenced by `ZITADEL_SERVICE_USER_TOKEN_FILE`. */
+	zitadelLoginPat?: pulumi.Output<string>
 }
 
 export const NetworkConfig = {
@@ -79,6 +83,7 @@ export class Gcp {
 			cloudflareConfig,
 			postmarkConfig,
 			zitadelMachineKey,
+			zitadelLoginPat,
 		} = args
 
 		const cloudSqlUsers = gcpConfig.cloudSqlUsers ?? []
@@ -234,6 +239,19 @@ export class Gcp {
 								value: pulumi.secret(
 									gcpConfig.argocdGoogleChatWebhookUrl,
 								),
+							},
+						]
+					: []),
+				// PAT consumed only by the zitadel-login pod (Login V2 UI). ESO in
+				// the `zitadel` namespace mirrors this into a K8s Secret which the
+				// pod mounts as a file referenced by ZITADEL_SERVICE_USER_TOKEN_FILE.
+				// Backend-app does not need access — the backend talks to Zitadel
+				// via its own JWT-key (zitadel-machine-key), not this PAT.
+				...(zitadelLoginPat
+					? [
+							{
+								name: 'zitadel-login-pat',
+								value: pulumi.secret(zitadelLoginPat),
 							},
 						]
 					: []),
