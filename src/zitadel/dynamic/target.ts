@@ -124,7 +124,7 @@ const targetProvider: pulumi.dynamic.ResourceProvider = {
 		const res = await zitadelApiCall({
 			domain: news.domain,
 			profile,
-			method: 'PATCH',
+			method: 'POST',
 			path: `/v2/actions/targets/${id}`,
 			body: {
 				name: news.name,
