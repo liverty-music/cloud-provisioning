@@ -8,7 +8,6 @@ import { LoginClientComponent } from './components/login-client.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
 import {
-	AUTO_VERIFY_EMAIL_PATH,
 	BACKEND_WEBHOOK_BASE_URL,
 	PRE_ACCESS_TOKEN_PATH,
 	ZITADEL_DEV_DEFAULT_ORG_ID,
@@ -147,11 +146,9 @@ export class Zitadel {
 		})
 
 		this.actionsV2 = new ActionsV2Component(name, {
-			env,
 			domain,
 			jwtProfileJson,
 			preAccessTokenEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${PRE_ACCESS_TOKEN_PATH}`,
-			autoVerifyEmailEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${AUTO_VERIFY_EMAIL_PATH}`,
 			provider: this.provider,
 		})
 

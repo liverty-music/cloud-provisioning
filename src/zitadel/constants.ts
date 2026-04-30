@@ -55,7 +55,6 @@ export const zitadelDomainMap: Record<Environment, string> = {
 export const BACKEND_WEBHOOK_BASE_URL =
 	'http://server-webhook-svc.backend.svc.cluster.local:9090'
 export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
-export const AUTO_VERIFY_EMAIL_PATH = '/auto-verify-email'
 
 /**
  * Default Organization ID assigned by Zitadel at first-instance bootstrap.
