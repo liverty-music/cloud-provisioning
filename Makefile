@@ -1,4 +1,4 @@
-.PHONY: lint lint-ts lint-k8s fix check
+.PHONY: lint lint-ts lint-k8s fix test check
 
 ## lint: all linters — TypeScript (biome + tsc) and K8s manifests (kustomize + kube-linter + spot check)
 lint: lint-ts lint-k8s
@@ -23,5 +23,9 @@ lint-k8s:
 fix:
 	npx biome check --write src
 
-## check: full pre-commit check (lint-ts only; lint-k8s requires kustomize/kube-linter)
-check: lint-ts
+## test: vitest unit tests
+test:
+	npm test
+
+## check: full pre-commit check (lint-ts + test; lint-k8s requires kustomize/kube-linter)
+check: lint-ts test

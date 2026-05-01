@@ -56,7 +56,7 @@ async function setExecution(opts: {
 	}
 }
 
-const executionFunctionProvider: pulumi.dynamic.ResourceProvider = {
+export const executionFunctionProvider: pulumi.dynamic.ResourceProvider = {
 	async create(
 		inputs: FunctionInputs,
 	): Promise<pulumi.dynamic.CreateResult<FunctionInputs>> {
@@ -94,7 +94,7 @@ const executionFunctionProvider: pulumi.dynamic.ResourceProvider = {
 	},
 }
 
-const executionRequestProvider: pulumi.dynamic.ResourceProvider = {
+export const executionRequestProvider: pulumi.dynamic.ResourceProvider = {
 	async create(
 		inputs: RequestInputs,
 	): Promise<pulumi.dynamic.CreateResult<RequestInputs>> {
