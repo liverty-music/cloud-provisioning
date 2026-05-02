@@ -143,6 +143,8 @@ export class Zitadel {
 			env,
 			serverApiToken: postmarkServerApiToken,
 			provider: this.provider,
+			domain,
+			jwtProfileJson,
 		})
 
 		this.actionsV2 = new ActionsV2Component(name, {
