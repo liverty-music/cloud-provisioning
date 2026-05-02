@@ -54,7 +54,7 @@ spec:
       # runs setup (pending migrations) + start. FIRSTINSTANCE env vars in
       # the configmap are consumed only on the first run.
       - name: zitadel
-        image: ghcr.io/zitadel/zitadel:v4.13.1
+        image: ghcr.io/zitadel/zitadel:v4.14.0
         args:
         - start-from-init
         - --masterkeyFromEnv

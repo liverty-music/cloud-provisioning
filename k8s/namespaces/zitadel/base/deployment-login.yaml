@@ -42,15 +42,15 @@ spec:
       # `ghcr.io/zitadel/login` (the latter 404s). The upstream Helm chart
       # default is the same path (see zitadel-charts@main values.yaml).
       #
-      # Tag: `latest`. The zitadel-login container publishes semver tags only
-      # up to v4.7.3; v4.8+ ship as git-SHA tags only. The Helm chart's
-      # appVersion (v4.13.0) expects `login:v4.13.0`, but that tag does not
-      # exist. Using `latest` in dev accepts the risk of upstream drift in
-      # exchange for avoiding a SHA-pinning runbook. `imagePullPolicy:
-      # IfNotPresent` prevents every restart from re-pulling. For
-      # staging/prod, pin a specific SHA after validating compatibility.
+      # Tag: pinned to the same semver as the API container so Login UI and
+      # API ship from the same release cycle. The standalone `zitadel/typescript`
+      # repo was archived 2026-04-18; Login V2 source now lives in the main
+      # zitadel monorepo and the `zitadel-login` image now publishes the same
+      # semver tags as `zitadel` (verified via `docker manifest inspect
+      # ghcr.io/zitadel/zitadel-login:v4.14.0`). The earlier "semver-up-to-v4.7.3"
+      # gap is closed.
       - name: zitadel-login
-        image: ghcr.io/zitadel/zitadel-login:latest
+        image: ghcr.io/zitadel/zitadel-login:v4.14.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
