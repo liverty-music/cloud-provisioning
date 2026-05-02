@@ -42,7 +42,7 @@ interface TargetOutputs extends TargetInputs {
 	signingKey?: string
 }
 
-const targetProvider: pulumi.dynamic.ResourceProvider = {
+export const targetProvider: pulumi.dynamic.ResourceProvider = {
 	async create(
 		inputs: TargetInputs,
 	): Promise<pulumi.dynamic.CreateResult<TargetOutputs>> {
