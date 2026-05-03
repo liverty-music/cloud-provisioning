@@ -15,6 +15,7 @@ import {
 	ProjectComponent,
 } from './components/project.js'
 import { WorkloadIdentityComponent } from './components/workload-identity.js'
+import { ZitadelMonitoringComponent } from './components/zitadel-monitoring.js'
 import { RegionNames, Regions } from './region.js'
 
 export interface GcpArgs {
@@ -294,7 +295,7 @@ export class Gcp {
 		if (gcpConfig.monitoring?.slackNotificationChannels) {
 			const { slackNotificationChannels, googleChatSpaces } =
 				gcpConfig.monitoring
-			new MonitoringComponent('monitoring', {
+			const monitoring = new MonitoringComponent('monitoring', {
 				project: this.project,
 				slackNotificationChannelIds: [
 					slackNotificationChannels.alertBackend,
@@ -305,6 +306,24 @@ export class Gcp {
 				clusterLocation: Regions.Osaka,
 				clusterName: `cluster-${RegionNames.Osaka}`,
 			})
+
+			// Zitadel observability: latency p99 alert + JWT error rate
+			// alert + connection-pool dashboard. Dev-only — `self-hosted-zitadel`
+			// is dev-scoped until cooldown ends and prod migration begins,
+			// so the thresholds here are tuned to dev-traffic patterns and
+			// would page constantly on prod traffic without re-tuning.
+			// Reuses the same notification channels as the backend alerts;
+			// adding a separate Zitadel channel is overkill while alerting
+			// is rare.
+			if (environment === 'dev') {
+				new ZitadelMonitoringComponent('zitadel-monitoring', {
+					project: this.project,
+					slackNotificationChannelIds: [
+						slackNotificationChannels.alertBackend,
+					],
+					googleChatChannels: monitoring.googleChatChannels,
+				})
+			}
 		}
 
 		// 9. Cost Guardrails (Dev only)
