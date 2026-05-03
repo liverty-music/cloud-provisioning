@@ -259,11 +259,19 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 		// pool — those provide the inverse view (Zitadel's perspective on
 		// its own pool) and complement the `num_backends` figure.
 		//
-		// Observation-only; the threshold for an alert depends on data we
+		// Observation-only; the threshold for an *alert* depends on data we
 		// do not yet have (steady-state high-water mark + how close to
 		// saturation §18.6 hypothesis B's pre-hang state actually was). Once
 		// the next hang reproduces and we can correlate, a follow-up change
 		// adds the alert with a derived threshold.
+		//
+		// The Cloud SQL panel does carry a *visual* threshold line at 20
+		// (= 80% of `max_connections=25`, the GCP default for the
+		// `db-f1-micro` tier `postgres-osaka` runs on — see
+		// `postgres.ts:107`). If that tier ever changes, the panel value
+		// must be re-derived because the GCP default scales with tier
+		// memory. The line is observational guidance, not an alert
+		// threshold.
 		this.connectionPoolDashboard = new gcp.monitoring.Dashboard(
 			'dashboard-zitadel-observability',
 			{
@@ -298,6 +306,9 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
                 "targetAxis": "Y1",
                 "legendTemplate": "num_backends"
               }
+            ],
+            "thresholds": [
+              { "value": 20, "color": "YELLOW", "direction": "ABOVE", "label": "80% of max_connections (dev tier db-f1-micro → 25)" }
             ],
             "yAxis": {
               "label": "active backends",
