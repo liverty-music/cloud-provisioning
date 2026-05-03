@@ -53,6 +53,13 @@ INCIDENT_DIR="/tmp/zitadel-hang-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$INCIDENT_DIR"
 cd "$INCIDENT_DIR"
 
+# Cross-platform "1 hour ago" — GNU `date -d` on Linux, BSD `date -v`
+# on macOS. We try GNU first; if that errors (BSD does not understand
+# `-d`), the `||` falls through to the BSD form. Used by the gcloud
+# calls below.
+ONE_HOUR_AGO=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+  || date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)
+
 # 1. Identify the affected pod.
 kubectl get pods -n zitadel -l component=api -o wide > pods.txt
 
@@ -77,13 +84,13 @@ gcloud monitoring time-series list \
   --project=liverty-music-dev \
   --filter='metric.type="cloudsql.googleapis.com/database/postgresql/num_backends" AND resource.label.database_id="liverty-music-dev:postgres-osaka"' \
   --interval-end-time=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --interval-start-time=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --interval-start-time="$ONE_HOUR_AGO" \
   --format=json > sql-num-backends.json
 
 # 6. Recent Zitadel API request rate by gRPC method, to identify
 #    whether a state-changing API burst preceded the hang.
 gcloud logging read \
-  'resource.type="k8s_container" AND resource.labels.namespace_name="zitadel" AND resource.labels.container_name="zitadel" AND timestamp>="'$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)'"' \
+  'resource.type="k8s_container" AND resource.labels.namespace_name="zitadel" AND resource.labels.container_name="zitadel" AND timestamp>="'"$ONE_HOUR_AGO"'"' \
   --project=liverty-music-dev \
   --limit=10000 \
   --format=json > zitadel-recent-api-calls.json
@@ -115,10 +122,17 @@ kubectl rollout status deployment/zitadel -n zitadel --timeout=120s
 
 The default RollingUpdate strategy (`maxUnavailable: 0`,
 `maxSurge: 1`) rolls in a fresh pod before terminating the old one,
-so external auth traffic continues uninterrupted assuming at least
-one replica is healthy throughout. **In dev**, replicas are scaled
-to 1, so this becomes a brief (~30 s) outage; users on
-`auth.dev.liverty-music.app` may see 503s during the cutover.
+so external auth traffic continues uninterrupted regardless of
+replica count — the Service always has at least one Ready endpoint.
+**In dev**, replicas are scaled to 1, but the rollout is still
+zero-downtime for the same reason: the old pod is only terminated
+after the surge pod is Ready. The dev-specific risk is the inverse:
+if the spot pool has only one node and pod anti-affinity prevents
+co-location, the surge pod will be Pending and the rollout will
+stall while the old pod keeps serving (no 503s, but stuck
+Deployment). The `--timeout=120s` on `rollout status` above will
+catch this. If it expires, run `kubectl get events -n zitadel`
+and look for `FailedScheduling`.
 
 ## Post-mitigation verification
 
