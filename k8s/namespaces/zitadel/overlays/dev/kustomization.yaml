@@ -3,6 +3,11 @@ kind: Kustomization
 
 resources:
 - ../../base
+# Dev-only band-aid for `self-hosted-zitadel` §18.6 hang. NOT in base,
+# so staging / prod overlays do not silently inherit the weekly
+# restart. To be removed once the root cause is found — search the
+# `liverty-music.app/temporary` annotation to locate.
+- cronjob-restart-zitadel.yaml
 
 configMapGenerator:
 - name: zitadel-config
