@@ -36,7 +36,14 @@ const postmarkConfig = config.requireObject(
 // ESC: `pulumiConfig.zitadel.googleAdminIdp.clientId` (plaintext) and
 // `pulumiConfig.zitadel.googleAdminIdp.clientSecret` (encrypted).
 // See OpenSpec change `add-zitadel-console-admin-via-google-idp`.
-const zitadelConfig = new pulumi.Config('zitadel')
+//
+// Read via the project-level config (matching the existing pattern
+// `config.requireObject('postmark')`) — `pulumi.Config()` defaults to the
+// `liverty-music` project namespace. A `pulumi.Config('zitadel')` would
+// look in the unrelated `zitadel:` provider namespace and fail.
+const zitadelConfig = config.requireSecretObject<{
+	googleAdminIdp: { clientId: string; clientSecret: string }
+}>('zitadel')
 
 const env = pulumi.getStack() as Environment
 
@@ -63,21 +70,19 @@ if (env === 'prod') {
 let zitadelMachineKey: pulumi.Output<string> | undefined
 let zitadelLoginPat: pulumi.Output<string> | undefined
 if (env === 'dev') {
-	// `requireSecretObject` marks the entire object's values as secret in
-	// Pulumi state and previews, which is conservative for an OAuth client
-	// (the client_id is not strictly a secret but treating it the same
-	// avoids accidental disclosure in state).
-	const googleAdminIdp = zitadelConfig.requireSecretObject<{
-		clientId: string
-		clientSecret: string
-	}>('googleAdminIdp')
-
 	const zitadel = new Zitadel('liverty-music', {
 		env,
 		gcpProjectId: `${brandId}-${env}`,
 		postmarkServerApiToken: postmarkConfig.serverApiToken,
-		googleAdminIdpClientId: googleAdminIdp.apply((o) => o.clientId),
-		googleAdminIdpClientSecret: googleAdminIdp.apply((o) => o.clientSecret),
+		// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
+		// `requireSecretObject` marks the entire object as secret. Both
+		// derived values are therefore secret-marked Outputs in Pulumi state.
+		googleAdminIdpClientId: zitadelConfig.apply(
+			(z) => z.googleAdminIdp.clientId,
+		),
+		googleAdminIdpClientSecret: zitadelConfig.apply(
+			(z) => z.googleAdminIdp.clientSecret,
+		),
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails
 	zitadelLoginPat = zitadel.loginClientToken
