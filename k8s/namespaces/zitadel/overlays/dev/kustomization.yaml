@@ -1,8 +1,18 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Apply `zitadel` namespace to overlay-added resources (the base's
+# `namespace:` field only covers resources defined in the base; the
+# CronJob + RBAC below are introduced here, so we set it explicitly).
+namespace: zitadel
+
 resources:
 - ../../base
+# Dev-only band-aid for `self-hosted-zitadel` §18.6 hang. NOT in base,
+# so staging / prod overlays do not silently inherit the weekly
+# restart. To be removed once the root cause is found — search the
+# `liverty-music.app/temporary` annotation to locate.
+- cronjob-restart-zitadel.yaml
 
 configMapGenerator:
 - name: zitadel-config

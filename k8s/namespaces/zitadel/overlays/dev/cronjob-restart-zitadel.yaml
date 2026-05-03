@@ -1,0 +1,131 @@
+# Weekly Zitadel API restart band-aid (dev only).
+#
+# Caps the upper bound on §18.6 hang incident frequency to ≤ 7 days.
+# The §18.6 cutover-incident hang shape (Zitadel API hung on
+# `GetAuthRequest` for 30+ seconds, returning `code: internal`) only
+# manifested after ~3.5 days of pod uptime + a high-density burst of
+# state-changing API calls. A weekly forced restart resets in-memory
+# state before the precondition for the hang accumulates.
+#
+# This is EXPLICITLY a band-aid — to be removed once a root cause is
+# found. The `liverty-music.app/temporary` annotation lets future ops
+# grep find this manifest for cleanup. See openspec change
+# `zitadel-observability` design D6 and `self-hosted-zitadel` §18.6.
+#
+# Schedule: Sundays 03:00 UTC = 12:00 JST = low-traffic window in
+# the only environment that runs (dev), no user-facing downtime.
+#
+# Why a separate ServiceAccount + RBAC: the CronJob calls `kubectl
+# rollout restart deploy/zitadel` which requires `patch` on
+# `deployments`. The default `zitadel` ServiceAccount has no such
+# permission (it's scoped to running Zitadel itself, not mutating
+# its own Deployment). A dedicated minimum-privilege identity keeps
+# the privilege scope auditable.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zitadel-restart
+  annotations:
+    liverty-music.app/temporary: "until-rootcause-self-hosted-zitadel-§18.6"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zitadel-restart
+  annotations:
+    liverty-music.app/temporary: "until-rootcause-self-hosted-zitadel-§18.6"
+# Minimum-privilege: only `patch` on the specific `zitadel`
+# Deployment (resourceNames pin), nothing else in the namespace.
+# `patch` is what `kubectl rollout restart` issues — it sets the
+# `kubectl.kubernetes.io/restartedAt` annotation on the pod template.
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  resourceNames: ["zitadel"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zitadel-restart
+  annotations:
+    liverty-music.app/temporary: "until-rootcause-self-hosted-zitadel-§18.6"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: zitadel-restart
+subjects:
+- kind: ServiceAccount
+  name: zitadel-restart
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: zitadel-restart
+  annotations:
+    liverty-music.app/temporary: "until-rootcause-self-hosted-zitadel-§18.6"
+  labels:
+    app: zitadel
+    component: maintenance
+spec:
+  # Sundays 03:00 UTC. cron syntax: minute hour day-of-month month day-of-week
+  schedule: "0 3 * * 0"
+  timeZone: "Etc/UTC"
+  # Don't queue overlapping runs — if a previous restart job is still
+  # finishing when the next schedule fires (unlikely; rollout takes
+  # < 60 s), skip the new one.
+  concurrencyPolicy: Forbid
+  # Keep just enough history for ops to confirm "yes, last week ran":
+  # 1 successful + 1 failed entry covers the eyeball test.
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  # If the cluster's offline at the scheduled time (e.g., dev cluster
+  # destroyed for cost optimization), don't try to backfill once it
+  # comes back — the next weekly fire is fine.
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400  # 24 h
+      template:
+        metadata:
+          labels:
+            app: zitadel
+            component: maintenance
+        spec:
+          serviceAccountName: zitadel-restart
+          restartPolicy: OnFailure
+          # Spot pool per `cloud-provisioning/CLAUDE.md` Dev Cost
+          # Optimization. The job is short-lived and idempotent, so
+          # spot eviction during the restart is acceptable.
+          nodeSelector:
+            cloud.google.com/gke-spot: "true"
+          containers:
+          - name: kubectl
+            # bitnami/kubectl ships a minimal image with kubectl on
+            # the PATH. The :1.32 tag is pinned to match the cluster
+            # control-plane minor (1.35 minor diff is within the
+            # supported skew). Updates are a one-line bump in this
+            # file when the cluster bumps.
+            image: bitnami/kubectl:1.32
+            command:
+            - kubectl
+            args:
+            - rollout
+            - restart
+            - deployment/zitadel
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                cpu: 100m
+                memory: 64Mi
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
