@@ -57,16 +57,31 @@ export const BACKEND_WEBHOOK_BASE_URL =
 export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
 
 /**
- * Default Organization ID assigned by Zitadel at first-instance bootstrap.
+ * Bootstrap-created `admin` Role Org ID for the dev environment.
  *
- * Discovered post-bootstrap via `GET /auth/v1/users/me` against the
- * machine user that bootstrap-uploader writes to GSM
- * (`zitadel-admin-sa-key`). The value is stable across pod restarts
- * but instance-specific — if the dev Zitadel database is wiped and
- * re-bootstrapped, this constant must be updated.
+ * Per OpenSpec change `add-zitadel-console-admin-via-google-idp`, the
+ * Zitadel instance is split into two orgs:
+ *   - `admin` role org — created by Zitadel at first-instance bootstrap
+ *     because the configmap sets `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`.
+ *     Hosts the `pulumi-admin` machine user (used by Pulumi to authenticate),
+ *     the `login-client` machine user (Login V2 PAT host), and human admins.
+ *   - `liverty-music` product org — created by Pulumi via `zitadel.Org`.
+ *     Hosts the product Project, ApplicationOidc, end-user LoginPolicy,
+ *     `backend-app` machine user, and end-user accounts.
  *
- * Hardcoded for dev because cutover is dev-only (OpenSpec D10).
- * Staging / prod migrations must extend this with an env-keyed map or
- * a Dynamic Resource that discovers the orgId from the admin SA key.
+ * The id below is the dev environment's `admin` org id, discovered
+ * post-bootstrap via `POST /admin/v1/orgs/_search` against the machine
+ * user whose JSON key the bootstrap-uploader sidecar writes to GSM
+ * (`zitadel-admin-sa-key`). The value is stable across pod restarts but
+ * instance-specific — if the dev Zitadel database is wiped and
+ * re-bootstrapped, this constant MUST be updated to the new admin org id
+ * before running `pulumi up` against the re-bootstrapped instance.
+ *
+ * Captured 2026-05-03 after the dev DB wipe + re-bootstrap step in
+ * tasks.md Section 5: configmap.env now sets
+ * `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`, so this id refers to the org
+ * named `admin` (verified via `POST /admin/v1/orgs/_search`). Staging /
+ * prod adoption (separate change) extends this with an env-keyed map
+ * or a Dynamic Resource that discovers the orgId from the admin SA key.
  */
-export const ZITADEL_DEV_DEFAULT_ORG_ID = '369968599999251129'
+export const ZITADEL_DEV_ADMIN_ORG_ID = '371280364565496672'
