@@ -31,3 +31,14 @@ data:
           receivers: [otlp]
           processors: [batch]
           exporters: [googlecloud]
+        # Metrics pipeline: enables OTLP-pushed metrics from in-cluster
+        # services (Zitadel v4 native OTEL exporter; backend's existing OTLP
+        # push) to flow into Cloud Monitoring as custom metrics under
+        # `workload.googleapis.com/...`. Without this pipeline, metrics
+        # arriving on the OTLP receiver are silently dropped because no
+        # consumer is wired up. See openspec change `zitadel-observability`
+        # design D2 for the architecture rationale.
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [googlecloud]
