@@ -31,6 +31,20 @@ const postmarkConfig = config.requireObject(
 	serverApiToken: string
 }
 
+// Google OAuth 2.0 Web Application client credentials for the admin
+// Google IdP that gates Zitadel Admin Console sign-in. Set per-env via
+// ESC: `pulumiConfig.zitadel.googleAdminIdp.clientId` (plaintext) and
+// `pulumiConfig.zitadel.googleAdminIdp.clientSecret` (encrypted).
+// See OpenSpec change `add-zitadel-console-admin-via-google-idp`.
+//
+// Read via the project-level config (matching the existing pattern
+// `config.requireObject('postmark')`) — `pulumi.Config()` defaults to the
+// `liverty-music` project namespace. A `pulumi.Config('zitadel')` would
+// look in the unrelated `zitadel:` provider namespace and fail.
+const zitadelConfig = config.requireSecretObject<{
+	googleAdminIdp: { clientId: string; clientSecret: string }
+}>('zitadel')
+
 const env = pulumi.getStack() as Environment
 
 // 1. GitHub Organization Configuration (Prod Only)
@@ -60,6 +74,15 @@ if (env === 'dev') {
 		env,
 		gcpProjectId: `${brandId}-${env}`,
 		postmarkServerApiToken: postmarkConfig.serverApiToken,
+		// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
+		// `requireSecretObject` marks the entire object as secret. Both
+		// derived values are therefore secret-marked Outputs in Pulumi state.
+		googleAdminIdpClientId: zitadelConfig.apply(
+			(z) => z.googleAdminIdp.clientId,
+		),
+		googleAdminIdpClientSecret: zitadelConfig.apply(
+			(z) => z.googleAdminIdp.clientSecret,
+		),
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails
 	zitadelLoginPat = zitadel.loginClientToken
