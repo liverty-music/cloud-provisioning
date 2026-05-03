@@ -296,12 +296,19 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			otelCollectorName,
 			otelCollectorName,
 			'OTel Collector Service Account',
-			'Service account for OpenTelemetry Collector to export traces to Cloud Trace',
+			'Service account for OpenTelemetry Collector to export traces to Cloud Trace and metrics to Cloud Monitoring',
 			this,
 		)
 		this.otelCollectorServiceAccountEmail = otelCollectorSa.email
+		// `MetricWriter` covers `monitoring.metricDescriptors.create` and
+		// `monitoring.timeSeries.create`, both required by the
+		// `googlecloud` exporter when pushing custom metrics from OTLP.
+		// Without this role the exporter logs `PermissionDenied desc =
+		// Permission monitoring.metricDescriptors.create denied` for every
+		// new metric Zitadel/backend pushes (verified empirically during
+		// `zitadel-observability` PR-1a deploy).
 		iamSvc.bindProjectRoles(
-			[Roles.CloudTrace.Agent],
+			[Roles.CloudTrace.Agent, Roles.Monitoring.MetricWriter],
 			otelCollectorName,
 			otelCollectorSa.email,
 			this,
