@@ -64,16 +64,24 @@ export class HumanAdminComponent extends pulumi.ComponentResource {
 
 		// Random password to satisfy @pulumiverse/zitadel's constraint that
 		// isEmailVerified=true requires a password to be present. Never
-		// exposed beyond Pulumi state. Length 64, no special chars to keep
-		// it shell-safe in case state is ever inspected manually.
+		// exposed beyond Pulumi state. Length 64; `special: true` and
+		// `minSpecial: 4` are required because Zitadel's default password
+		// complexity policy rejects passwords without symbols (`Password
+		// must contain symbol (COMMA-ZDLwA)`). The password is never used
+		// (admin org `LoginPolicy.userLogin = false`), so shell-safety
+		// concerns from inspecting state manually do not apply.
 		const password = new random.RandomPassword(
 			'admin-initial-password',
 			{
 				length: 64,
-				special: false,
+				special: true,
+				minSpecial: 4,
 				upper: true,
 				lower: true,
 				numeric: true,
+				minUpper: 4,
+				minLower: 4,
+				minNumeric: 4,
 			},
 			{ parent: this },
 		)
