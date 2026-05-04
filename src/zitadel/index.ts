@@ -13,7 +13,6 @@ import { SmtpComponent } from './components/smtp.js'
 import {
 	BACKEND_WEBHOOK_BASE_URL,
 	PRE_ACCESS_TOKEN_PATH,
-	ZITADEL_DEV_ADMIN_ORG_ID,
 	zitadelDomainMap,
 } from './constants.js'
 
@@ -87,6 +86,7 @@ export interface ZitadelArgs {
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider
+	public readonly adminOrg: zitadel.Org
 	public readonly productOrg: zitadel.Org
 	public readonly project: zitadel.Project
 	public readonly frontend: FrontendComponent
@@ -132,7 +132,6 @@ export class Zitadel {
 			)
 		}
 
-		const adminOrgId = ZITADEL_DEV_ADMIN_ORG_ID
 		const domain = zitadelDomainMap[env]
 
 		// Pull the bootstrap-uploaded admin machine user JWT-profile JSON from
@@ -161,16 +160,46 @@ export class Zitadel {
 			jwtProfileJson,
 		})
 
-		// Product org — Pulumi-managed, marked Zitadel default org so that
-		// OIDC AuthN requests without an explicit org_id (e.g. the frontend
-		// SPA's auth flow) route to it. `isDefault: true` here flips the
-		// instance default away from the bootstrap admin org, which
-		// otherwise would carry the default flag.
+		// Admin role org — bootstrap-created (`ZITADEL_FIRSTINSTANCE_ORG_NAME=
+		// admin` in configmap), brought into Pulumi state via a one-time
+		// `pulumi import zitadel:index/org:Org admin <admin-org-id>` so the
+		// `isDefault` flag and downstream config are reviewable in git.
+		// `protect: true` is critical because `pulumi destroy` against this
+		// resource would lock everyone out: the bootstrap-created
+		// `pulumi-admin` machine user (which the @pulumiverse/zitadel provider
+		// authenticates as) lives inside it.
+		//
+		// Why admin must be the default org (not liverty-music): empirically
+		// verified in dev (Console deployment 282 follow-up) — the Zitadel
+		// Console's OIDC AuthN does not include an `org_id`, so Login V2 uses
+		// the **default org's own LoginPolicy**. If `liverty-music` is
+		// default, Console hits the product org's policy (passkey + register,
+		// no IdPs) and the admin's Google sign-in button never appears.
+		// Making `admin` the default routes Console to the admin org's
+		// LoginPolicy (Google IdP + `userLogin = false`), which is the
+		// intended path. End-user OIDC traffic from the frontend SPA is
+		// unaffected because its `ApplicationOidc` client is owned by the
+		// `liverty-music` Project (in the product org), and Zitadel resolves
+		// the AuthN's `client_id` to that org regardless of the default flag.
+		// See OpenSpec change `add-zitadel-console-admin-via-google-idp`,
+		// design D8 update.
+		this.adminOrg = new zitadel.Org(
+			'admin',
+			{
+				name: 'admin',
+				isDefault: true,
+			},
+			{ provider: this.provider, protect: true },
+		)
+
+		// Product org — Pulumi-created. NOT the default org (admin is). The
+		// frontend SPA's `ApplicationOidc` client below carries this org's
+		// id, so end-user OIDC AuthN routes here automatically.
 		this.productOrg = new zitadel.Org(
 			'liverty-music',
 			{
 				name: 'liverty-music',
-				isDefault: true,
+				isDefault: false,
 			},
 			{ provider: this.provider },
 		)
@@ -226,7 +255,7 @@ export class Zitadel {
 		// in the admin role org per the "Place Machine Users by
 		// Responsibility" requirement.
 		this.loginClient = new LoginClientComponent(name, {
-			orgId: adminOrgId,
+			orgId: this.adminOrg.id,
 			provider: this.provider,
 		})
 
@@ -245,7 +274,7 @@ export class Zitadel {
 		// Google IdP so Console login surfaces the Google button regardless
 		// of which routing path Login V2 takes.
 		this.adminOrgConfig = new AdminOrgConfigComponent(name, {
-			adminOrgId,
+			adminOrgId: this.adminOrg.id,
 			googleIdpId: this.googleAdminIdp.idp.id,
 			provider: this.provider,
 		})
@@ -255,7 +284,7 @@ export class Zitadel {
 		// links the IdP identity to this user via the Google IdP's
 		// `isLinkingAllowed` setting.
 		this.humanAdmin = new HumanAdminComponent(name, {
-			adminOrgId,
+			adminOrgId: this.adminOrg.id,
 			email: 'pannpers@pannpers.dev',
 			firstName: 'Kyosuke',
 			lastName: 'Hamada',
