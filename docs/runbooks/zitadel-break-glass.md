@@ -161,24 +161,49 @@ The break-glass path **fails** if any of the following are broken:
   through the Console or ran `DELETE /management/v1/users/<id>`).
 - The `eventstore` schema in Cloud SQL is corrupt.
 
-### A. SA key missing in GSM but pulumi-admin still in Zitadel
+### A. SA key missing or corrupt in GSM but pulumi-admin still in Zitadel
 
-The bootstrap-uploader sidecar in the `zitadel-*` pod re-uploads the
-key on every pod start (idempotent — see
-[`k8s/namespaces/zitadel/base/deployment-api.yaml`](../../k8s/namespaces/zitadel/base/deployment-api.yaml)).
-Trigger a pod restart:
+**The bootstrap-uploader sidecar does NOT help here.** It only fires
+during the *first* boot of an empty Zitadel database — Zitadel writes
+the admin SA key to the `emptyDir` bootstrap volume only when
+`FIRSTINSTANCE_*` runs. On any restart against a populated DB the
+volume is wiped, the file is never recreated, and the sidecar's
+`while [ ! -f "$KEY_FILE" ]; do sleep 2; done` loop blocks forever.
+See [`k8s/namespaces/zitadel/base/deployment-api.yaml#L122-L148`](../../k8s/namespaces/zitadel/base/deployment-api.yaml#L122-L148)
+for the sidecar source.
+
+**Recovery option — restore from a prior GSM secret version.**
+GSM keeps every uploaded version unless explicitly destroyed. List
+versions and look for a known-good one (created on or before the
+last successful Pulumi run):
 
 ```bash
-kubectl -n zitadel rollout restart deployment/zitadel
-kubectl -n zitadel rollout status  deployment/zitadel --timeout=120s
-kubectl -n zitadel logs -l app=zitadel -c bootstrap-uploader --tail=20
-# expected: "bootstrap-uploader: upload complete" or
-#           "bootstrap-uploader: stored version already matches, skipping upload"
+gcloud secrets versions list zitadel-admin-sa-key \
+  --project=liverty-music-dev \
+  --format='table(name,state,createTime)'
 ```
 
-The sidecar reads the bootstrap volume `/var/zitadel/bootstrap/admin-sa.json`
-written by Zitadel's `start-from-init` and pushes it to GSM. After
-the upload, retry [Step 2](#step-2--confirm-the-sa-key-authenticates-against-zitadel).
+If a prior `STATE=ENABLED` version exists, fetch and verify it:
+
+```bash
+PRIOR=<version-number>
+gcloud secrets versions access "$PRIOR" --secret=zitadel-admin-sa-key \
+  --project=liverty-music-dev > /tmp/zitadel-admin-sa-key.json
+# Run the sanity script from Step 2; if it succeeds, mark this version as
+# the new "latest" by adding a new version that is a copy of the prior:
+gcloud secrets versions access "$PRIOR" --secret=zitadel-admin-sa-key \
+  --project=liverty-music-dev \
+  | gcloud secrets versions add zitadel-admin-sa-key \
+    --project=liverty-music-dev --data-file=-
+```
+
+Then retry [Step 2](#step-2--confirm-the-sa-key-authenticates-against-zitadel).
+
+**No prior version available.** Scenario A collapses into Scenario B
+— without any working SA key for the existing `pulumi-admin` user,
+there is no path to recover that user's identity short of
+re-bootstrapping the whole instance with a fresh `pulumi-admin` (and
+fresh SA key).
 
 ### B. `pulumi-admin` user deleted from Zitadel (no SA key valid)
 
@@ -193,29 +218,68 @@ its key:
    `POST /v2/users/_search` filtered by `type=HUMAN` should return only
    the locked-out admins. Self-hosted dev should have zero end users
    (they live in `liverty-music` product org and only post-launch).
-3. **DROP and recreate the `zitadel` database in Cloud SQL** — same
-   procedure as the original change `add-zitadel-console-admin-via-google-idp`
-   Phase 5 (DB wipe). Use the Cloud SQL Auth Proxy + IAM as
-   `zitadel@liverty-music-dev.iam`:
-   ```sql
+3. **DROP and recreate the `zitadel` database in Cloud SQL.** The IAM
+   user `zitadel@liverty-music-dev.iam` cannot do this — it has the
+   `cloudsqliamuser` role only and (a) defaults to connecting to the
+   `zitadel` database (so PostgreSQL refuses `DROP DATABASE zitadel`
+   with "cannot drop the currently open database"), and (b) lacks
+   `CREATEDB` and ownership of the existing DB. Authenticate as the
+   built-in `postgres` superuser instead — same approach as
+   [`k8s/namespaces/zitadel/base/job-grant-db.yaml`](../../k8s/namespaces/zitadel/base/job-grant-db.yaml).
+
+   Start a Cloud SQL Auth Proxy *without* `--auto-iam-authn` and a
+   psql client pod, both pointed at the `postgres` database (not
+   `zitadel`):
+
+   ```bash
+   # Fetch the postgres admin password from GSM. The secret name
+   # matches the ESC-managed `gcp.postgresAdminPassword` value.
+   PG_ADMIN_PASSWORD=$(gcloud secrets versions access latest \
+     --project=liverty-music-dev --secret=postgres-admin-password)
+
+   # In one terminal: port-forward Cloud SQL Auth Proxy to localhost.
+   kubectl -n zitadel run sql-proxy-rescue \
+     --rm -i --restart=Never --image=gcr.io/cloud-sql-connectors/cloud-sql-proxy:2 \
+     --command -- \
+     --psc --port=5432 --address=0.0.0.0 \
+     liverty-music-dev:asia-northeast2:postgres-osaka &
+
+   kubectl -n zitadel port-forward pod/sql-proxy-rescue 5432:5432 &
+
+   # In another terminal: connect to the `postgres` DB (not zitadel).
+   PGPASSWORD="$PG_ADMIN_PASSWORD" psql \
+     -h 127.0.0.1 -p 5432 -U postgres -d postgres \
+     -v ON_ERROR_STOP=1 <<'SQL'
    DROP DATABASE zitadel;
-   CREATE DATABASE zitadel OWNER "zitadel@liverty-music-dev.iam";
+   CREATE DATABASE zitadel;
+   SQL
    ```
+
+   The new database is owned by `cloudsqlsuperuser`. ArgoCD's
+   `zitadel-db-grant` Job (also in `k8s/namespaces/zitadel/base/`)
+   will re-grant ownership to `zitadel@liverty-music-dev.iam` on its
+   next sync — no manual GRANT step needed here.
+
 4. **Restart the Zitadel deployment** so `start-from-init` runs against
    the empty DB:
    ```bash
    kubectl -n zitadel rollout restart deployment/zitadel
    ```
 5. **Wait for `bootstrap-uploader: upload complete`** in the new pod's
-   logs. The new admin SA key lands in GSM. The new admin org is named
-   `admin` because `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin` is in the
-   ConfigMap.
+   logs. This *is* a true first-instance boot now, so the sidecar
+   fires correctly and the new admin SA key lands in GSM. The new
+   admin org is named `admin` because
+   `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin` is in the ConfigMap.
 6. **Update `constants.ts.ZITADEL_DEV_ADMIN_ORG_ID`** with the new org
    id (search via `POST /admin/v1/orgs/_search`).
 7. **`pulumi up`** to re-provision `liverty-music` product org, IdPs,
-   human admin, link, etc.
+   human admin, link, etc. (Per the project CLAUDE.md, dev `pulumi
+   up` runs via Pulumi Cloud Deployments on PR merge — open a PR with
+   the constants update and let the auto-deploy run.)
 8. Follow [`add-zitadel-admin-user.md`](add-zitadel-admin-user.md) to
-   re-link the human admin's Google identity.
+   re-link each human admin's Google identity (the user IDs change
+   with the new instance, so existing ESC sub records still apply but
+   need new `userId` lookups).
 
 This is a destructive procedure (loses any Pulumi-managed
 `MachineKey` rotations, custom Action revisions, etc.). Reach for it

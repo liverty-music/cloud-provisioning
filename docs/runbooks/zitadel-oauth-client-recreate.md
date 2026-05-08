@@ -82,14 +82,16 @@ esc env set liverty-music/dev pulumiConfig.zitadel.googleAdminIdp.clientSecret \
 > being able to read it back from `esc env get` without the project's
 > decrypt key simplifies debugging.
 
-Verify:
+Verify (use `--value string` so `esc` prints just the value, not the
+markdown envelope it would otherwise render — matches the established
+pattern in [`docs/TICKET_SYSTEM_SETUP.md`](../TICKET_SYSTEM_SETUP.md)):
 
 ```bash
-esc env get liverty-music/dev pulumiConfig.zitadel.googleAdminIdp.clientId
+esc env get liverty-music/dev --value string pulumiConfig.zitadel.googleAdminIdp.clientId
 # expected: a printable client_id
 
-esc env get liverty-music/dev pulumiConfig.zitadel.googleAdminIdp.clientSecret
-# expected: "[secret]" with a Definition ciphertext line
+esc env get liverty-music/dev --value string pulumiConfig.zitadel.googleAdminIdp.clientSecret
+# expected: "[secret]" (value is masked; add --show-secrets to reveal)
 ```
 
 ## Step 4 — let Pulumi reconcile
@@ -97,9 +99,10 @@ esc env get liverty-music/dev pulumiConfig.zitadel.googleAdminIdp.clientSecret
 Merging any change to `cloud-provisioning/main` triggers Pulumi Cloud
 Deployments to run `pulumi up` against `dev`. If you don't have a
 pending change, push an empty-diff commit (e.g. a comment-only edit
-to a docs file) to wake the auto-deploy. Or run `pulumi up` locally
-against the `dev` stack — but prefer the auto-deploy path so the
-change goes through CI review.
+to a docs file) to wake the auto-deploy. **Do NOT** run `pulumi up`
+locally against the `dev` stack — per the project CLAUDE.md, local
+`pulumi up` conflicts with the automated job and is expressly
+forbidden in this repo.
 
 The `IdpGoogle` Pulumi resource will detect the changed `clientId` /
 `clientSecret` and submit an update to Zitadel without recreating
