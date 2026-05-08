@@ -37,8 +37,22 @@ const baseOutputs = {
 	activatedAt: '2026-01-01T00:00:00.000Z',
 }
 
-function lastCallArgs() {
-	return mockedCall.mock.calls[0][0]
+function callArgsAt(index: number) {
+	return mockedCall.mock.calls[index][0]
+}
+
+/**
+ * Default `_search` response used by happy-path tests: returns one SMTP
+ * config with a discovered id distinct from `inputs.smtpConfigId`. This
+ * mirrors the v4 reality where `inputs.smtpConfigId` is the IAM org id
+ * (provider workaround in `smtp-activation.ts`) and the real activation
+ * id is the snowflake returned by `_search`.
+ */
+const searchOneConfigResponse = {
+	statusCode: 200,
+	body: JSON.stringify({
+		result: [{ id: 'real-cfg-snowflake', state: 'SMTP_CONFIG_INACTIVE' }],
+	}),
 }
 
 describe('smtpActivationProvider.create', () => {
@@ -46,37 +60,45 @@ describe('smtpActivationProvider.create', () => {
 		mockedCall.mockReset()
 	})
 
-	it('POSTs /admin/v1/smtp/{id}/_activate and returns an activatedAt timestamp', async () => {
-		mockedCall.mockResolvedValueOnce({ statusCode: 200, body: '{}' })
+	it('discovers the real id via /admin/v1/smtp/_search, then POSTs /admin/v1/smtp/{realId}/_activate', async () => {
+		mockedCall.mockResolvedValueOnce(searchOneConfigResponse) // search
+		mockedCall.mockResolvedValueOnce({ statusCode: 200, body: '{}' }) // activate
 
 		const result = await provider.create(baseInputs)
 
-		expect(mockedCall).toHaveBeenCalledOnce()
-		const args = lastCallArgs()
-		expect(args.method).toBe('POST')
-		expect(args.path).toBe('/admin/v1/smtp/smtp-cfg-1/_activate')
-		expect(args.domain).toBe('auth.example.test')
+		expect(mockedCall).toHaveBeenCalledTimes(2)
+		const search = callArgsAt(0)
+		expect(search.method).toBe('POST')
+		expect(search.path).toBe('/admin/v1/smtp/_search')
+		const activate = callArgsAt(1)
+		expect(activate.method).toBe('POST')
+		expect(activate.path).toBe(
+			'/admin/v1/smtp/real-cfg-snowflake/_activate',
+		)
+		expect(activate.domain).toBe('auth.example.test')
 		// Activation has no payload; body is intentionally undefined.
-		expect(args.body).toBeUndefined()
-		expect(result.id).toBe('smtp-activation:smtp-cfg-1')
+		expect(activate.body).toBeUndefined()
+		expect(result.id).toBe('smtp-activation:real-cfg-snowflake')
 		expect(result.outs?.smtpConfigId).toBe('smtp-cfg-1')
 		expect(result.outs?.activatedAt).toMatch(
 			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
 		)
 	})
 
-	it('treats an "already active" upstream response as success (idempotency on first apply against manually-activated SMTP)', async () => {
+	it('treats an "already active" upstream response on _activate as success (idempotency on first apply against manually-activated SMTP)', async () => {
+		mockedCall.mockResolvedValueOnce(searchOneConfigResponse)
 		mockedCall.mockResolvedValueOnce({
 			statusCode: 412,
 			body: '{"code":9,"message":"smtp config is already active"}',
 		})
 
 		await expect(provider.create(baseInputs)).resolves.toMatchObject({
-			id: 'smtp-activation:smtp-cfg-1',
+			id: 'smtp-activation:real-cfg-snowflake',
 		})
 	})
 
-	it('throws on a genuine non-2xx error (not the already-active case)', async () => {
+	it('throws on a genuine non-2xx error from _activate (not the already-active case)', async () => {
+		mockedCall.mockResolvedValueOnce(searchOneConfigResponse)
 		mockedCall.mockResolvedValueOnce({
 			statusCode: 500,
 			body: '{"code":13,"message":"internal"}',
@@ -84,6 +106,41 @@ describe('smtpActivationProvider.create', () => {
 
 		await expect(provider.create(baseInputs)).rejects.toThrow(
 			/Zitadel ActivateSmtpConfig failed \(500\)/,
+		)
+	})
+
+	it('throws on a non-2xx from _search so the upstream lookup failure surfaces clearly', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 500,
+			body: '{"code":13,"message":"internal"}',
+		})
+
+		await expect(provider.create(baseInputs)).rejects.toThrow(
+			/Zitadel SearchSmtpConfigs failed \(500\)/,
+		)
+	})
+
+	it('throws when _search returns zero configs (graph dependency should make this impossible — guards against silent skip)', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 200,
+			body: JSON.stringify({ result: [] }),
+		})
+
+		await expect(provider.create(baseInputs)).rejects.toThrow(
+			/Zitadel SearchSmtpConfigs returned 0 configs/,
+		)
+	})
+
+	it('throws when _search returns more than one config (workaround assumes singleton)', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 200,
+			body: JSON.stringify({
+				result: [{ id: 'cfg-a' }, { id: 'cfg-b' }],
+			}),
+		})
+
+		await expect(provider.create(baseInputs)).rejects.toThrow(
+			/Zitadel SearchSmtpConfigs returned 2 configs/,
 		)
 	})
 })

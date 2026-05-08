@@ -43,6 +43,7 @@ const postmarkConfig = config.requireObject(
 // look in the unrelated `zitadel:` provider namespace and fail.
 const zitadelConfig = config.requireSecretObject<{
 	googleAdminIdp: { clientId: string; clientSecret: string }
+	adminGoogleSubs: { pannpers: string }
 }>('zitadel')
 
 const env = pulumi.getStack() as Environment
@@ -82,6 +83,9 @@ if (env === 'dev') {
 		),
 		googleAdminIdpClientSecret: zitadelConfig.apply(
 			(z) => z.googleAdminIdp.clientSecret,
+		),
+		pannpersGoogleSub: zitadelConfig.apply(
+			(z) => z.adminGoogleSubs.pannpers,
 		),
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails

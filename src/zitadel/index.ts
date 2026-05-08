@@ -45,6 +45,15 @@ export interface ZitadelArgs {
 	 *  `pulumiConfig.zitadel.googleAdminIdp.clientSecret`, marked secret).
 	 *  MUST be passed wrapped in `pulumi.secret()` upstream. */
 	googleAdminIdpClientSecret: pulumi.Input<string>
+	/**
+	 * Google OIDC `sub` claim for the human admin (`pannpers@pannpers.dev`).
+	 * Sourced from ESC `pulumiConfig.zitadel.adminGoogleSubs.pannpers`.
+	 * Stable numeric string per Google account; consumed by
+	 * `ZitadelUserIdpLink` to pre-link the Google identity to the local
+	 * `pannpers` HumanUser so first-sign-in on `/ui/console` works without
+	 * userLogin or auto-creation.
+	 */
+	pannpersGoogleSub: pulumi.Input<string>
 }
 
 /**
@@ -113,6 +122,7 @@ export class Zitadel {
 			postmarkServerApiToken,
 			googleAdminIdpClientId,
 			googleAdminIdpClientSecret,
+			pannpersGoogleSub,
 		} = args
 
 		if (env !== 'dev') {
@@ -280,14 +290,21 @@ export class Zitadel {
 		})
 
 		// Human admin user (pannpers@pannpers.dev) in the admin org, with
-		// IAM_OWNER granted at instance level. First Google sign-in auto-
-		// links the IdP identity to this user via the Google IdP's
-		// `isLinkingAllowed` setting.
+		// IAM_OWNER granted at instance level. The Google identity is
+		// pre-linked via `ZitadelUserIdpLink` (inside the component) so the
+		// very first `/ui/console` sign-in resolves directly to this user
+		// — required because the admin org's userLogin/auto-create policy
+		// leaves no native first-link path. See
+		// `dynamic/user-idp-link.ts` for the rationale.
 		this.humanAdmin = new HumanAdminComponent(name, {
 			adminOrgId: this.adminOrg.id,
 			email: 'pannpers@pannpers.dev',
 			firstName: 'Kyosuke',
 			lastName: 'Hamada',
+			googleIdpId: this.googleAdminIdp.idp.id,
+			googleSub: pannpersGoogleSub,
+			domain,
+			jwtProfileJson,
 			provider: this.provider,
 		})
 	}
