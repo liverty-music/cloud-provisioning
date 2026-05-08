@@ -107,13 +107,23 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 								'AND metric.labels.rpc_service=monitoring.regex.full_match(".*OIDCService.*")',
 							aggregations: [
 								{
-									// 60 s alignment matches `OTEL_METRIC_EXPORT_INTERVAL`
-									// in the Zitadel pod env, so each evaluation cycle
-									// sees ~1 fresh data point with a full 60 s of
-									// in-process histogram aggregation already baked in.
+									// `rpc.server.duration` is a CUMULATIVE
+									// DISTRIBUTION metric (OTEL histogram, translated
+									// by the `googlecloud` exporter). The percentile
+									// aligner cannot be applied directly to cumulative
+									// distributions (GCP API rejects with "ALIGN_PERCENTILE_99
+									// cannot be applied to metrics with kind CUMULATIVE
+									// and value type DISTRIBUTION"). Two-stage pattern:
+									//   1. `ALIGN_DELTA` over 60 s converts cumulative
+									//      → delta DISTRIBUTION (matches OTEL_METRIC_EXPORT_INTERVAL
+									//      so each cycle sees ~1 fresh point with a full
+									//      60 s of in-process histogram aggregation).
+									//   2. `REDUCE_PERCENTILE_99` across series grouped
+									//      by `rpc_method` produces one p99 line per
+									//      method — fires when ANY method's p99 > 10 s.
 									alignmentPeriod: '60s',
-									perSeriesAligner: 'ALIGN_PERCENTILE_99',
-									crossSeriesReducer: 'REDUCE_MAX',
+									perSeriesAligner: 'ALIGN_DELTA',
+									crossSeriesReducer: 'REDUCE_PERCENTILE_99',
 									groupByFields: ['metric.labels.rpc_method'],
 								},
 							],
@@ -310,7 +320,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
               }
             ],
             "thresholds": [
-              { "value": 20, "direction": "ABOVE", "label": "80% of max_connections (dev tier db-f1-micro → 25)" }
+              { "value": 20, "label": "80% of max_connections (dev tier db-f1-micro → 25)" }
             ],
             "yAxis": {
               "label": "active backends",
@@ -380,8 +390,8 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
                     "filter": "metric.type=\\"workload.googleapis.com/rpc.server.duration\\" AND metric.labels.service_name=\\"zitadel\\" AND metric.labels.rpc_service=monitoring.regex.full_match(\\".*OIDCService.*\\")",
                     "aggregation": {
                       "alignmentPeriod": "60s",
-                      "perSeriesAligner": "ALIGN_PERCENTILE_99",
-                      "crossSeriesReducer": "REDUCE_MAX",
+                      "perSeriesAligner": "ALIGN_DELTA",
+                      "crossSeriesReducer": "REDUCE_PERCENTILE_99",
                       "groupByFields": ["metric.labels.rpc_method"]
                     }
                   },
@@ -393,7 +403,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
               }
             ],
             "thresholds": [
-              { "value": 10000, "direction": "ABOVE", "label": "alert threshold (10 s)" }
+              { "value": 10000, "label": "alert threshold (10 s)" }
             ],
             "yAxis": { "label": "ms", "scale": "LOG10" }
           }
