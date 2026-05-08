@@ -133,10 +133,13 @@ export const userIdpLinkProvider: pulumi.dynamic.ResourceProvider = {
 		_olds: UserIdpLinkInputs,
 		news: UserIdpLinkInputs,
 	): Promise<pulumi.dynamic.UpdateResult<UserIdpLinkInputs>> {
-		// No-op by design — see provider doc comment above. The identity
-		// tuple is immutable from Pulumi's perspective (changes trigger
-		// `replace`), and Zitadel exposes no "update existing link"
-		// endpoint for the soft `displayName` field.
+		// No-op by design. The `ZitadelUserIdpLink` class wires
+		// `replaceOnChanges: ['userId', 'idpId', 'externalUserId']` so any
+		// identity-tuple change goes through delete+create, never here.
+		// Anything that does reach `update()` is a change to a non-tuple
+		// input (e.g. `displayName`, `domain`, `jwtProfileJson`) — none of
+		// which Zitadel exposes a "modify in place" endpoint for, so there
+		// is nothing to push.
 		return { outs: news }
 	},
 
@@ -186,6 +189,21 @@ function isAlreadyExists(statusCode: number, body: string): boolean {
  * For end-user (product) sign-in flows that allow either userLogin
  * or auto-creation, this resource is unnecessary — Zitadel handles
  * the first-link prompt natively there.
+ *
+ * ## Why `replaceOnChanges` on the identity tuple
+ *
+ * Zitadel keys IdP links by the `(userId, idpId, externalUserId)`
+ * tuple — a change to any one means "different link," not "edit this
+ * link." The v2 user service has no "update existing link" endpoint,
+ * and the provider's `update()` is intentionally a no-op. Without
+ * `replaceOnChanges`, Pulumi's default diff would route any change
+ * through `update()`, leaving Pulumi state showing the new tuple
+ * while Zitadel still holds the old link — silently re-introducing
+ * the first-login deadlock this resource exists to fix.
+ *
+ * Declaring `replaceOnChanges` makes Pulumi delete the old link and
+ * create the new one when any identity-tuple field changes, which is
+ * what the upstream API actually supports.
  */
 export class ZitadelUserIdpLink extends pulumi.dynamic.Resource {
 	constructor(
@@ -193,6 +211,14 @@ export class ZitadelUserIdpLink extends pulumi.dynamic.Resource {
 		args: ZitadelUserIdpLinkArgs,
 		opts?: pulumi.CustomResourceOptions,
 	) {
-		super(userIdpLinkProvider, name, args, opts)
+		super(userIdpLinkProvider, name, args, {
+			...opts,
+			replaceOnChanges: [
+				...(opts?.replaceOnChanges ?? []),
+				'userId',
+				'idpId',
+				'externalUserId',
+			],
+		})
 	}
 }
