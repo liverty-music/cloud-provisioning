@@ -54,6 +54,15 @@ export interface HumanAdminComponentArgs {
  * deadlock declaratively in IaC. See `dynamic/user-idp-link.ts` for the
  * full rationale.
  *
+ * ## Adding a new admin
+ *
+ * The end-to-end procedure (Google `sub` lookup → ESC config → Pulumi
+ * code → verification) is captured in
+ * `docs/runbooks/add-zitadel-admin-user.md`. Follow it instead of
+ * copy-pasting this component blind — there are operational steps
+ * (ESC entry, sub-claim capture, post-deploy smoke test) that aren't
+ * visible from the code alone.
+ *
  * ## Why a random initialPassword
  *
  * `@pulumiverse/zitadel.HumanUser` documents:
