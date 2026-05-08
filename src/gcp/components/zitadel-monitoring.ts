@@ -128,9 +128,10 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 					},
 				],
 				alertStrategy: {
-					notificationRateLimit: {
-						period: '300s', // 5 minutes
-					},
+					// `notificationRateLimit` is not allowed on metric-threshold
+					// alerts (only on log-match alerts) per the GCP Monitoring
+					// API. Debouncing is provided by the 60 s alignmentPeriod
+					// + 60 s `duration` above — a transient blip cannot fire.
 					autoClose: '3600s', // 1 hour
 				},
 				notificationChannels,
@@ -223,9 +224,10 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 					},
 				],
 				alertStrategy: {
-					notificationRateLimit: {
-						period: '300s',
-					},
+					// Same rule as the latency alert above — the GCP API
+					// rejects `notificationRateLimit` on `conditionThreshold`
+					// alerts, even when the metric is log-derived. Debouncing
+					// here is the 60 s alignment + 300 s `duration`.
 					autoClose: '3600s',
 				},
 				notificationChannels,
@@ -308,7 +310,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
               }
             ],
             "thresholds": [
-              { "value": 20, "color": "YELLOW", "direction": "ABOVE", "label": "80% of max_connections (dev tier db-f1-micro → 25)" }
+              { "value": 20, "direction": "ABOVE", "label": "80% of max_connections (dev tier db-f1-micro → 25)" }
             ],
             "yAxis": {
               "label": "active backends",
@@ -391,7 +393,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
               }
             ],
             "thresholds": [
-              { "value": 10000, "color": "RED", "direction": "ABOVE", "label": "alert threshold (10 s)" }
+              { "value": 10000, "direction": "ABOVE", "label": "alert threshold (10 s)" }
             ],
             "yAxis": { "label": "ms", "scale": "LOG10" }
           }
