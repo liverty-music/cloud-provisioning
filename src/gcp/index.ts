@@ -303,8 +303,13 @@ export class Gcp {
 				googleChatSpaceIds: googleChatSpaces
 					? [googleChatSpaces.alertBackend]
 					: undefined,
-				clusterLocation: Regions.Osaka,
-				clusterName: `cluster-${RegionNames.Osaka}`,
+				// `resource.labels.location` on `k8s_container` log entries
+				// is the zone (`asia-northeast2-a`), not the region. The
+				// alert filter must use the zonal form to match real logs.
+				clusterLocation: `${Regions.Osaka}-a`,
+				// Cluster is created as `standard-cluster-${regionName}` in
+				// `kubernetes.ts`; the filter must reference the exact name.
+				clusterName: `standard-cluster-${RegionNames.Osaka}`,
 			})
 
 			// Zitadel observability: latency p99 alert + JWT error rate
