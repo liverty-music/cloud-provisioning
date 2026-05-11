@@ -38,6 +38,20 @@ Monitor: https://app.pulumi.com/pannpers/liverty-music/dev/deployments
 automatically on merge. Trigger manually from the Pulumi Cloud console:
 https://app.pulumi.com/pannpers/liverty-music/prod/deployments
 
+### Pulumi State Recovery
+
+Before considering `pulumi state delete --target-dependents` (its
+blast radius follows ALL transitive dependents, not just the
+ComponentResource subtree — the §13.4 cutover incident
+cascade-removed 87 resources from ~9 intended targets) **or**
+when recovering from a post-incident state cascade, read
+[`docs/runbooks/pulumi-state-recovery.md`](docs/runbooks/pulumi-state-recovery.md).
+The runbook documents the preferred path (`pulumi destroy --target`
+through normal `preview → up`, visible via Pulumi Cloud's
+`previewPullRequests`) and the five-step recovery procedure
+(snapshot, merge, import, scrub `__pulumi_raw_state_delta`, verify
+clean preview) for when the cascade has already happened.
+
 ### Kubernetes Manifest Dry-Run
 
 Before committing any changes to `k8s/` manifests, run a Kustomize dry-run:
