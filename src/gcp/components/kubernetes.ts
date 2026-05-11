@@ -439,11 +439,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					// `alert-atlas-migration-failure`, `alert-backend-jwt-zitadel-errors`)
 					// can actually fire — they read from Cloud Logging, which
 					// only ingests workload pod stdout when this component is
-					// enabled. The cluster was originally provisioned with
-					// `SYSTEM_COMPONENTS` only; this silently disabled every
-					// log-based alert until the gap was discovered while
-					// validating §1.13 of the archived `zitadel-observability`
-					// change. See openspec change `enable-gke-workload-logs`.
+					// enabled.
 					//
 					// Monitoring: stays system-only. We have no metric-based
 					// workload alerts today, so enabling GMP / workload
