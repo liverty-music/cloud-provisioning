@@ -138,23 +138,35 @@ comm -23 /tmp/urns-pre-incident.txt /tmp/urns-current.txt \
 wc -l /tmp/urns-missing.txt
 ```
 
-Hand-merge the JSON. There is no single canonical tool — `jq` works
-for the simple case (additive merge with no conflicts):
+Hand-merge the JSON. `jq` works for the simple case (additive
+merge with no conflicts): take the URN list as a raw newline-delimited
+string, parse it into an array, select those URNs out of the
+pre-incident snapshot, and append them onto the current state's
+resource array.
 
 ```bash
-# Pull the missing resources out of the pre-incident snapshot.
-jq --slurpfile missing /tmp/urns-missing.txt '
-  .deployment.resources |= (. + (
-    $missing[0] as $mset
-    | $mset | split("\n")[:-1] as $urns
-    | input_filename as $_  # placeholder; substitute in shell as needed
-  ))
-' /tmp/pulumi-state-current.json > /tmp/pulumi-state-merged.json
+# Pull the missing resources out of the pre-incident snapshot and
+# append them to the current state.
+jq \
+  --slurpfile pre /tmp/pulumi-state-pre-incident.json \
+  --rawfile missing_urns /tmp/urns-missing.txt '
+    ($missing_urns | split("\n") | map(select(length > 0))) as $urns
+    | .deployment.resources |= (. + (
+        $pre[0].deployment.resources
+        | map(select(.urn as $u | $urns | index($u) != null))
+      ))
+  ' /tmp/pulumi-state-current.json > /tmp/pulumi-state-merged.json
 ```
 
-In practice you will usually script this with a small Python or
-`jq` pipeline tailored to the specific cascade — the §13.4 incident
-ran a one-off script. The key invariants are:
+Note: `--slurpfile pre` reads the JSON snapshot (wrapping it in a
+single-element array, hence `$pre[0]`); `--rawfile missing_urns`
+reads the plain-text URN list as a raw string, which we then split
+on newlines and drop empty entries.
+
+For more complex cascades (multiple snapshots, structural edits, or
+conditional URN rewrites) script this with a small Python or `jq`
+pipeline tailored to the specific incident — the §13.4 recovery ran
+a one-off script. The key invariants are:
 
 1. **No duplicate URNs** after merge.
 2. **Dependency ordering preserved** — pull resources in the order
