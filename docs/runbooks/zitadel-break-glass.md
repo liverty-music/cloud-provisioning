@@ -314,3 +314,4 @@ pulumi -s dev preview
 - Bootstrap-uploader sidecar: [`k8s/namespaces/zitadel/base/deployment-api.yaml`](../../k8s/namespaces/zitadel/base/deployment-api.yaml)
 - Admin user lifecycle (everyday path): [`add-zitadel-admin-user.md`](add-zitadel-admin-user.md)
 - Zitadel hang incident: [`zitadel-hang.md`](zitadel-hang.md)
+- Pulumi state recovery (cascade-delete incident): [`pulumi-state-recovery.md`](pulumi-state-recovery.md)
