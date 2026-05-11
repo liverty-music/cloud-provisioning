@@ -434,10 +434,20 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 						channel: 'CHANNEL_STANDARD',
 					},
 
-					// Restrict logging/monitoring to system components; disable GMP (dev has
-					// no metric-based alerts — all alerts are log-based).
+					// Logging: include `WORKLOADS` so log-based AlertPolicies
+					// (e.g., `alert-error-log-server`, `alert-poison-queue-message`,
+					// `alert-atlas-migration-failure`, `alert-backend-jwt-zitadel-errors`)
+					// can actually fire — they read from Cloud Logging, which
+					// only ingests workload pod stdout when this component is
+					// enabled.
+					//
+					// Monitoring: stays system-only. We have no metric-based
+					// workload alerts today, so enabling GMP / workload
+					// monitoring would add Cloud Monitoring cost without a
+					// current consumer. Revisit if a metric-based alert is
+					// added to the project.
 					loggingConfig: {
-						enableComponents: ['SYSTEM_COMPONENTS'],
+						enableComponents: ['SYSTEM_COMPONENTS', 'WORKLOADS'],
 					},
 					monitoringConfig: {
 						enableComponents: ['SYSTEM_COMPONENTS'],
