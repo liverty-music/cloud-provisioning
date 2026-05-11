@@ -103,12 +103,17 @@ spec:
             cloud.google.com/gke-spot: "true"
           containers:
           - name: kubectl
-            # bitnami/kubectl ships a minimal image with kubectl on
-            # the PATH. The :1.32 tag is pinned to match the cluster
-            # control-plane minor (1.35 minor diff is within the
-            # supported skew). Updates are a one-line bump in this
-            # file when the cluster bumps.
-            image: bitnami/kubectl:1.32
+            # `bitnamilegacy/kubectl` is Bitnami's legacy-free path on
+            # Docker Hub — `bitnami/kubectl:*` was withdrawn from the
+            # free public catalog in 2025, breaking the original
+            # `bitnami/kubectl:1.32` tag. The image is a drop-in
+            # replacement (same Bitnami build, just a different repo).
+            # The first scheduled fire (2026-05-10 03:00 UTC) failed
+            # 3 times with `ImagePullBackOff: docker.io/bitnami/kubectl:1.32
+            # not found` before this fix.
+            # The :1.32 tag matches the cluster control-plane minor.
+            # Updates are a one-line bump in this file when the cluster bumps.
+            image: bitnamilegacy/kubectl:1.32
             command:
             - kubectl
             args:
