@@ -128,10 +128,19 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 								},
 							],
 							comparison: 'COMPARISON_GT',
-							// `unit:"ms"` per the OTEL histogram descriptor →
-							// 10 s = 10000 ms. Healthy steady state is ~200 ms,
-							// so 10 s is 50× the high-water mark (design D3).
-							thresholdValue: 10000,
+							// SMOKE TEST: threshold temporarily lowered to
+							// 100 ms (from 10000 ms = 10 s) to exercise the
+							// full notification path end-to-end. Healthy
+							// steady-state p99 is ~200 ms, so this fires
+							// within ~60 s of deploy and the Slack /
+							// Google Chat notification path is verified.
+							// **Revert in a follow-up PR immediately after
+							// notification is confirmed received.**
+							// Tracked-in: openspec change
+							// `zitadel-observability` §1.13 (deferred
+							// smoke-test, post-archive 2026-05-03).
+							// `unit:"ms"` per the OTEL histogram descriptor.
+							thresholdValue: 100, // SMOKE TEST — revert to 10000
 							duration: '60s',
 							trigger: { count: 1 },
 						},
