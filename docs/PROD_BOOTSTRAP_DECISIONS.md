@@ -10,6 +10,7 @@ Companion documents:
 - [GKE_CLUSTER_MODE_DECISION.md](./GKE_CLUSTER_MODE_DECISION.md) — mode choice details, irreversible-vs-reversible reference table.
 - [DEV_VS_PROD_DIFFERENCES.md](./DEV_VS_PROD_DIFFERENCES.md) — operator-facing comparison table of every config difference between dev and prod.
 - [runbooks/prod-cluster-credentials.md](./runbooks/prod-cluster-credentials.md) — how to fetch kubectl credentials for the prod cluster.
+- [runbooks/setup-prod-credentials.md](./runbooks/setup-prod-credentials.md) — generate and register the prod ESC secrets (blockchain EOA, Alchemy RPC + bundler, Postgres admin password, VAPID) before the first `pulumi up --stack prod`.
 
 ## Context
 

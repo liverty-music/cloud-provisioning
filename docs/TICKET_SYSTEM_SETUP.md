@@ -2,6 +2,15 @@
 
 This guide walks through generating and registering the secrets and artifacts required by the ticket system.
 
+> **Scope: dev environment (Base Sepolia).** All commands target
+> `liverty-music/dev` ESC and the Base Sepolia testnet. For prod
+> (Base mainnet) secret setup, see
+> [`docs/runbooks/setup-prod-credentials.md`](./runbooks/setup-prod-credentials.md),
+> which cross-references this guide for the underlying tooling
+> (Foundry, Alchemy, VAPID) but documents prod-specific deltas
+> (mainnet ETH funding, separate Alchemy app, Postgres admin
+> password generation, key-rotation policy).
+
 ## Table of Contents
 
 - [Overview](#overview)
