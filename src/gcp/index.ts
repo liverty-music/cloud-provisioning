@@ -244,6 +244,14 @@ export class Gcp {
 								name: 'zitadel-machine-key',
 								value: pulumi.secret(zitadelMachineKey),
 							},
+							// Transitional dual-write: backend reads from the new
+							// name with fallback to the old. PR 4 of openspec change
+							// `rename-zitadel-machine-keys` removes the old entry;
+							// PR 6 destroys the underlying GSM resource.
+							{
+								name: 'zitadel-machine-key-for-backend-app',
+								value: pulumi.secret(zitadelMachineKey),
+							},
 						]
 					: []),
 			],
