@@ -132,18 +132,24 @@ spec:
         - |
           set -eu
           KEY_FILE=/var/zitadel/bootstrap/admin-sa.json
-          SECRET_NAME=zitadel-admin-sa-key
+          # Transitional dual-write during the rename from
+          # `zitadel-admin-sa-key` to `zitadel-machine-key-for-pulumi-admin`
+          # (openspec change rename-zitadel-machine-keys). The legacy name
+          # is removed in a later PR.
+          SECRET_NAMES="zitadel-admin-sa-key zitadel-machine-key-for-pulumi-admin"
           echo "bootstrap-uploader: waiting for $KEY_FILE"
           while [ ! -f "$KEY_FILE" ]; do sleep 2; done
-          if existing=$(gcloud secrets versions access latest --secret="$SECRET_NAME" 2>/dev/null); then
-            if [ "$existing" = "$(cat "$KEY_FILE")" ]; then
-              echo "bootstrap-uploader: stored version already matches, skipping upload"
-              exec tail -f /dev/null
+          for SECRET_NAME in $SECRET_NAMES; do
+            if existing=$(gcloud secrets versions access latest --secret="$SECRET_NAME" 2>/dev/null); then
+              if [ "$existing" = "$(cat "$KEY_FILE")" ]; then
+                echo "bootstrap-uploader: $SECRET_NAME stored version already matches, skipping upload"
+                continue
+              fi
             fi
-          fi
-          echo "bootstrap-uploader: uploading new admin-sa key"
-          gcloud secrets versions add "$SECRET_NAME" --data-file="$KEY_FILE"
-          echo "bootstrap-uploader: upload complete"
+            echo "bootstrap-uploader: uploading new admin-sa key to $SECRET_NAME"
+            gcloud secrets versions add "$SECRET_NAME" --data-file="$KEY_FILE"
+            echo "bootstrap-uploader: $SECRET_NAME upload complete"
+          done
           exec tail -f /dev/null
         volumeMounts:
         - name: bootstrap

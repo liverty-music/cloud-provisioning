@@ -27,6 +27,14 @@ export interface SecretsComponentArgs {
 export class SecretsComponent extends pulumi.ComponentResource {
 	public readonly masterkeySecret: gcp.secretmanager.Secret
 	public readonly adminSaKeySecret: gcp.secretmanager.Secret
+	/**
+	 * New GSM secret following the platform-wide convention
+	 * `zitadel-machine-key-for-<principal>`. During the rename transition
+	 * (openspec change rename-zitadel-machine-keys), `bootstrap-uploader`
+	 * writes the same JSON key payload to both `adminSaKeySecret` and this
+	 * secret. The legacy `adminSaKeySecret` is destroyed in the cleanup PR.
+	 */
+	public readonly pulumiAdminMachineKeySecret: gcp.secretmanager.Secret
 
 	constructor(
 		name: string,
@@ -86,6 +94,22 @@ export class SecretsComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
+		// Transitional second secret shell during the rename from
+		// `zitadel-admin-sa-key` to `zitadel-machine-key-for-pulumi-admin`
+		// (openspec change rename-zitadel-machine-keys). Same lifecycle as
+		// `adminSaKeySecret`: empty shell at creation, populated by the
+		// bootstrap-uploader sidecar (which now dual-writes to both names).
+		// The legacy `adminSaKeySecret` is removed in the cleanup PR.
+		this.pulumiAdminMachineKeySecret = new gcp.secretmanager.Secret(
+			'zitadel-machine-key-for-pulumi-admin',
+			{
+				secretId: 'zitadel-machine-key-for-pulumi-admin',
+				project: project.projectId,
+				replication: { auto: {} },
+			},
+			{ parent: this },
+		)
+
 		// ESO read access on both secrets.
 		new gcp.secretmanager.SecretIamMember(
 			'zitadel-masterkey-eso-accessor',
@@ -109,6 +133,18 @@ export class SecretsComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
+		// Same ESO read binding on the new transitional secret.
+		new gcp.secretmanager.SecretIamMember(
+			'zitadel-machine-key-for-pulumi-admin-eso-accessor',
+			{
+				secretId: this.pulumiAdminMachineKeySecret.secretId,
+				project: project.projectId,
+				role: 'roles/secretmanager.secretAccessor',
+				member: pulumi.interpolate`serviceAccount:${esoServiceAccountEmail}`,
+			},
+			{ parent: this },
+		)
+
 		// Zitadel bootstrap Job write access on admin-sa-key only. The narrower
 		// `secretVersionAdder` role allows adding new versions without exposing
 		// read access to already-stored versions.
@@ -123,9 +159,24 @@ export class SecretsComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
+		// Same Zitadel write binding on the new transitional secret so the
+		// bootstrap-uploader sidecar can dual-write the JWT key payload.
+		new gcp.secretmanager.SecretIamMember(
+			'zitadel-machine-key-for-pulumi-admin-zitadel-writer',
+			{
+				secretId: this.pulumiAdminMachineKeySecret.secretId,
+				project: project.projectId,
+				role: 'roles/secretmanager.secretVersionAdder',
+				member: pulumi.interpolate`serviceAccount:${zitadelServiceAccountEmail}`,
+			},
+			{ parent: this },
+		)
+
 		this.registerOutputs({
 			masterkeySecretId: this.masterkeySecret.secretId,
 			adminSaKeySecretId: this.adminSaKeySecret.secretId,
+			pulumiAdminMachineKeySecretId:
+				this.pulumiAdminMachineKeySecret.secretId,
 		})
 	}
 }
