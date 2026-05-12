@@ -190,19 +190,14 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			)
 		}
 
-		// --- Prod Cost Reduction: Skip API Gateway infrastructure for production ---
-		if (environment === 'prod') {
-			this.registerOutputs({
-				networkName: this.network.name,
-				sqlZoneName: this.sqlZone.name,
-			})
-			return
-		}
-
 		// 4. Cloud Router + Cloud NAT (staging only)
-		// Dev uses public nodes (enablePrivateNodes: false), so Cloud NAT is not needed.
-		// Staging retains private nodes and requires NAT for internet egress.
-		if (environment !== 'dev') {
+		// Dev uses public nodes (enablePrivateNodes: false), so Cloud NAT is not
+		// needed. Prod currently mirrors dev's public-node + no-NAT setup as
+		// the cost-first pre-launch state (mutable; flip when real users
+		// arrive — see docs/PROD_BOOTSTRAP_DECISIONS.md D6). Only staging
+		// keeps private nodes today and therefore needs NAT for internet
+		// egress.
+		if (environment === 'staging') {
 			this.router = new gcp.compute.Router(
 				`nat-router-${regionName}`,
 				{
@@ -232,317 +227,131 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			)
 		}
 
-		// 5. Public DNS Zone (for dev/staging subdomain delegation)
-		// We use a dedicated zone for the delegated subdomain to maintain ownership
-		// without manual registrar updates.
-		if (environment !== 'prod') {
-			// Derive publicDomain from environment (e.g., "dev.liverty-music.app")
-			const tld = 'liverty-music.app'
-			const managedZoneName = `${environment}.${tld}`
+		// 5. Public DNS zones + Certificate Manager + shared Gateway resources.
+		//
+		// DNS topology differs by environment but the per-service resource
+		// shape (DnsAuthorization + Certificate + CertificateMapEntry + A
+		// record + ACME-challenge CNAME) is identical. The provisioning code
+		// below is driven by two tables:
+		//
+		//   • SERVICES   — declarative catalog of every externally-facing
+		//                  hostname this stack manages.
+		//   • zoneTopology — env-derived list of Cloud DNS zones, each with
+		//                  the SERVICES that live inside it.
+		//
+		// Dev/staging keep the original single-zone-per-env layout
+		// (`<env>.liverty-music.app`); prod uses one zone per subdomain
+		// (`api.liverty-music.app`, `auth.liverty-music.app`) because the
+		// apex stays on Cloudflare. Pulumi resource names are preserved
+		// across the refactor so existing dev state is not disturbed.
 
-			// Enable Certificate Manager API
-			const certManagerApi = apiService.enableApis(
-				['certificatemanager.googleapis.com' as any],
-				this,
-			)
+		const certManagerApi = apiService.enableApis(
+			['certificatemanager.googleapis.com'],
+			this,
+		)
 
-			// Create public DNS zone
-			const publicZone = new gcp.dns.ManagedZone(
-				`${toKebabCase(tld)}-public-zone`,
-				{
-					name: `${toKebabCase(tld)}-public-zone`,
-					dnsName: `${managedZoneName}.`,
-					visibility: 'public',
-					description: `Public zone for ${managedZoneName}`,
-				},
-				{ parent: this, dependsOn: enabledApis },
-			)
+		const cloudflareProvider = new cloudflare.Provider(
+			'cloudflare-provider',
+			{ apiToken: cloudflareConfig.apiToken },
+			{ parent: this },
+		)
 
-			this.publicZone = publicZone
-			this.publicZoneNameservers = publicZone.nameServers
+		const tld = 'liverty-music.app'
 
-			const cloudflareProvider = new cloudflare.Provider(
-				'cloudflare-provider',
-				{
-					apiToken: cloudflareConfig.apiToken,
-				},
-				{ parent: this },
-			)
+		const zoneTopology = buildZoneTopology(environment, tld)
 
-			// Create NS records in Cloudflare for subdomain delegation
-			publicZone.nameServers.apply((nameservers) => {
-				nameservers.forEach((ns, index) => {
-					new cloudflare.DnsRecord(
-						`${toKebabCase(tld)}-dns-delegation-ns-${index}`,
-						{
-							zoneId: cloudflareConfig.zoneId,
-							name: environment, // Cloudflare automatically appends the zone name
-							type: 'NS',
-							content: ns.endsWith('.') ? ns : `${ns}.`,
-							ttl: 3600,
-							comment: `Delegate ${managedZoneName} to Cloud DNS`,
-						},
-						{
-							parent: this,
-							provider: cloudflareProvider,
-							// aliases: [
-							// 	{
-							// 		type: 'cloudflare:index/dnsRecord:DnsRecord',
-							// 	},
-							// ],
-						},
-					)
-				})
-			})
-
-			// Certificate Manager: DNS Authorization for Backend Server
-			const backendServerDnsAuth =
-				new gcp.certificatemanager.DnsAuthorization(
-					'backend-server-dns-auth',
+		// Provision each zone + its Cloudflare NS delegation. Returns
+		// per-zone bundles of (zone, services) used in the per-service loop.
+		const provisionedZones = zoneTopology.map(
+			({ zoneConfig, services }) => {
+				const zone = new gcp.dns.ManagedZone(
+					zoneConfig.resourceName,
 					{
-						name: 'backend-server-dns-auth',
-						location: 'global',
-						domain: `api.${managedZoneName}`,
+						name: zoneConfig.resourceName,
+						dnsName: zoneConfig.dnsName,
+						visibility: 'public',
+						description: `Public zone for ${zoneConfig.dnsName.replace(/\.$/, '')}`,
 					},
-					{ parent: this, dependsOn: certManagerApi },
+					{ parent: this, dependsOn: enabledApis },
 				)
 
-			// Certificate Manager: DNS Authorization for Web App
-			const webAppDnsAuth = new gcp.certificatemanager.DnsAuthorization(
-				'web-app-dns-auth',
-				{
-					name: 'web-app-dns-auth',
-					location: 'global',
-					domain: `${managedZoneName}`,
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
+				// Cloudflare NS records: delegate this zone's apex to the
+				// Cloud DNS nameservers. One record per NS server returned
+				// by GCP (typically 4).
+				zone.nameServers.apply((nameservers) => {
+					nameservers.forEach((ns, index) => {
+						new cloudflare.DnsRecord(
+							`${zoneConfig.cloudflareNsResourcePrefix}-dns-delegation-ns-${index}`,
+							{
+								zoneId: cloudflareConfig.zoneId,
+								name: zoneConfig.cloudflareNsName,
+								type: 'NS',
+								content: ns.endsWith('.') ? ns : `${ns}.`,
+								ttl: 3600,
+								comment: `Delegate ${zoneConfig.dnsName.replace(/\.$/, '')} to Cloud DNS`,
+							},
+							{ parent: this, provider: cloudflareProvider },
+						)
+					})
+				})
 
-			// Certificate Manager: DNS Authorization for self-hosted Zitadel
-			// (`auth.<managedZoneName>`). Needed so the Google-managed cert can
-			// cover the Zitadel issuer hostname alongside api/web domains.
-			// Naming mirrors the sibling `backend-server-dns-auth` / `web-app-dns-auth`
-			// resources: the service name (`zitadel`) is the scope, not the
-			// subdomain prefix.
-			const zitadelDnsAuth = new gcp.certificatemanager.DnsAuthorization(
-				'zitadel-dns-auth',
-				{
-					name: 'zitadel-dns-auth',
-					location: 'global',
-					domain: `auth.${managedZoneName}`,
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
+				return { zone, services }
+			},
+		)
 
-			// Certificate Manager: per-service Google-managed Certificates.
-			//
-			// Each service owns a single-hostname Certificate rather than a
-			// shared SAN cert. Rationale:
-			//   - GCP managed certs treat `domains` / `dnsAuthorizations` as
-			//     immutable — adding a hostname forces a replace (delete+create).
-			//     Delete is blocked by any CertificateMapEntry still pointing at
-			//     the cert, producing a hard deadlock when onboarding a new
-			//     hostname (as we hit when adding `auth.<tld>` for Zitadel).
-			//   - Matches the per-service granularity already established for
-			//     DnsAuthorization, CertificateMapEntry, and DNS records.
-			//   - Isolates ACME provisioning / rate-limit / rotation failures to
-			//     a single hostname.
-			const backendServerCert = new gcp.certificatemanager.Certificate(
-				'backend-server-cert',
-				{
-					name: 'backend-server-cert',
-					location: 'global',
-					scope: 'DEFAULT',
-					managed: {
-						domains: [`api.${managedZoneName}`],
-						dnsAuthorizations: [backendServerDnsAuth.id],
-					},
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
+		// Expose the primary public zone for back-compat. For dev/staging
+		// there is a single zone covering all hostnames. For prod multiple
+		// zones exist; downstream consumers do not currently use this field
+		// for prod, so leaving it unset (undefined) is safe.
+		if (environment !== 'prod') {
+			this.publicZone = provisionedZones[0]?.zone
+			this.publicZoneNameservers = provisionedZones[0]?.zone.nameServers
+		}
 
-			const webAppCert = new gcp.certificatemanager.Certificate(
-				'web-app-cert',
-				{
-					name: 'web-app-cert',
-					location: 'global',
-					scope: 'DEFAULT',
-					managed: {
-						domains: [`${managedZoneName}`],
-						dnsAuthorizations: [webAppDnsAuth.id],
-					},
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
+		// Shared Gateway resources: one CertificateMap and one static IP
+		// across all hostnames in this stack (Gateway is a single ingress).
+		const certMap = new gcp.certificatemanager.CertificateMap(
+			'api-gateway-cert-map',
+			{ name: 'api-gateway-cert-map' },
+			{ parent: this, dependsOn: certManagerApi },
+		)
 
-			const zitadelCert = new gcp.certificatemanager.Certificate(
-				'zitadel-cert',
-				{
-					name: 'zitadel-cert',
-					location: 'global',
-					scope: 'DEFAULT',
-					managed: {
-						domains: [`auth.${managedZoneName}`],
-						dnsAuthorizations: [zitadelDnsAuth.id],
-					},
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
+		const staticIp = new gcp.compute.GlobalAddress(
+			'api-gateway-static-ip',
+			{
+				name: 'api-gateway-static-ip',
+				addressType: 'EXTERNAL',
+				ipVersion: 'IPV4',
+			},
+			{ parent: this },
+		)
 
-			// Certificate Manager: Certificate Map. The map itself is shared
-			// across services — it is the binding between the Gateway listener
-			// and the per-hostname certs below.
-			const certMap = new gcp.certificatemanager.CertificateMap(
-				'api-gateway-cert-map',
-				{
-					name: 'api-gateway-cert-map',
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
+		// Provision each service's hostname (DnsAuth + Cert + CertMapEntry
+		// + A record + ACME CNAME) into its assigned zone.
+		const certManagerAndDnsApis = [...certManagerApi, ...enabledApis]
+		for (const { zone, services } of provisionedZones) {
+			for (const svc of services) {
+				provisionManagedHostname(
+					this,
+					{ name: svc.name, hostname: svc.hostname, zone },
+					certMap,
+					staticIp,
+					certManagerAndDnsApis,
+				)
+			}
+		}
 
-			// Certificate Manager: Certificate Map Entry for Backend Server
-			new gcp.certificatemanager.CertificateMapEntry(
-				'backend-server-cert-map-entry',
-				{
-					name: 'backend-server-cert-map-entry',
-					map: certMap.name,
-					certificates: [backendServerCert.id],
-					hostname: `api.${managedZoneName}`,
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
-
-			// Certificate Manager: Certificate Map Entry for self-hosted Zitadel
-			new gcp.certificatemanager.CertificateMapEntry(
-				'zitadel-cert-map-entry',
-				{
-					name: 'zitadel-cert-map-entry',
-					map: certMap.name,
-					certificates: [zitadelCert.id],
-					hostname: `auth.${managedZoneName}`,
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
-
-			// Certificate Manager: Certificate Map Entry for Web App
-			new gcp.certificatemanager.CertificateMapEntry(
-				'web-app-cert-map-entry',
-				{
-					name: 'web-app-cert-map-entry',
-					map: certMap.name,
-					certificates: [webAppCert.id],
-					hostname: `${managedZoneName}`,
-				},
-				{ parent: this, dependsOn: certManagerApi },
-			)
-
-			// Static IP for Gateway
-			const staticIp = new gcp.compute.GlobalAddress(
-				'api-gateway-static-ip',
-				{
-					name: 'api-gateway-static-ip',
-					addressType: 'EXTERNAL',
-					ipVersion: 'IPV4',
-				},
-				{ parent: this },
-			)
-
-			// DNS CNAME record for Backend Server ACME challenge validation
-			new gcp.dns.RecordSet(
-				'backend-server-dns-auth-cname',
-				{
-					name: backendServerDnsAuth.dnsResourceRecords.apply(
-						(r) => r[0].name,
-					),
-					managedZone: publicZone.name,
-					type: 'CNAME',
-					ttl: 300,
-					rrdatas: backendServerDnsAuth.dnsResourceRecords.apply(
-						(r) => [r[0].data],
-					),
-				},
-				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// DNS CNAME record for Web App ACME challenge validation
-			new gcp.dns.RecordSet(
-				'web-app-dns-auth-cname',
-				{
-					name: webAppDnsAuth.dnsResourceRecords.apply(
-						(r) => r[0].name,
-					),
-					managedZone: publicZone.name,
-					type: 'CNAME',
-					ttl: 300,
-					rrdatas: webAppDnsAuth.dnsResourceRecords.apply((r) => [
-						r[0].data,
-					]),
-				},
-				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// DNS A record for Backend Server
-			new gcp.dns.RecordSet(
-				'backend-server-a-record',
-				{
-					name: `api.${managedZoneName}.`,
-					managedZone: publicZone.name,
-					type: 'A',
-					ttl: 300,
-					rrdatas: [staticIp.address],
-				},
-				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// DNS A record for Web App
-			new gcp.dns.RecordSet(
-				'web-app-a-record',
-				{
-					name: `${managedZoneName}.`,
-					managedZone: publicZone.name,
-					type: 'A',
-					ttl: 300,
-					rrdatas: [staticIp.address],
-				},
-				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// DNS CNAME record for self-hosted Zitadel ACME challenge validation
-			new gcp.dns.RecordSet(
-				'zitadel-dns-auth-cname',
-				{
-					name: zitadelDnsAuth.dnsResourceRecords.apply(
-						(r) => r[0].name,
-					),
-					managedZone: publicZone.name,
-					type: 'CNAME',
-					ttl: 300,
-					rrdatas: zitadelDnsAuth.dnsResourceRecords.apply((r) => [
-						r[0].data,
-					]),
-				},
-				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// DNS A record for self-hosted Zitadel — shares the Gateway static IP
-			// with api/web. The HTTPRoute in k8s/namespaces/zitadel/base/httproute.yaml
-			// routes traffic to the zitadel Service based on the Host header.
-			new gcp.dns.RecordSet(
-				'zitadel-a-record',
-				{
-					name: `auth.${managedZoneName}.`,
-					managedZone: publicZone.name,
-					type: 'A',
-					ttl: 300,
-					rrdatas: [staticIp.address],
-				},
-				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// Postmark Email DNS Records (dev/staging: GCP Cloud DNS)
+		// Postmark Email DNS Records.
+		// dev/staging: GCP Cloud DNS, records placed in the single subdomain
+		// zone. prod: Cloudflare handles Postmark records at the apex (see
+		// `if (environment === 'prod')` Cloudflare provider block above);
+		// nothing to do here for prod.
+		if (environment !== 'prod') {
+			const publicZone = provisionedZones[0].zone
 			const mailSubdomain = `mail.${environment}`
 
-			// Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4169912)
+			// Postmark DKIM settings
+			// (https://account.postmarkapp.com/signature_domains/4169912)
 			new gcp.dns.RecordSet(
 				'postmark-dkim',
 				{
@@ -555,7 +364,8 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				{ parent: this, dependsOn: enabledApis },
 			)
 
-			// Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/4169912)
+			// Postmark Return-Path settings
+			// (https://account.postmarkapp.com/signature_domains/4169912)
 			new gcp.dns.RecordSet(
 				'postmark-return-path',
 				{
@@ -567,15 +377,208 @@ export class NetworkComponent extends pulumi.ComponentResource {
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
-
-			this.registerOutputs({
-				publicZoneNameservers: publicZone.nameServers,
-			})
 		}
 
 		this.registerOutputs({
 			networkName: this.network.name,
 			sqlZoneName: this.sqlZone.name,
+			publicZoneNameservers: this.publicZoneNameservers,
 		})
 	}
+}
+
+/**
+ * Declarative catalog of externally-facing services. Each entry maps a
+ * service to its subdomain prefix. `subdomain: null` denotes a service
+ * served at the zone apex (used by dev/staging where the apex is
+ * `<env>.<tld>`; excluded for prod because the prod apex stays on
+ * Cloudflare).
+ *
+ * The `name` is the Pulumi resource-name prefix and MUST NOT change for
+ * existing services — it is part of the stack URN.
+ */
+const SERVICES: ReadonlyArray<{
+	name: string
+	subdomain: string | null
+}> = [
+	{ name: 'backend-server', subdomain: 'api' },
+	{ name: 'web-app', subdomain: null },
+	{ name: 'zitadel', subdomain: 'auth' },
+]
+
+/**
+ * Config describing one Cloud DNS public zone and the Cloudflare NS
+ * delegation that points the parent zone at it.
+ */
+interface ZoneConfig {
+	/** Pulumi resource name for the gcp.dns.ManagedZone. */
+	resourceName: string
+	/** Cloud DNS `dnsName` (FQDN, trailing dot). */
+	dnsName: string
+	/**
+	 * Cloudflare DNS record `name` field. Cloudflare appends the parent
+	 * zone, so this is the subdomain label being delegated.
+	 */
+	cloudflareNsName: string
+	/**
+	 * Pulumi resource-name prefix for the Cloudflare NS DnsRecord resources.
+	 * Kept separate from {@link cloudflareNsName} so dev's pre-existing URN
+	 * (`liverty-music-app-dns-delegation-ns-*`) survives the refactor.
+	 */
+	cloudflareNsResourcePrefix: string
+}
+
+/**
+ * Per-zone bundle returned by {@link buildZoneTopology}. Each zone owns
+ * one or more services whose hostnames resolve inside it.
+ */
+interface ZoneTopologyEntry {
+	zoneConfig: ZoneConfig
+	services: Array<{ name: string; hostname: string }>
+}
+
+/**
+ * Build the (zone × services) assignment for the current environment.
+ *
+ * - **dev / staging**: a single zone `<env>.<tld>` containing every
+ *   service from {@link SERVICES}. The web app sits at the zone apex
+ *   (hostname == zone dnsName), api/auth at subdomains.
+ * - **prod**: one zone per non-apex service (apex stays on Cloudflare).
+ *   The web app is excluded.
+ *
+ * Pulumi resource names returned for dev/staging mirror the names that
+ * existed before this refactor, so the rewrite produces zero-diff on
+ * dev. Prod adds new resources with distinct names.
+ */
+function buildZoneTopology(
+	environment: string,
+	tld: string,
+): ZoneTopologyEntry[] {
+	if (environment === 'prod') {
+		return SERVICES.filter((svc) => svc.subdomain !== null).map((svc) => {
+			const subdomain = svc.subdomain as string
+			const fqdn = `${subdomain}.${tld}`
+			return {
+				zoneConfig: {
+					resourceName: `${subdomain}-${toKebabCase(tld)}-public-zone`,
+					dnsName: `${fqdn}.`,
+					cloudflareNsName: subdomain,
+					cloudflareNsResourcePrefix: subdomain,
+				},
+				services: [{ name: svc.name, hostname: fqdn }],
+			}
+		})
+	}
+
+	// dev / staging
+	const managedZoneName = `${environment}.${tld}`
+	return [
+		{
+			zoneConfig: {
+				resourceName: `${toKebabCase(tld)}-public-zone`,
+				dnsName: `${managedZoneName}.`,
+				cloudflareNsName: environment,
+				cloudflareNsResourcePrefix: toKebabCase(tld),
+			},
+			services: SERVICES.map((svc) => ({
+				name: svc.name,
+				hostname: svc.subdomain
+					? `${svc.subdomain}.${managedZoneName}`
+					: managedZoneName,
+			})),
+		},
+	]
+}
+
+/**
+ * Provision the per-hostname Pulumi resources that wire a service into
+ * Google-managed TLS and DNS:
+ *
+ *   - `<name>-dns-auth`           — Certificate Manager DnsAuthorization
+ *   - `<name>-cert`               — single-hostname Google-managed Certificate
+ *   - `<name>-cert-map-entry`     — binds the cert to the shared
+ *                                    {@link gcp.certificatemanager.CertificateMap}
+ *   - `<name>-a-record`           — A record in {@link service.zone}
+ *                                    pointing at {@link staticIp}
+ *   - `<name>-dns-auth-cname`     — CNAME record satisfying the ACME
+ *                                    DNS-01 challenge for the cert
+ *
+ * Per-service single-hostname certificates (rather than a shared SAN
+ * cert) are intentional: GCP managed certs treat `domains` /
+ * `dnsAuthorizations` as immutable, so adding a hostname to a shared
+ * cert forces replace, which deadlocks against any CertificateMapEntry
+ * still referencing the cert. Single-hostname certs isolate that risk
+ * and match the per-service granularity used everywhere else.
+ */
+function provisionManagedHostname(
+	parent: pulumi.ComponentResource,
+	service: {
+		name: string
+		hostname: string
+		zone: gcp.dns.ManagedZone
+	},
+	certMap: gcp.certificatemanager.CertificateMap,
+	staticIp: gcp.compute.GlobalAddress,
+	dependsOn: pulumi.Resource[],
+): void {
+	const { name, hostname, zone } = service
+
+	const dnsAuth = new gcp.certificatemanager.DnsAuthorization(
+		`${name}-dns-auth`,
+		{
+			name: `${name}-dns-auth`,
+			location: 'global',
+			domain: hostname,
+		},
+		{ parent, dependsOn },
+	)
+
+	const cert = new gcp.certificatemanager.Certificate(
+		`${name}-cert`,
+		{
+			name: `${name}-cert`,
+			location: 'global',
+			scope: 'DEFAULT',
+			managed: {
+				domains: [hostname],
+				dnsAuthorizations: [dnsAuth.id],
+			},
+		},
+		{ parent, dependsOn },
+	)
+
+	new gcp.certificatemanager.CertificateMapEntry(
+		`${name}-cert-map-entry`,
+		{
+			name: `${name}-cert-map-entry`,
+			map: certMap.name,
+			certificates: [cert.id],
+			hostname,
+		},
+		{ parent, dependsOn },
+	)
+
+	new gcp.dns.RecordSet(
+		`${name}-a-record`,
+		{
+			name: `${hostname}.`,
+			managedZone: zone.name,
+			type: 'A',
+			ttl: 300,
+			rrdatas: [staticIp.address],
+		},
+		{ parent, dependsOn },
+	)
+
+	new gcp.dns.RecordSet(
+		`${name}-dns-auth-cname`,
+		{
+			name: dnsAuth.dnsResourceRecords.apply((r) => r[0].name),
+			managedZone: zone.name,
+			type: 'CNAME',
+			ttl: 300,
+			rrdatas: dnsAuth.dnsResourceRecords.apply((r) => [r[0].data]),
+		},
+		{ parent, dependsOn },
+	)
 }

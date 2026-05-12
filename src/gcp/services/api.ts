@@ -27,6 +27,8 @@ export type GoogleApis =
 	| 'secretmanager.googleapis.com'
 	| 'clouderrorreporting.googleapis.com'
 	| 'places.googleapis.com'
+	| 'cloudkms.googleapis.com'
+	| 'certificatemanager.googleapis.com'
 
 export class ApiService {
 	constructor(private project: gcp.organizations.Project) {}

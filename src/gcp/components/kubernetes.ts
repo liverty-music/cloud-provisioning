@@ -1,7 +1,7 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import type { Region, RegionName } from '../region.js'
-import { ApiService } from '../services/api.js'
+import { ApiService, type GoogleApis } from '../services/api.js'
 import { IamService, Roles } from '../services/iam.js'
 
 export interface SecretConfig {
@@ -29,6 +29,15 @@ export interface KubernetesComponentArgs {
 	podsCidr: pulumi.Input<string>
 	servicesCidr: pulumi.Input<string>
 	masterCidr: string
+
+	/**
+	 * Cloud KMS CryptoKey resource name used for the GKE cluster's etcd
+	 * Application-layer Secrets Encryption. When provided, the cluster is
+	 * created with `databaseEncryption.state = ENCRYPTED`. Currently passed
+	 * for prod only; dev does not enable etcd CMEK. Irreversible at cluster
+	 * creation per GKE docs.
+	 */
+	etcdCmekKeyName?: pulumi.Input<string>
 
 	/**
 	 * The Artifact Registry repositories to grant pull access to.
@@ -74,16 +83,21 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			podsCidr,
 			servicesCidr,
 			masterCidr,
+			etcdCmekKeyName,
 			artifactRegistries,
 			secrets = [],
 			esoOnlySecrets = [],
 		} = args
 
 		const apiService = new ApiService(project)
-		const enabledApis = apiService.enableApis(
-			['container.googleapis.com', 'places.googleapis.com'],
-			this,
-		)
+		// `places.googleapis.com` is dev-only (gated by gcp-cost-guardrails:
+		// dev has a per-day quota override for venue enrichment; prod does
+		// not use the Places API directly).
+		const apisToEnable: GoogleApis[] = ['container.googleapis.com']
+		if (environment === 'dev') {
+			apisToEnable.push('places.googleapis.com')
+		}
+		const enabledApis = apiService.enableApis(apisToEnable, this)
 		const allSecrets = [...secrets, ...esoOnlySecrets]
 		const enabledSecretManagerApi =
 			allSecrets.length > 0
@@ -382,19 +396,182 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		)
 
 		if (environment === 'prod') {
-			return
-		}
-
-		if (environment === 'dev') {
-			// 6. GKE Standard Cluster (zonal, Spot node pool) — dev only
-			// Uses Standard mode instead of Autopilot to eliminate the $0.10/hr cluster
-			// management fee (¥10,800/month). Nodes are public (enablePrivateNodes: false)
-			// to remove the Cloud NAT dependency (¥5,292/month fixed cost).
+			// 6. GKE Standard Cluster (regional, Spot node pool) — prod.
+			//
+			// Three irreversible decisions baked in at creation per
+			// docs/PROD_BOOTSTRAP_DECISIONS.md:
+			//   • Regional location (asia-northeast2) — zonal → regional is not
+			//     in-place mutable.
+			//   • Dataplane V2 (datapathProvider: ADVANCED_DATAPATH) — cannot
+			//     be enabled later on an existing cluster.
+			//   • etcd CMEK (databaseEncryption.state: ENCRYPTED) — irreversible
+			//     at cluster level; KMS key provisioned by KmsComponent.
+			//
+			// Cost-first reversible defaults (will flip when real users arrive):
+			//   • enablePrivateNodes: false → no Cloud NAT
+			//   • managedPrometheus.enabled: false
+			//   • Spot e2-medium node pool 1-3 nodes
+			//
+			// See also docs/GKE_CLUSTER_MODE_DECISION.md for the Autopilot-vs-
+			// Standard reasoning and the OpenSpec change
+			// provision-prod-gcp-resources for the requirement scenarios.
+			if (!etcdCmekKeyName) {
+				throw new Error(
+					'etcdCmekKeyName is required for the prod cluster. Provision a KmsComponent and pass its keyName.',
+				)
+			}
 			const cluster = new gcp.container.Cluster(
 				`standard-cluster-${regionName}`,
 				{
 					name: `standard-cluster-${regionName}`,
-					location: `${region}-a`, // Zonal (single zone) — no management fee for first cluster
+					// Regional (3-zone). Irreversible after creation.
+					location: region,
+					deletionProtection: true,
+					network: networkId,
+					subnetwork: this.subnet.id,
+					removeDefaultNodePool: true,
+					initialNodeCount: 1,
+
+					// Dataplane V2 (eBPF). Always-on NetworkPolicy enforcement,
+					// network policy logging, and alignment with GCP's announced
+					// 2027-03-30 default. Cannot be enabled on an existing cluster.
+					datapathProvider: 'ADVANCED_DATAPATH',
+
+					// etcd Application-layer Secrets Encryption using a customer-
+					// managed Cloud KMS key. Encrypts Kubernetes Secret resources
+					// stored in etcd. Irreversible at cluster creation.
+					databaseEncryption: {
+						state: 'ENCRYPTED',
+						keyName: etcdCmekKeyName,
+					},
+
+					ipAllocationPolicy: {
+						clusterSecondaryRangeName: 'pods-range',
+						servicesSecondaryRangeName: 'services-range',
+					},
+
+					// Public nodes for the cost-first pre-launch phase. Mutable
+					// post-creation; flip to `enablePrivateNodes: true` and add
+					// Cloud NAT once real users arrive.
+					privateClusterConfig: {
+						enablePrivateNodes: false,
+						enablePrivateEndpoint: false,
+					},
+
+					workloadIdentityConfig: {
+						workloadPool: pulumi.interpolate`${project.projectId}.svc.id.goog`,
+					},
+
+					releaseChannel: {
+						channel: 'REGULAR',
+					},
+
+					costManagementConfig: {
+						enabled: true,
+					},
+
+					gatewayApiConfig: {
+						channel: 'CHANNEL_STANDARD',
+					},
+
+					// Workloads logs ingested for log-based AlertPolicies (same
+					// as dev). GMP / metric-based monitoring deferred until real
+					// traffic justifies the ingestion cost.
+					loggingConfig: {
+						enableComponents: ['SYSTEM_COMPONENTS', 'WORKLOADS'],
+					},
+					monitoringConfig: {
+						enableComponents: ['SYSTEM_COMPONENTS'],
+						managedPrometheus: {
+							enabled: false,
+						},
+					},
+				},
+				{ parent: this, dependsOn: enabledApis },
+			)
+
+			// 7. Spot Node Pool (e2-medium, regional → 1 node per zone × 3 zones
+			// at min, scaling to 3 per zone at max — cluster autoscaler manages
+			// per-zone node counts within the autoscaling bounds).
+			new gcp.container.NodePool(
+				`spot-pool-${regionName}`,
+				{
+					name: `spot-pool-${regionName}`,
+					cluster: cluster.id,
+					location: region,
+
+					autoscaling: {
+						minNodeCount: 1,
+						maxNodeCount: 3,
+					},
+
+					nodeConfig: {
+						machineType: 'e2-medium',
+						spot: true,
+						diskSizeGb: 30,
+						diskType: 'pd-standard',
+						serviceAccount: gkeNodeSa.email,
+						oauthScopes: [
+							'https://www.googleapis.com/auth/cloud-platform',
+						],
+						workloadMetadataConfig: {
+							mode: 'GKE_METADATA',
+						},
+						shieldedInstanceConfig: {
+							enableSecureBoot: true,
+							enableIntegrityMonitoring: true,
+						},
+						labels: {
+							'cloud.google.com/gke-spot': 'true',
+						},
+					},
+
+					management: {
+						autoRepair: true,
+						autoUpgrade: true,
+					},
+				},
+				{ parent: this, dependsOn: [cluster] },
+			)
+
+			this.registerOutputs({
+				clusterName: cluster.name,
+				clusterEndpoint: cluster.endpoint,
+				subnetId: this.subnet.id,
+				nodeServiceAccountEmail: this.nodeServiceAccountEmail,
+				backendAppServiceAccountEmail:
+					this.backendAppServiceAccountEmail,
+				otelCollectorServiceAccountEmail:
+					this.otelCollectorServiceAccountEmail,
+				zitadelServiceAccountEmail: this.zitadelServiceAccountEmail,
+				esoServiceAccountEmail: this.esoServiceAccountEmail,
+			})
+			return
+		}
+
+		if (environment === 'dev') {
+			// 6. GKE Standard Cluster (zonal, Spot node pool) — dev only.
+			//
+			// Mode rationale: Standard (not Autopilot) gives node-level control needed
+			// for aggressive dev cost optimization — custom node pool sizing, e2-medium
+			// Spot, 30 GB pd-standard boot disks, kube-dns autoscaler overrides, GMP
+			// disabled. Autopilot would block most of these.
+			//
+			// IMPORTANT: the $0.10/hr cluster management fee applies to BOTH Autopilot
+			// and Standard equally — choosing Standard does NOT eliminate it. The GKE
+			// free tier ($74.40/month per billing account ≈ one cluster's fee) covers
+			// either a zonal Standard cluster OR an Autopilot cluster. So the dev
+			// "Kubernetes Engine" line ≈ ¥0 comes from the free-tier credit, not from
+			// Standard mode itself. See docs/GKE_CLUSTER_MODE_DECISION.md.
+			//
+			// Public nodes (enablePrivateNodes: false) avoid the ~¥5,292/month Cloud
+			// NAT fixed cost. This is acceptable for DEV ONLY — prod must use private
+			// nodes for security regardless of cost.
+			const cluster = new gcp.container.Cluster(
+				`standard-cluster-${regionName}`,
+				{
+					name: `standard-cluster-${regionName}`,
+					location: `${region}-a`, // Zonal — eligible for $74.40/mo free-tier credit per billing account.
 					deletionProtection: false,
 					network: networkId,
 					subnetwork: this.subnet.id,

@@ -89,10 +89,6 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			'servicenetworking.googleapis.com', // Required for PSC
 		])
 
-		if (environment === 'prod') {
-			return
-		}
-
 		// 2. Provision Cloud SQL Instance (Producer)
 		const postgresDbName = `postgres-${regionName}`
 		const instance = new gcp.sql.DatabaseInstance(
