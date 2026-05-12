@@ -1,6 +1,7 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import type { CloudflareConfig } from '../cloudflare/config.js'
+import { KmsComponent } from './components/kms.js'
 import { KubernetesComponent } from './components/kubernetes.js'
 import { MonitoringComponent } from './components/monitoring.js'
 // import { ConcertDataStore } from './components/concert-data-store.js'
@@ -144,6 +145,19 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
+		// 4.5. Cloud KMS — etcd CMEK key for the prod GKE cluster.
+		// Application-layer Secrets Encryption is irreversible at cluster
+		// creation, so the key must exist before KubernetesComponent runs.
+		// Skipped for dev: dev cluster does not enable etcd CMEK to keep the
+		// dev resource footprint minimal.
+		const kms =
+			environment === 'prod'
+				? new KmsComponent('gke-cluster-kms', {
+						project: this.project,
+						region: Regions.Osaka,
+					})
+				: undefined
+
 		// 5. GKE Autopilot Cluster
 		const osakaConfig = NetworkConfig.Osaka
 		const kubernetes = new KubernetesComponent('kubernetes-cluster', {
@@ -156,6 +170,7 @@ export class Gcp {
 			podsCidr: osakaConfig.podsCidr,
 			servicesCidr: osakaConfig.servicesCidr,
 			masterCidr: osakaConfig.masterCidr,
+			etcdCmekKeyName: kms?.keyName,
 			artifactRegistries: [
 				backendArtifactRegistry,
 				frontendArtifactRegistry,
