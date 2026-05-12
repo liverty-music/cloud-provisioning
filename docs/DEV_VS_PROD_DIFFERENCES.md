@@ -35,8 +35,9 @@ Last updated: 2026-05-11.
 | **Cloud SQL instance tier** | `db-f1-micro` | `db-f1-micro` | First real traffic on prod | ✅ Mutable (in-place tier upgrade with brief downtime) |
 | **Cloud SQL availability** | ZONAL | REGIONAL | n/a | ❌ Set at instance creation (different prod instance) |
 | **Cloud SQL deletionProtection** | Off | On | n/a | ✅ Mutable |
-| **Cloud SQL databases** | `liverty_music` + `zitadel` (when Zitadel SA provided) | `liverty_music` only (Zitadel deferred to follow-up change) | Zitadel-for-prod change | ✅ Add database resource |
-| **Self-hosted Zitadel** | Provisioned via Pulumi (`src/index.ts:73` gate) | Not provisioned (env guard) | Future `self-hosted-zitadel-prod` follow-up change | ⚠️ Code gate, requires Pulumi change |
+| **Cloud SQL databases** | `liverty_music` + `zitadel` | `liverty_music` + `zitadel` (infra provisioned, workload deferred) | n/a | ✅ Add database resource |
+| **Zitadel infrastructure** (GCP SA, DB, IAM, cert, DNS for `auth.<host>`) | Provisioned via Pulumi | Provisioned via Pulumi (same as dev) — idle until the workload is deployed | n/a | n/a — already provisioned |
+| **Self-hosted Zitadel workload** (Pulumi-managed Zitadel application + machine key + login PAT) | Provisioned via Pulumi (`src/index.ts:73` gate; depends on `zitadelMachineKey` / `zitadelLoginPat` ESC values) | Not deployed — ESC values are not set for prod, so the gate evaluates false | Future `self-hosted-zitadel-prod` follow-up change provides the ESC values and removes the implicit gate | ⚠️ Requires ESC config + Pulumi change |
 | **Domain authority for `liverty-music.app` apex** | Cloudflare manages `liverty-music.app`; `dev.liverty-music.app` delegated to Cloud DNS via NS | Cloudflare retains apex authoritative; `api.` + `auth.` subdomains delegated to Cloud DNS via per-subdomain NS records | n/a | ✅ Mutable (Cloudflare API) |
 | **Cloud DNS zone count** | 1 zone (`dev.liverty-music.app`) | 2 zones (`api.liverty-music.app`, `auth.liverty-music.app`) | n/a | ❌ Zone names fixed at creation; new zone needs new NS delegation |
 | **Certificate Manager hostnames** | `dev.liverty-music.app`, `api.dev.liverty-music.app`, `auth.dev.liverty-music.app` | `api.liverty-music.app`, `auth.liverty-music.app` (no apex cert — Cloudflare serves apex) | n/a | ❌ Certificate `domains` field is immutable; replace requires new cert |
