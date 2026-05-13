@@ -1,9 +1,10 @@
 # Runbook: fetch `kubectl` credentials for the prod GKE cluster
 
-> **Background:** The prod GKE cluster (`standard-cluster-osaka` in
-> `liverty-music-prod`) is a regional Standard cluster created by the
-> OpenSpec change `provision-prod-gcp-resources`. It uses
-> Workload Identity for in-cluster auth and `gke-gcloud-auth-plugin`
+> **Background:** The prod GKE cluster (`autopilot-cluster-osaka` in
+> `liverty-music-prod`) is a regional **Autopilot** cluster created by the
+> OpenSpec change `migrate-prod-to-autopilot` (which superseded the
+> original Standard regional cluster from `provision-prod-gcp-resources`).
+> It uses Workload Identity for in-cluster auth and `gke-gcloud-auth-plugin`
 > for human `kubectl` access. There is no kubeconfig committed to
 > the repo — every operator generates one on demand from gcloud.
 
@@ -55,13 +56,13 @@ gcloud auth application-default login
 ### 2. Fetch the cluster credentials
 
 ```bash
-gcloud container clusters get-credentials standard-cluster-osaka \
+gcloud container clusters get-credentials autopilot-cluster-osaka \
   --region asia-northeast2 \
   --project liverty-music-prod
 ```
 
 This writes a context entry into `~/.kube/config` named
-`gke_liverty-music-prod_asia-northeast2_standard-cluster-osaka`
+`gke_liverty-music-prod_asia-northeast2_autopilot-cluster-osaka`
 and sets it as the current context.
 
 ### 3. Verify the connection
@@ -75,8 +76,9 @@ kubectl get ns
 Expected:
 
 - The current context shows the prod cluster.
-- `kubectl get nodes` returns at least one Spot node from the
-  `spot-pool-osaka` node pool.
+- `kubectl get nodes` returns Autopilot-managed nodes — nodes appear on
+  demand as Pods are scheduled, and may show zero nodes when the cluster
+  is idle. There is no user-declared node pool to inspect.
 - `kubectl get ns` includes the standard namespaces
   (`argocd`, `external-secrets`, `backend`, `frontend`, etc.) once
   ArgoCD has bootstrapped them.
@@ -86,7 +88,7 @@ Expected:
 To avoid accidentally running prod-impacting commands later:
 
 ```bash
-kubectl config use-context gke_liverty-music-dev_asia-northeast2-a_standard-cluster-osaka
+kubectl config use-context gke_liverty-music-dev_asia-northeast2-a_autopilot-cluster-osaka
 ```
 
 Or use `kubectx prod` / `kubectx dev` if you have
@@ -94,30 +96,37 @@ Or use `kubectx prod` / `kubectx dev` if you have
 
 ## Verifying the irreversible-decision state
 
-After the first `pulumi up --stack prod`, confirm the three
-irreversible cluster settings from `docs/PROD_BOOTSTRAP_DECISIONS.md`
-are actually in effect on the live cluster:
+After the first `pulumi up --stack prod`, confirm the irreversible
+cluster settings from `docs/PROD_BOOTSTRAP_DECISIONS.md` are actually
+in effect on the live cluster:
 
 ```bash
-# Topology + Dataplane V2 + etcd CMEK in one describe
-gcloud container clusters describe standard-cluster-osaka \
+# Autopilot + Topology + Dataplane V2 + etcd CMEK in one describe
+gcloud container clusters describe autopilot-cluster-osaka \
   --region asia-northeast2 \
   --project liverty-music-prod \
-  --format='value(location,networkConfig.datapathProvider,databaseEncryption.state,databaseEncryption.keyName)'
+  --format='value(autopilot.enabled,location,networkConfig.datapathProvider,databaseEncryption.state,databaseEncryption.keyName)'
 ```
 
 Expected output:
 
 ```
-asia-northeast2     ADVANCED_DATAPATH     ENCRYPTED     projects/liverty-music-prod/locations/asia-northeast2/keyRings/gke-cluster/cryptoKeys/gke-etcd-encryption
+True     asia-northeast2     ADVANCED_DATAPATH     ALL_OBJECTS_ENCRYPTION_ENABLED     projects/liverty-music-prod/locations/asia-northeast2/keyRings/gke-cluster/cryptoKeys/gke-etcd-encryption
 ```
 
-If any of these three values differs from the expected — the
-cluster was not created per spec. Do **not** attempt to "fix" it
-with `gcloud container clusters update`; per GKE docs none of these
-three settings are mutable post-creation. Destroy the cluster
-(`pulumi destroy --target ...`), correct the Pulumi config, and
-re-create.
+Notes:
+- `autopilot.enabled: True` confirms cluster mode.
+- `networkConfig.datapathProvider: ADVANCED_DATAPATH` is implicit on
+  Autopilot (set without a Pulumi flag).
+- `databaseEncryption.state` returns `ALL_OBJECTS_ENCRYPTION_ENABLED`
+  in the API surface even though the Pulumi input is `ENCRYPTED`; this
+  is the API's canonical "encrypted" value.
+
+If any value differs from the expected — the cluster was not created
+per spec. Do **not** attempt to "fix" it with `gcloud container
+clusters update`; per GKE docs none of these settings are mutable
+post-creation. Destroy the cluster (`pulumi destroy --target ...`),
+correct the Pulumi config, and re-create.
 
 ## Troubleshooting
 
@@ -139,12 +148,13 @@ the expected identity and that the GCP IAM admin granted at least
 
 ### `kubectl get nodes` shows no nodes
 
-The cluster autoscaler may have scaled the Spot pool to zero or
-Spot capacity is unavailable in `asia-northeast2`. Check the
-cluster autoscaler logs in Cloud Logging
-(`resource.type="k8s_cluster" jsonPayload.noScaleUp`) for the
-reason. If a long-running outage prevents Spot reclaim, switch
-the prod pool to on-demand temporarily.
+On Autopilot, nodes are provisioned on demand by Pod scheduling — an
+idle cluster (no Pods) will have zero nodes. This is expected. If
+Pods are pending and no nodes appear, check Pod scheduling events
+(`kubectl describe pod <name>`) for Autopilot policy violations
+(privileged container, host network, unsupported resource shape).
+Spot Pods specifically may stay pending if Spot capacity is
+unavailable in `asia-northeast2`; the Pod event log will say so.
 
 ## See also
 

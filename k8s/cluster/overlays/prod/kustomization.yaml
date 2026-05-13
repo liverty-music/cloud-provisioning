@@ -1,0 +1,14 @@
+# Prod cluster overlay — currently scoped to the GMP cost-control config
+# delivered by the `migrate-prod-to-autopilot` OpenSpec change.
+#
+# The shared `../../base` ClusterSecretStores are intentionally NOT included
+# here: they require a projectID patch to function, and the cluster-wide ESO
+# bootstrap for prod is deferred to a separate change (alongside the rest of
+# the prod-k8s-manifests follow-up). Adding them without the patch would
+# render Stores with `projectID: TO_REPLACE_BY_OVERLAY`, which is worse than
+# not rendering them at all.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cluster-pod-monitoring.yaml

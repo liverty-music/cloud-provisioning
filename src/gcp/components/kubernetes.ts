@@ -396,46 +396,50 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		)
 
 		if (environment === 'prod') {
-			// 6. GKE Standard Cluster (regional, Spot node pool) — prod.
+			// 6. GKE Autopilot Cluster (regional) — prod.
 			//
-			// Three irreversible decisions baked in at creation per
-			// docs/PROD_BOOTSTRAP_DECISIONS.md:
-			//   • Regional location (asia-northeast2) — zonal → regional is not
-			//     in-place mutable.
-			//   • Dataplane V2 (datapathProvider: ADVANCED_DATAPATH) — cannot
-			//     be enabled later on an existing cluster.
+			// Migrated from Standard regional per the migrate-prod-to-autopilot
+			// OpenSpec change. Rationale: post-dev-retirement, the $74.40/mo GKE
+			// free-tier credit covers the Autopilot management fee (regional
+			// Standard is not free-tier-eligible), dropping the prod management
+			// fee from $72/mo to $0. Net savings $50-70/mo even after the
+			// unavoidable GMP cost — controlled at the application layer via
+			// ClusterPodMonitoring metric_relabel rules and a 60s scrape interval,
+			// see k8s/cluster/overlays/prod/cluster-pod-monitoring.yaml.
+			//
+			// Irreversible decisions preserved at creation:
+			//   • Autopilot mode — cannot be flipped to Standard in-place.
+			//   • Regional location (asia-northeast2) — three-zone resilience.
 			//   • etcd CMEK (databaseEncryption.state: ENCRYPTED) — irreversible
-			//     at cluster level; KMS key provisioned by KmsComponent.
+			//     at cluster level; KMS key provisioned by KmsComponent and
+			//     reused as-is from the Standard cluster era.
 			//
-			// Cost-first reversible defaults (will flip when real users arrive):
-			//   • enablePrivateNodes: false → no Cloud NAT
-			//   • managedPrometheus.enabled: false
-			//   • Spot e2-medium node pool 1-3 nodes
+			// Autopilot-managed defaults (not user-configurable knobs):
+			//   • Dataplane V2 — Autopilot default, no `datapathProvider` needed.
+			//   • Shielded GKE Nodes — enforced automatically.
+			//   • Node provisioning, machine types, boot disks — managed by
+			//     Autopilot. Spot scheduling is per-Pod via the
+			//     `cloud.google.com/gke-spot: "true"` nodeSelector.
+			//   • Managed Prometheus — cannot be disabled on Autopilot ≥1.25
+			//     per GCP docs; cost is controlled via ClusterPodMonitoring.
 			//
-			// See also docs/GKE_CLUSTER_MODE_DECISION.md for the Autopilot-vs-
-			// Standard reasoning and the OpenSpec change
-			// provision-prod-gcp-resources for the requirement scenarios.
+			// See also docs/PROD_BOOTSTRAP_DECISIONS.md and
+			// docs/GKE_CLUSTER_MODE_DECISION.md.
 			if (!etcdCmekKeyName) {
 				throw new Error(
 					'etcdCmekKeyName is required for the prod cluster. Provision a KmsComponent and pass its keyName.',
 				)
 			}
 			const cluster = new gcp.container.Cluster(
-				`standard-cluster-${regionName}`,
+				`autopilot-cluster-${regionName}`,
 				{
-					name: `standard-cluster-${regionName}`,
+					name: `autopilot-cluster-${regionName}`,
 					// Regional (3-zone). Irreversible after creation.
 					location: region,
+					enableAutopilot: true,
 					deletionProtection: true,
 					network: networkId,
 					subnetwork: this.subnet.id,
-					removeDefaultNodePool: true,
-					initialNodeCount: 1,
-
-					// Dataplane V2 (eBPF). Always-on NetworkPolicy enforcement,
-					// network policy logging, and alignment with GCP's announced
-					// 2027-03-30 default. Cannot be enabled on an existing cluster.
-					datapathProvider: 'ADVANCED_DATAPATH',
 
 					// etcd Application-layer Secrets Encryption using a customer-
 					// managed Cloud KMS key. Encrypts Kubernetes Secret resources
@@ -450,12 +454,13 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 						servicesSecondaryRangeName: 'services-range',
 					},
 
-					// Public nodes for the cost-first pre-launch phase. Mutable
-					// post-creation; flip to `enablePrivateNodes: true` and add
-					// Cloud NAT once real users arrive.
-					privateClusterConfig: {
-						enablePrivateNodes: false,
-						enablePrivateEndpoint: false,
+					// Autopilot auto-provisioning uses this SA for node-level
+					// logging/monitoring; workloads still bind to their own GCP
+					// SAs via Workload Identity (which Autopilot enforces).
+					clusterAutoscaling: {
+						autoProvisioningDefaults: {
+							serviceAccount: gkeNodeSa.email,
+						},
 					},
 
 					workloadIdentityConfig: {
@@ -473,65 +478,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					gatewayApiConfig: {
 						channel: 'CHANNEL_STANDARD',
 					},
-
-					// Workloads logs ingested for log-based AlertPolicies (same
-					// as dev). GMP / metric-based monitoring deferred until real
-					// traffic justifies the ingestion cost.
-					loggingConfig: {
-						enableComponents: ['SYSTEM_COMPONENTS', 'WORKLOADS'],
-					},
-					monitoringConfig: {
-						enableComponents: ['SYSTEM_COMPONENTS'],
-						managedPrometheus: {
-							enabled: false,
-						},
-					},
 				},
 				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// 7. Spot Node Pool (e2-medium, regional → 1 node per zone × 3 zones
-			// at min, scaling to 3 per zone at max — cluster autoscaler manages
-			// per-zone node counts within the autoscaling bounds).
-			new gcp.container.NodePool(
-				`spot-pool-${regionName}`,
-				{
-					name: `spot-pool-${regionName}`,
-					cluster: cluster.id,
-					location: region,
-
-					autoscaling: {
-						minNodeCount: 1,
-						maxNodeCount: 3,
-					},
-
-					nodeConfig: {
-						machineType: 'e2-medium',
-						spot: true,
-						diskSizeGb: 30,
-						diskType: 'pd-standard',
-						serviceAccount: gkeNodeSa.email,
-						oauthScopes: [
-							'https://www.googleapis.com/auth/cloud-platform',
-						],
-						workloadMetadataConfig: {
-							mode: 'GKE_METADATA',
-						},
-						shieldedInstanceConfig: {
-							enableSecureBoot: true,
-							enableIntegrityMonitoring: true,
-						},
-						labels: {
-							'cloud.google.com/gke-spot': 'true',
-						},
-					},
-
-					management: {
-						autoRepair: true,
-						autoUpgrade: true,
-					},
-				},
-				{ parent: this, dependsOn: [cluster] },
 			)
 
 			this.registerOutputs({

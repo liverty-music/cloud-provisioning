@@ -10,27 +10,28 @@ Rationale and reversibility classification for each difference live in
 "Irreversible vs reversible cluster settings" reference table is in
 [GKE_CLUSTER_MODE_DECISION.md](./GKE_CLUSTER_MODE_DECISION.md).
 
-Last updated: 2026-05-11.
+Last updated: 2026-05-13.
 
 ## Comparison table
 
 | Setting | dev | prod | Trigger to flip | Reversible? |
 |---|---|---|---|---|
-| **GKE cluster mode** | Standard | Standard | A new OpenSpec change | ❌ Requires new cluster + workload migration |
+| **GKE cluster mode** | Standard | **Autopilot** | A new OpenSpec change | ❌ Requires new cluster + workload migration |
 | **GKE topology** | Zonal (`asia-northeast2-a`) | Regional (`asia-northeast2`) | n/a | ❌ Irreversible |
-| **Dataplane** | LEGACY_DATAPATH (kube-proxy / iptables) | ADVANCED_DATAPATH (Dataplane V2 / eBPF) | n/a | ❌ Irreversible (must set at creation) |
+| **Dataplane** | LEGACY_DATAPATH (kube-proxy / iptables) | ADVANCED_DATAPATH (Dataplane V2 / eBPF) — Autopilot default | n/a | ❌ Irreversible (must set at creation) |
 | **etcd Application-layer Secrets Encryption (CMEK)** | Off (Google default at-rest only) | On — Cloud KMS key `gke-etcd-encryption` | SOC2 / audit gate | ❌ Irreversible at cluster creation |
 | **GKE deletion protection** | Off (`deletionProtection: false`) | On (`deletionProtection: true`) | Manual override only | ✅ Mutable (Pulumi config) |
-| **Spot node pool min/max** | 1 / 3 nodes | 1 / 3 nodes | Workload count growth | ✅ Mutable (Pulumi config) |
-| **Spot node machine type** | `e2-medium` | `e2-medium` | Workload sizing pressure | ✅ Replaceable (new node pool) |
-| **Boot disk** | 30 GB `pd-standard` | 30 GB `pd-standard` | Image cache pressure / latency | ✅ Replaceable (new node pool) |
-| **Boot disk CMEK** | Default Google encryption | Default Google encryption | Compliance gate | ✅ Replaceable (new node pool with CMEK) |
-| **Node privacy** | `enablePrivateNodes: false` (public IPs) | `enablePrivateNodes: false` (public IPs) | First real users on prod | ✅ Mutable post-creation |
-| **Cloud NAT** | Not provisioned | Not provisioned | When prod flips to private nodes | ✅ Add VPC-level resource |
-| **Confidential GKE Nodes** | Off | Off | Blockchain mainnet GA → add dedicated signing node pool | ✅ Per-pool addition; cluster-level enable is ❌ irreversible |
-| **Google Managed Prometheus (GMP)** | Disabled | Disabled | First real users on prod | ✅ Mutable |
-| **Logging components** | `SYSTEM_COMPONENTS` + `WORKLOADS` | `SYSTEM_COMPONENTS` + `WORKLOADS` | n/a | ✅ Mutable |
-| **Monitoring components** | `SYSTEM_COMPONENTS` only | `SYSTEM_COMPONENTS` only | Metric-based alerts need GMP first | ✅ Mutable |
+| **Node provisioning** | Self-managed Spot e2-medium pool (1-3 nodes) | Autopilot-managed (no user-declared NodePool) | n/a | ⚠️ Cluster mode change |
+| **Spot scheduling knob** | NodePool-level (`spot: true`) | Per-Pod via `cloud.google.com/gke-spot: "true"` nodeSelector | n/a | ✅ Per-workload |
+| **Boot disk** | 30 GB `pd-standard` | Autopilot-managed (no user knob) | n/a | N/A |
+| **Boot disk CMEK** | Default Google encryption | Autopilot-managed | Compliance gate | N/A |
+| **Node privacy** | `enablePrivateNodes: false` (public IPs) | Autopilot default network config (no user knob) | n/a | N/A on Autopilot |
+| **Cloud NAT** | Not provisioned | Not provisioned (no egress workloads yet) | When prod gets egress needs | ✅ Add VPC-level resource |
+| **Shielded GKE Nodes** | Explicit (Standard requires it) | Autopilot-enforced automatically | n/a | N/A |
+| **Confidential GKE Nodes** | Off | Not user-exposed at cluster level on Autopilot | Blockchain mainnet GA → per-workload ComputeClass | ✅ Per-workload on Autopilot |
+| **Google Managed Prometheus (GMP)** | Disabled | **Enabled** (mandatory on Autopilot ≥1.25) with cost-control config: 60s scrape + `metric_relabeling` keep-list (allows `kube_*` + `container_(cpu\|memory)_*` only) | n/a | ⚠️ Mandatory; cost-control is mutable |
+| **Logging** | `SYSTEM_COMPONENTS` + `WORKLOADS` (explicit) | Autopilot-managed defaults | n/a | ⚠️ Autopilot-managed |
+| **Monitoring components** | `SYSTEM_COMPONENTS` only (explicit) | Autopilot-managed defaults | n/a | ⚠️ Autopilot-managed |
 | **kube-dns autoscaler override** | `preventSinglePointFailure: false` (replicas 1) | GKE default (replicas 2) | n/a | ✅ Mutable (k8s ConfigMap) |
 | **Cloud SQL instance tier** | `db-f1-micro` | `db-f1-micro` | First real traffic on prod | ✅ Mutable (in-place tier upgrade with brief downtime) |
 | **Cloud SQL availability** | ZONAL | REGIONAL | n/a | ❌ Set at instance creation (different prod instance) |
