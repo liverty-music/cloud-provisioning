@@ -10,6 +10,15 @@ resources:
 # hang (search the `liverty-music.app/temporary` annotation in the dev
 # overlay). Prod must not silently inherit a weekly forced restart.
 
+configMapGenerator:
+# Merge prod env-specific overrides into the base `zitadel-config` ConfigMap.
+# Currently overrides ZITADEL_EXTERNALDOMAIN and the Cloud SQL IAM SA
+# usernames — see `configmap-patch.env` for the full set + rationale.
+- name: zitadel-config
+  behavior: merge
+  envs:
+  - configmap-patch.env
+
 patches:
 # Apply Spot-pool nodeSelector to both Deployments. Replica count and PDB
 # minAvailable inherit from base (replicas: 2, minAvailable: 1) — the spot

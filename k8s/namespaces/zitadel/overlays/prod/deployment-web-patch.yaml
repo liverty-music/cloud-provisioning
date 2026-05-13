@@ -1,6 +1,12 @@
 # Prod overlay for the Zitadel Web (Login V2 UI) Deployment — same posture
 # as the API deployment: inherit base replicas: 2 + PDB minAvailable: 1,
 # apply Spot-pool nodeSelector.
+#
+# Also overrides ZITADEL_API_URL to the prod public URL. Base hardcodes the
+# dev URL; without this patch, prod's Login UI would call the dev domain,
+# producing HTTP 404 (the cluster-internal hostname is not in prod's
+# InstanceDomains list) → Login SSR 500. Same env-leak-from-base pattern
+# as the HTTPRoute hostname (design D1).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,3 +16,8 @@ spec:
     spec:
       nodeSelector:
         cloud.google.com/gke-spot: "true"
+      containers:
+      - name: web
+        env:
+        - name: ZITADEL_API_URL
+          value: https://auth.liverty-music.app
