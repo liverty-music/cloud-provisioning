@@ -8,7 +8,7 @@ metadata:
     # Restart the Pod when `otel-collector-config` ConfigMap changes so
     # pipeline edits (adding receivers, processors, new exporters) land
     # without an operator running `kubectl rollout restart` by hand.
-    # Pairs with the same annotation on the `zitadel` Deployment.
+    # Pairs with the same annotation on the `zitadel-api` Deployment.
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1

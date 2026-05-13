@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: zitadel
+  name: zitadel-api
   labels:
     app: zitadel
     component: api
@@ -10,6 +10,9 @@ metadata:
     # without a manual rollout.
     reloader.stakater.com/auto: "true"
 spec:
+  # Base posture: 2 replicas + podAntiAffinity (hostname topology) provides
+  # HA against a single-node Spot preemption. `dev` overlay relaxes to 1.
+  replicas: 2
   selector:
     matchLabels:
       app: zitadel
@@ -27,13 +30,17 @@ spec:
     spec:
       serviceAccountName: zitadel
       terminationGracePeriodSeconds: 60
-      # Disable K8s legacy service-discovery env vars. Without this, the
-      # `zitadel` Service in this namespace injects `ZITADEL_PORT=tcp://<ip>:80`
-      # into every pod, which Viper then parses as the top-level Zitadel
-      # config field `Port` (expected uint16) — causing startup to fail with
-      # `'Port' cannot parse value as 'uint16': strconv.ParseUint: invalid syntax`.
-      # DNS-based service discovery (zitadel.zitadel.svc.cluster.local) works
-      # regardless of this flag.
+      # Disable K8s legacy service-discovery env vars. Defensive insurance.
+      # Pre-rename history: the `zitadel` Service injected `ZITADEL_PORT=
+      # tcp://<ip>:80` into every pod, which Viper parsed as the top-level
+      # `Port` (uint16) config field — startup failed with `'Port' cannot
+      # parse value as 'uint16': strconv.ParseUint: invalid syntax`. After
+      # the rename to `zitadel-api`, the injected env var is `ZITADEL_API_
+      # PORT`, which has no matching uint16 config field, so that specific
+      # collision no longer applies. The flag stays because any future
+      # Service in this namespace could trigger an analogous collision and
+      # the flag is essentially free. DNS-based service discovery
+      # (`zitadel-api.zitadel.svc.cluster.local`) works regardless.
       enableServiceLinks: false
       # Keep both replicas on different nodes so a single Spot preemption
       # cannot take the entire API plane down.
@@ -53,7 +60,7 @@ spec:
       # empty database it runs init + setup; on an initialized database it
       # runs setup (pending migrations) + start. FIRSTINSTANCE env vars in
       # the configmap are consumed only on the first run.
-      - name: zitadel
+      - name: api
         image: ghcr.io/zitadel/zitadel:v4.14.0
         args:
         - start-from-init

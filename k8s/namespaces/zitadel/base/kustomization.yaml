@@ -7,15 +7,15 @@ resources:
 - namespace.yaml
 - serviceaccount.yaml
 - deployment-api.yaml
-- deployment-login.yaml
+- deployment-web.yaml
 - service-api.yaml
-- service-login.yaml
+- service-web.yaml
 - httproute.yaml
 - healthcheckpolicy.yaml
 - pdb.yaml
 - external-secret.yaml
 - external-secret-postgres-admin.yaml
-- external-secret-login-pat.yaml
+- external-secret-web-pat.yaml
 - job-grant-db.yaml
 
 configMapGenerator:

@@ -6,7 +6,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: zitadel
+  name: zitadel-api
 spec:
   replicas: 1
   template:

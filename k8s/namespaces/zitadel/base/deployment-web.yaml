@@ -1,15 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: zitadel-login
+  name: zitadel-web
   labels:
     app: zitadel
-    component: login
+    component: web
 spec:
+  # Base posture: 2 replicas + podAntiAffinity (hostname topology) provides
+  # HA against a single-node Spot preemption. `dev` overlay relaxes to 1.
+  replicas: 2
   selector:
     matchLabels:
       app: zitadel
-      component: login
+      component: web
   strategy:
     rollingUpdate:
       maxUnavailable: 0
@@ -19,7 +22,7 @@ spec:
     metadata:
       labels:
         app: zitadel
-        component: login
+        component: web
     spec:
       serviceAccountName: zitadel
       terminationGracePeriodSeconds: 30
@@ -29,13 +32,11 @@ spec:
           - labelSelector:
               matchLabels:
                 app: zitadel
-                component: login
+                component: web
             topologyKey: kubernetes.io/hostname
       containers:
       # Login V2 UI container. Serves only `/ui/v2/login/*`; the HTTPRoute
       # splits traffic so non-login paths reach the API container instead.
-      # ZITADEL_API_URL points at the in-cluster API Service so the login UI
-      # can call the API without egressing the cluster.
       #
       # Image path: `zitadel-login`, not `login`. The Zitadel monorepo
       # publishes the Login V2 UI at `ghcr.io/zitadel/zitadel-login`, not
@@ -49,7 +50,7 @@ spec:
       # semver tags as `zitadel` (verified via `docker manifest inspect
       # ghcr.io/zitadel/zitadel-login:v4.14.0`). The earlier "semver-up-to-v4.7.3"
       # gap is closed.
-      - name: zitadel-login
+      - name: web
         image: ghcr.io/zitadel/zitadel-login:v4.14.0
         imagePullPolicy: IfNotPresent
         ports:
@@ -60,14 +61,14 @@ spec:
         # cluster-internal Service URL. Zitadel v4 selects the virtual
         # instance from the request's Host header and matches it against
         # the configured InstanceDomains; the cluster-internal hostname
-        # `zitadel.zitadel.svc.cluster.local` is not in that list, so
+        # `zitadel-api.zitadel.svc.cluster.local` is not in that list, so
         # internal calls return HTTP 404 ("Failed to fetch security
         # settings from API ... status:404").
         #
         # Setting the public URL here makes the login UI's outbound calls
         # carry `Host: auth.dev.liverty-music.app`. The request still stays
         # within the cluster: it goes Gateway → HTTPRoute (`/` catch-all
-        # rule) → `zitadel` Service → API container. The Gateway round-trip
+        # rule) → `zitadel-api` Service → API container. The Gateway round-trip
         # adds ~10ms but avoids any cluster-DNS rewrite hacks.
         #
         # An alternative (not used) is registering the internal hostname
@@ -84,7 +85,7 @@ spec:
         # authenticate against the Zitadel API for SSR-side calls (instance
         # settings, cross-org user search, session management). Provisioned
         # by Pulumi `LoginClientComponent`, mirrored from GSM into a K8s
-        # Secret by `external-secret-login-pat.yaml`, mounted as a file —
+        # Secret by `external-secret-web-pat.yaml`, mounted as a file —
         # not as an env var — so it does not appear in `kubectl describe pod`
         # output.
         # Upstream contract:
@@ -121,8 +122,8 @@ spec:
       volumes:
       - name: login-pat
         secret:
-          secretName: zitadel-login-pat
-          # `secretKey: token` (set in external-secret-login-pat.yaml) lands
+          secretName: zitadel-web-pat
+          # `secretKey: token` (set in external-secret-web-pat.yaml) lands
           # the PAT at /var/run/zitadel/token by default. Project it to
           # `login-client.pat` to match ZITADEL_SERVICE_USER_TOKEN_FILE.
           items:

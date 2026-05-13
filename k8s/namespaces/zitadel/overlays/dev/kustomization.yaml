@@ -25,11 +25,17 @@ patches:
 - path: deployment-patch.yaml
   target:
     kind: Deployment
-    name: zitadel
-- path: deployment-login-patch.yaml
+    name: zitadel-api
+- path: deployment-web-patch.yaml
   target:
     kind: Deployment
-    name: zitadel-login
+    name: zitadel-web
 # Relax both PDBs to minAvailable=0 so the single dev replica can be
 # voluntarily evicted (rollout, drain, Spot preemption).
 - path: pdb-patch.yaml
+# Supply the dev hostname for the Zitadel HTTPRoute (base omits `hostnames`
+# so each overlay scopes its `/` catch-all rule to its own auth domain).
+- path: httproute-patch.yaml
+  target:
+    kind: HTTPRoute
+    name: zitadel-route

@@ -1,0 +1,15 @@
+# Prod overlay for the Zitadel API Deployment.
+# Inherits base `replicas: 2` and `PodDisruptionBudget minAvailable: 1`.
+# Applies the Spot-pool nodeSelector for pre-launch cost — safe because the
+# base `podAntiAffinity` (hostname topology) ensures the two replicas land
+# on different nodes, so a single Spot preemption cannot take the entire
+# API plane down.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zitadel-api
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"

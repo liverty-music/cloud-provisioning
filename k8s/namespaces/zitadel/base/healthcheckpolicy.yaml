@@ -28,15 +28,15 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: zitadel
+    name: zitadel-api
 ---
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
-  name: zitadel-login-policy
+  name: zitadel-web-policy
   labels:
     app: zitadel
-    component: login
+    component: web
 spec:
   default:
     config:
@@ -47,4 +47,4 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: zitadel-login
+    name: zitadel-web

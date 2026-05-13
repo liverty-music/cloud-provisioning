@@ -1,0 +1,12 @@
+# Prod overlay for the Zitadel Web (Login V2 UI) Deployment — same posture
+# as the API deployment: inherit base replicas: 2 + PDB minAvailable: 1,
+# apply Spot-pool nodeSelector.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zitadel-web
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"

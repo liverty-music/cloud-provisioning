@@ -6,18 +6,20 @@ spec:
   parentRefs:
   - name: external-gateway
     namespace: gateway
-  hostnames:
-  - auth.dev.liverty-music.app
+  # `hostnames` is intentionally NOT set in base — each overlay (dev / prod)
+  # supplies its environment-specific hostname via a patch. This is load-
+  # bearing because the `/` catch-all rule below would intercept all Gateway
+  # traffic without a hostname filter, breaking backend and frontend routing.
   rules:
   # Login UI path — route BEFORE the catch-all rule so the more specific
   # prefix match wins. Zitadel v4 Login V2 serves everything under
-  # `/ui/v2/login/*` from the separate login container on port 3000.
+  # `/ui/v2/login/*` from the separate Web (Login UI) container on port 3000.
   - matches:
     - path:
         type: PathPrefix
         value: /ui/v2/login
     backendRefs:
-    - name: zitadel-login
+    - name: zitadel-web
       port: 80
   # Everything else — OIDC (`/oauth/v2`, `/oidc/v1`), gRPC v2 APIs (`/v2`,
   # `/zitadel.*.v2.*`), legacy APIs (`/saml/v2`, `/assets/v1`), Admin Console
@@ -27,5 +29,5 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: zitadel
+    - name: zitadel-api
       port: 80
