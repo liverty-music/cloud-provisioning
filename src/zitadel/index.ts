@@ -31,7 +31,8 @@ export * from './dynamic/index.js'
 export interface ZitadelArgs {
 	env: Environment
 	/** GCP project ID (e.g. `liverty-music-dev`) holding the GSM secret
-	 *  `zitadel-admin-sa-key` populated by the in-cluster bootstrap-uploader. */
+	 *  `zitadel-machine-key-for-pulumi-admin` populated by the in-cluster
+	 *  bootstrap-uploader. */
 	gcpProjectId: pulumi.Input<string>
 	/** Postmark Server API Token — used as both SMTP username and password. */
 	postmarkServerApiToken: string
@@ -83,8 +84,8 @@ export interface ZitadelArgs {
  *   accounts.
  *
  * Pulumi authenticates as `pulumi-admin` (admin org), reads the JWT
- * profile JSON from GSM `zitadel-admin-sa-key`, and provisions
- * everything else from there.
+ * profile JSON from GSM `zitadel-machine-key-for-pulumi-admin`, and
+ * provisions everything else from there.
  *
  * Cutover scope is dev-only. Staging / prod adoption is a separate
  * change; the `env` guard below makes a staging / prod attempt fail
@@ -159,7 +160,7 @@ export class Zitadel {
 			gcp.secretmanager
 				.getSecretVersionOutput({
 					project: gcpProjectId,
-					secret: 'zitadel-admin-sa-key',
+					secret: 'zitadel-machine-key-for-pulumi-admin',
 					version: 'latest',
 				})
 				.apply((v) => v.secretData),
