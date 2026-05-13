@@ -402,10 +402,22 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			// OpenSpec change. Rationale: post-dev-retirement, the $74.40/mo GKE
 			// free-tier credit covers the Autopilot management fee (regional
 			// Standard is not free-tier-eligible), dropping the prod management
-			// fee from $72/mo to $0. Net savings $50-70/mo even after the
-			// unavoidable GMP cost — controlled at the application layer via
-			// ClusterPodMonitoring metric_relabel rules and a 60s scrape interval,
-			// see k8s/cluster/overlays/prod/cluster-pod-monitoring.yaml.
+			// fee from $72/mo to $0. Net savings $50-70/mo even after Autopilot's
+			// unavoidable GMP managed collection.
+			//
+			// GMP cost control on Autopilot ≥ 1.25 (managed collection cannot
+			// be disabled per GCP docs) is enforced here by setting
+			// `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope =
+			// 'NONE'`. That flag turns off GKE's auto-discovery of application
+			// Pods, leaving only the unavoidable GKE-managed system pipeline
+			// (kubelet/cAdvisor + kube-state-metrics) as the cost floor. User
+			// workload metrics become opt-in via per-namespace PodMonitoring
+			// CRDs deferred to the prod-k8s-manifests follow-up.
+			//
+			// A user-applied ClusterPodMonitoring with metric_relabeling does
+			// NOT filter the GKE-managed system scrapes — its relabel rules
+			// only apply to metrics it scrapes itself — so the earlier draft
+			// that authored such a resource was removed during PR #450 review.
 			//
 			// Irreversible decisions preserved at creation:
 			//   • Autopilot mode — cannot be flipped to Standard in-place.
@@ -477,6 +489,21 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
 					gatewayApiConfig: {
 						channel: 'CHANNEL_STANDARD',
+					},
+
+					// GMP cost control: disable Autopilot's auto-discovery of
+					// application Pods. The managed system pipeline (kubelet,
+					// cAdvisor, kube-state-metrics) is unavoidable on Autopilot
+					// ≥ 1.25, but auto-monitoring of user workloads can be
+					// turned off here. User metrics become opt-in via explicit
+					// PodMonitoring CRDs.
+					monitoringConfig: {
+						managedPrometheus: {
+							enabled: true,
+							autoMonitoringConfig: {
+								scope: 'NONE',
+							},
+						},
 					},
 				},
 				{ parent: this, dependsOn: enabledApis },

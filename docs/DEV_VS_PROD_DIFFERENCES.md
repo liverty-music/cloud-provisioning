@@ -29,7 +29,7 @@ Last updated: 2026-05-13.
 | **Cloud NAT** | Not provisioned | Not provisioned (no egress workloads yet) | When prod gets egress needs | ✅ Add VPC-level resource |
 | **Shielded GKE Nodes** | Explicit (Standard requires it) | Autopilot-enforced automatically | n/a | N/A |
 | **Confidential GKE Nodes** | Off | Not user-exposed at cluster level on Autopilot | Blockchain mainnet GA → per-workload ComputeClass | ✅ Per-workload on Autopilot |
-| **Google Managed Prometheus (GMP)** | Disabled | **Enabled** (mandatory on Autopilot ≥1.25) with cost-control config: 60s scrape + `metric_relabeling` keep-list (allows `kube_*` + `container_(cpu\|memory)_*` only) | n/a | ⚠️ Mandatory; cost-control is mutable |
+| **Google Managed Prometheus (GMP)** | Disabled | **Enabled** (mandatory on Autopilot ≥1.25) with `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'` — disables auto-discovery of application Pods; system-pod ingestion (kubelet, cAdvisor, kube-state-metrics) is the unavoidable floor | First app-metric alert | ⚠️ Mandatory; scope flag is mutable |
 | **Logging** | `SYSTEM_COMPONENTS` + `WORKLOADS` (explicit) | Autopilot-managed defaults | n/a | ⚠️ Autopilot-managed |
 | **Monitoring components** | `SYSTEM_COMPONENTS` only (explicit) | Autopilot-managed defaults | n/a | ⚠️ Autopilot-managed |
 | **kube-dns autoscaler override** | `preventSinglePointFailure: false` (replicas 1) | GKE default (replicas 2) | n/a | ✅ Mutable (k8s ConfigMap) |

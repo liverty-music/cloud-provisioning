@@ -104,16 +104,22 @@ at the billing impact, two facts reshaped the decision:
    the only billable cluster — Autopilot pays $0/mo management fee, regional
    Standard pays $72/mo. Net annual delta: ~$864 of pure waste.
 
-2. **GMP cost is controllable, not free**. GMP cannot be disabled on
-   Autopilot ≥1.25 per
+2. **GMP cost is bounded, not free**. GMP managed collection cannot be
+   disabled on Autopilot ≥1.25 per
    [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed):
    *"You can't turn off managed collection in GKE Autopilot clusters running
    GKE version 1.25 or greater"*. Empirically a stock dev Autopilot once cost
-   "a few thousand yen" in unfiltered GMP ingestion. The way to bound it is
-   not a cluster flag — it's a ClusterPodMonitoring resource that applies
-   `metric_relabeling` keep-rules to drop everything outside an allow-list
-   and extends `interval` from 15s → 60s. Empirically this keeps prod GMP
-   in the $5-15/mo band, well inside the savings envelope.
+   "a few thousand yen" in unfiltered GMP ingestion. The lever to bound this
+   is the cluster's
+   `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'`
+   flag, which disables Autopilot's auto-discovery of application Pods. The
+   GKE-managed system pipeline (kubelet, cAdvisor, kube-state-metrics) is
+   the unavoidable cost floor. Target band for an idle / light prod cluster:
+   `$5-15/mo`, well inside the savings envelope. (Note: a user
+   `ClusterPodMonitoring` with `metric_relabeling` keep-rules does NOT
+   filter the managed-collection system pipeline — its relabel rules only
+   apply to metrics it scrapes itself. That mechanism was floated in the
+   first draft of `migrate-prod-to-autopilot` but rejected during PR review.)
 
 Net post-migration math: Standard regional was $77.76/mo (management + Spot
 compute); Autopilot regional is $5-22/mo (GMP + Pod-level Spot). Savings:

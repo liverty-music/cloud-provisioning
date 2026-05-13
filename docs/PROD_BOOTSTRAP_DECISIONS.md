@@ -75,8 +75,11 @@ Companion documents:
   GMP — which cannot be disabled (per
   [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed):
   *"You can't turn off managed collection in GKE Autopilot clusters running
-  GKE version 1.25 or greater"*) — and which we keep in the $5-15/mo band via
-  ClusterPodMonitoring metric_relabel + 60s scrape interval (see decision §8).
+  GKE version 1.25 or greater"*) — and which we bound by setting
+  `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'` at
+  cluster creation (disables auto-discovery of application Pods). System-pod
+  ingestion (kubelet, cAdvisor, kube-state-metrics) is the unavoidable cost
+  floor (see decision §8).
 - **Operational fit.** The workload set (backend, frontend, Zitadel, ArgoCD,
   ESO, Reloader, Atlas, OTel, NATS, KEDA, Image Updater) is HPA-driven and
   uses no privileged DaemonSets, so the Autopilot security/restriction
@@ -197,17 +200,27 @@ The Pod range can be expanded by adding additional Pod IP ranges
 
 ### 8. Workload set: GMP enabled with cost-control, Spot via per-Pod label
 
-**Why** (revised 2026-05 in `migrate-prod-to-autopilot`):
+**Why** (revised 2026-05 in `migrate-prod-to-autopilot`, refined during PR #450 review):
 
-- **GMP is now mandatory** under Autopilot ≥1.25 (cannot be disabled per
+- **GMP managed collection is mandatory** under Autopilot ≥1.25 (cannot be
+  disabled per
   [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed)).
-  We accept the cost and keep it in the $5-15/mo band via a
-  ClusterPodMonitoring resource that:
-  - Restricts ingested metrics to an allow-list (`kube_(node|deployment|pod|namespace|statefulset|daemonset)_.+`
-    and `container_(cpu|memory)_.+`) using `metric_relabeling` keep rules.
-  - Uses `interval: 60s` instead of the default 15s (4× reduction).
-  - Leaves automatic application monitoring off; workload metrics are opt-in
-    via per-namespace PodMonitoring CRDs.
+  Cost is bounded by setting
+  `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'` at
+  the cluster (Pulumi) level. That flag prevents GKE from auto-discovering
+  and scraping every application Pod. The unavoidable floor is the GKE-
+  managed system pipeline — kubelet, cAdvisor, and kube-state-metrics —
+  whose ingestion is a function of cluster size (system Pod count). Empirical
+  target band: `$5-15/mo` for an idle/light cluster.
+- **No user `ClusterPodMonitoring` with metric_relabel keep-rule.** The earlier
+  draft authored such a resource; review (`PR #450` discussion 3232006619)
+  pointed out that user-applied scrape CRs only filter metrics they scrape
+  themselves — they do NOT intercept GKE's managed-collection system scrapes.
+  The cluster-level `autoMonitoringConfig.scope: 'NONE'` is the correct (and
+  sufficient) lever for prod's empty-workload starting state.
+- **Workload metrics become opt-in** via per-namespace `PodMonitoring` CRDs
+  deferred to the `prod-k8s-manifests` follow-up, when application workloads
+  arrive that need active alerting.
 - **Spot scheduling is per-Pod** on Autopilot (no node pool to declare).
   Workloads that tolerate preemption already use the
   `cloud.google.com/gke-spot: "true"` nodeSelector (same convention dev uses);
@@ -217,9 +230,7 @@ The Pod range can be expanded by adding additional Pod IP ranges
 
 **Future revisit trigger**: Going live with users. At that point, expect to:
 - Add per-namespace PodMonitoring CRDs for the application metrics that need
-  active alerting.
-- Relax the GMP cost-control rules selectively as alert coverage grows
-  (still cheaper than the unfiltered default).
+  active alerting (this re-introduces app-metric ingestion, opt-in).
 - Add a non-Spot ComputeClass workload preference for latency-sensitive Pods
   (background / batch stay on Spot).
 
@@ -277,10 +288,13 @@ the `environment === 'prod'` branch. Key shape:
 - `costManagementConfig.enabled: true`
 - `releaseChannel.channel: REGULAR`
 - `deletionProtection: true`
+- `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'`
+  — disables Autopilot's auto-discovery of application Pod metrics. The
+  GKE-managed system pipeline (kubelet, cAdvisor, kube-state-metrics)
+  remains unavoidable on Autopilot ≥ 1.25 and forms the GMP cost floor.
 
-Dataplane V2, Shielded GKE Nodes, GMP, and node provisioning are
-Autopilot-managed — no explicit flags. GMP cost-control lives in
-[`k8s/cluster/overlays/prod/cluster-pod-monitoring.yaml`](../k8s/cluster/overlays/prod/cluster-pod-monitoring.yaml).
+Dataplane V2, Shielded GKE Nodes, and node provisioning are Autopilot-
+managed — no explicit flags.
 
 Cloud KMS resources (unchanged from the original Standard cluster, reused by
 the Autopilot cluster):
