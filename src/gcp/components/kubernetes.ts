@@ -406,13 +406,24 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			// unavoidable GMP managed collection.
 			//
 			// GMP cost control on Autopilot ≥ 1.25 (managed collection cannot
-			// be disabled per GCP docs) is enforced here by setting
-			// `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope =
-			// 'NONE'`. That flag turns off GKE's auto-discovery of application
-			// Pods, leaving only the unavoidable GKE-managed system pipeline
-			// (kubelet/cAdvisor + kube-state-metrics) as the cost floor. User
-			// workload metrics become opt-in via per-namespace PodMonitoring
-			// CRDs deferred to the prod-k8s-manifests follow-up.
+			// be disabled per GCP docs) relies on Autopilot's *default*
+			// `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope:
+			// NONE` (per [GMP auto-monitoring docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/auto-monitoring):
+			// *"Automatic application monitoring is OFF by default for both
+			// Autopilot and Standard clusters. You must explicitly enable it."*).
+			// We deliberately do NOT set `monitoringConfig` here — earlier
+			// attempts to set it with only `managedPrometheus` were rejected
+			// by Autopilot at create time with `Error 400: Autopilot clusters
+			// must have monitoring enabled` because the Pulumi/Terraform
+			// provider serialized the missing `enableComponents` as an empty
+			// list. Leaving the entire block out means Autopilot uses its
+			// full default monitoring component set (SYSTEM_COMPONENTS +
+			// APISERVER + SCHEDULER + ... + KUBELET) with managed-Prometheus
+			// enabled and auto-monitoring off — exactly the desired posture.
+			// The unavoidable GKE-managed system pipeline (kubelet/cAdvisor +
+			// kube-state-metrics) is the cost floor. User workload metrics
+			// become opt-in via per-namespace PodMonitoring CRDs in the
+			// prod-k8s-manifests follow-up.
 			//
 			// A user-applied ClusterPodMonitoring with metric_relabeling does
 			// NOT filter the GKE-managed system scrapes — its relabel rules
@@ -491,20 +502,10 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 						channel: 'CHANNEL_STANDARD',
 					},
 
-					// GMP cost control: disable Autopilot's auto-discovery of
-					// application Pods. The managed system pipeline (kubelet,
-					// cAdvisor, kube-state-metrics) is unavoidable on Autopilot
-					// ≥ 1.25, but auto-monitoring of user workloads can be
-					// turned off here. User metrics become opt-in via explicit
-					// PodMonitoring CRDs.
-					monitoringConfig: {
-						managedPrometheus: {
-							enabled: true,
-							autoMonitoringConfig: {
-								scope: 'NONE',
-							},
-						},
-					},
+					// monitoringConfig is intentionally omitted — see leading
+					// block comment. Autopilot's default scope: NONE handles
+					// the cost-control intent without triggering the provider's
+					// "monitoring must be enabled" validation.
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
