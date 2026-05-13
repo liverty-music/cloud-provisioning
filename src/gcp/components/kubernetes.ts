@@ -405,30 +405,50 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			// fee from $72/mo to $0. Net savings $50-70/mo even after Autopilot's
 			// unavoidable GMP managed collection.
 			//
-			// GMP cost control on Autopilot ≥ 1.25 (managed collection cannot
-			// be disabled per GCP docs) relies on Autopilot's *default*
-			// `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope:
-			// NONE` (per [GMP auto-monitoring docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/auto-monitoring):
-			// *"Automatic application monitoring is OFF by default for both
-			// Autopilot and Standard clusters. You must explicitly enable it."*).
-			// We deliberately do NOT set `monitoringConfig` here — earlier
-			// attempts to set it with only `managedPrometheus` were rejected
-			// by Autopilot at create time with `Error 400: Autopilot clusters
-			// must have monitoring enabled` because the Pulumi/Terraform
-			// provider serialized the missing `enableComponents` as an empty
-			// list. Leaving the entire block out means Autopilot uses its
-			// full default monitoring component set (SYSTEM_COMPONENTS +
-			// APISERVER + SCHEDULER + ... + KUBELET) with managed-Prometheus
-			// enabled and auto-monitoring off — exactly the desired posture.
-			// The unavoidable GKE-managed system pipeline (kubelet/cAdvisor +
-			// kube-state-metrics) is the cost floor. User workload metrics
-			// become opt-in via per-namespace PodMonitoring CRDs in the
-			// prod-k8s-manifests follow-up.
+			// GMP / monitoring cost control on Autopilot ≥ 1.25 — the
+			// `monitoringConfig` block below pushes ingestion as close to
+			// disabled as the platform allows:
 			//
-			// A user-applied ClusterPodMonitoring with metric_relabeling does
-			// NOT filter the GKE-managed system scrapes — its relabel rules
-			// only apply to metrics it scrapes itself — so the earlier draft
-			// that authored such a resource was removed during PR #450 review.
+			//   • `enableComponents: ['SYSTEM_COMPONENTS']` — drops the 10
+			//     optional GKE components Autopilot enables by default
+			//     (STORAGE, HPA, POD, DAEMONSET, DEPLOYMENT, STATEFULSET,
+			//     CADVISOR, KUBELET, DCGM, JOBSET). SYSTEM_COMPONENTS is the
+			//     mandatory floor per
+			//     [configure-metrics docs](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-metrics):
+			//     *"For GKE Autopilot clusters, you cannot disable the
+			//     collection of system metrics."*
+			//   • `managedPrometheus.enabled: true` — mandatory on Autopilot
+			//     ≥ 1.25 per
+			//     [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed):
+			//     *"You can't turn off managed collection in GKE Autopilot
+			//     clusters running GKE version 1.25 or greater."*
+			//   • `advancedDatapathObservabilityConfig.enableMetrics: false`
+			//     — disables Cilium/Hubble per-node network-flow metrics,
+			//     the biggest variable cost driver as nodes scale up.
+			//   • `autoMonitoringConfig.scope` is left unset — Autopilot's
+			//     default per
+			//     [GMP auto-monitoring docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/auto-monitoring)
+			//     is OFF for both Autopilot and Standard, so unset == NONE
+			//     and no application Pods are auto-discovered.
+			//
+			// The unavoidable cost floor is the GKE-managed system pipeline:
+			// the `kube-state-metrics` and `gke-managed-dcgm-exporter` CRs
+			// in `gke-managed-cim` / `gke-gmp-system` namespaces (both
+			// addon-managed with `addonmanager.kubernetes.io/mode: Reconcile`,
+			// so user edits are reverted). At idle (zero workloads → zero
+			// nodes) the kube-state-metrics Pod stays Pending and the
+			// empirical GMP cost is ~$0. When workloads land, per-node
+			// kubelet/cAdvisor + kube-state-metrics emission begins.
+			//
+			// **Pulumi serializer gotcha (resolved)**: an earlier draft set
+			// `monitoringConfig` with ONLY `managedPrometheus` — Pulumi/TF
+			// serialized the missing `enableComponents` as `[]`, which
+			// Autopilot rejected with `Error 400: Autopilot clusters must
+			// have monitoring enabled`. Setting `enableComponents` explicitly
+			// avoids the trap (PR #250 hotfix, then this PR's tightening).
+			//
+			// User workload metrics become opt-in via per-namespace
+			// `PodMonitoring` CRDs in the `prod-k8s-manifests` follow-up.
 			//
 			// Irreversible decisions preserved at creation:
 			//   • Autopilot mode — cannot be flipped to Standard in-place.
@@ -443,8 +463,6 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			//   • Node provisioning, machine types, boot disks — managed by
 			//     Autopilot. Spot scheduling is per-Pod via the
 			//     `cloud.google.com/gke-spot: "true"` nodeSelector.
-			//   • Managed Prometheus — cannot be disabled on Autopilot ≥1.25
-			//     per GCP docs; cost is controlled via ClusterPodMonitoring.
 			//
 			// See also docs/PROD_BOOTSTRAP_DECISIONS.md and
 			// docs/GKE_CLUSTER_MODE_DECISION.md.
@@ -502,10 +520,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 						channel: 'CHANNEL_STANDARD',
 					},
 
-					// monitoringConfig is intentionally omitted — see leading
-					// block comment. Autopilot's default scope: NONE handles
-					// the cost-control intent without triggering the provider's
-					// "monitoring must be enabled" validation.
+					// Minimum monitoring config — see leading block comment
+					// for rationale + GCP doc citations.
+					monitoringConfig: {
+						enableComponents: ['SYSTEM_COMPONENTS'],
+						managedPrometheus: {
+							enabled: true,
+						},
+						advancedDatapathObservabilityConfig: {
+							enableMetrics: false,
+							enableRelay: false,
+						},
+					},
 				},
 				{ parent: this, dependsOn: enabledApis },
 			)
