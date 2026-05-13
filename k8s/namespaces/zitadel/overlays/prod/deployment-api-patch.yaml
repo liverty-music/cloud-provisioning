@@ -4,6 +4,14 @@
 # base `podAntiAffinity` (hostname topology) ensures the two replicas land
 # on different nodes, so a single Spot preemption cannot take the entire
 # API plane down.
+#
+# Also overrides the cloud-sql-proxy `args` to point at the prod Cloud SQL
+# instance. Base hardcodes the dev instance connection name
+# (`liverty-music-dev:asia-northeast2:postgres-osaka`); without this patch
+# the prod API pods would proxy to the dev DB. Same env-leak-from-base
+# pattern as the HTTPRoute hostname (design D1). The full `args` list is
+# replayed because Kustomize strategic merge replaces list values when
+# `args` has no mergeKey.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,3 +21,11 @@ spec:
     spec:
       nodeSelector:
         cloud.google.com/gke-spot: "true"
+      containers:
+      - name: cloud-sql-proxy
+        args:
+        - --psc
+        - --auto-iam-authn
+        - --port=5432
+        - --address=127.0.0.1
+        - liverty-music-prod:asia-northeast2:postgres-osaka

@@ -20,10 +20,12 @@ configMapGenerator:
   - configmap-patch.env
 
 patches:
-# Apply Spot-pool nodeSelector to both Deployments. Replica count and PDB
-# minAvailable inherit from base (replicas: 2, minAvailable: 1) — the spot
-# choice is acceptable pre-launch because base podAntiAffinity ensures
-# different-host placement; revisit non-spot when SLO/traffic justifies.
+# Apply Spot-pool nodeSelector to both Deployments + override cloud-sql-proxy
+# args (deployment-api) and ZITADEL_API_URL env (deployment-web). Replica
+# count and PDB minAvailable inherit from base (replicas: 2,
+# minAvailable: 1) — spot is acceptable pre-launch because base
+# podAntiAffinity ensures different-host placement; revisit non-spot when
+# SLO/traffic justifies.
 - path: deployment-api-patch.yaml
   target:
     kind: Deployment
@@ -32,6 +34,12 @@ patches:
   target:
     kind: Deployment
     name: zitadel-web
+# Override the Workload Identity GCP SA on the `zitadel` ServiceAccount
+# (base annotates the dev project's SA; prod pods need the prod SA).
+- path: serviceaccount-patch.yaml
+  target:
+    kind: ServiceAccount
+    name: zitadel
 # Supply the prod hostname for the Zitadel HTTPRoute (base omits `hostnames`
 # so each overlay scopes its `/` catch-all rule to its own auth domain).
 - path: httproute-patch.yaml

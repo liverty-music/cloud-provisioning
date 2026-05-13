@@ -13,6 +13,11 @@ resources:
 # restart. To be removed once the root cause is found — search the
 # `liverty-music.app/temporary` annotation to locate.
 - cronjob-restart-zitadel.yaml
+# Dev-only DB grant Job. Hardcodes the dev Cloud SQL instance + dev IAM
+# SA username; cannot live in base without a templating layer. Prod will
+# need its own equivalent when prod prereqs (Cloud SQL prod instance,
+# IAM user, postgres-admin-password GSM secret) are provisioned.
+- job-grant-db.yaml
 
 configMapGenerator:
 - name: zitadel-config

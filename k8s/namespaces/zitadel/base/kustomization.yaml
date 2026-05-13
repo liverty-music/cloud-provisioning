@@ -16,7 +16,9 @@ resources:
 - external-secret.yaml
 - external-secret-postgres-admin.yaml
 - external-secret-web-pat.yaml
-- job-grant-db.yaml
+# NOTE: `job-grant-db.yaml` lives in `overlays/dev/` because the Job hardcodes
+# the dev Cloud SQL instance + dev IAM SA usernames. Prod will need its own
+# job-grant-db.yaml (or a future templating refactor) once prod prereqs land.
 
 configMapGenerator:
 - name: zitadel-config
