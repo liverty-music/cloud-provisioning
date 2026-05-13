@@ -1,15 +1,15 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: zitadel-login
+  name: zitadel-web
   labels:
     app: zitadel
-    component: login
+    component: web
 spec:
   type: ClusterIP
   selector:
     app: zitadel
-    component: login
+    component: web
   ports:
   - port: 80
     targetPort: 3000

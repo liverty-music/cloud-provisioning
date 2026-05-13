@@ -157,7 +157,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 						'',
 						'1. Open the runbook: `cloud-provisioning/docs/runbooks/zitadel-hang.md`',
 						'2. **Capture forensic data BEFORE mitigation** (logs, connection-pool metrics, in-cluster smoke test) — restart erases in-memory state we need to disambiguate hypothesis A (projection-updater write-lock) vs. hypothesis B (connection-pool exhaustion)',
-						'3. Mitigation: `kubectl rollout restart deployment/zitadel -n zitadel`',
+						'3. Mitigation: `kubectl rollout restart deployment/zitadel-api -n zitadel`',
 						'4. Verify recovery: `/debug/healthz` → 200, OIDC discovery sub-second',
 						'',
 						'### Related signals to check',

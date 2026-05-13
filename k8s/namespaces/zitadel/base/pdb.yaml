@@ -1,7 +1,7 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: zitadel
+  name: zitadel-api
 spec:
   minAvailable: 1
   selector:
@@ -12,10 +12,10 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: zitadel-login
+  name: zitadel-web
 spec:
   minAvailable: 1
   selector:
     matchLabels:
       app: zitadel
-      component: login
+      component: web

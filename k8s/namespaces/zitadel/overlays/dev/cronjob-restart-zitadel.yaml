@@ -16,7 +16,7 @@
 # the only environment that runs (dev), no user-facing downtime.
 #
 # Why a separate ServiceAccount + RBAC: the CronJob calls `kubectl
-# rollout restart deploy/zitadel` which requires `patch` on
+# rollout restart deploy/zitadel-api` which requires `patch` on
 # `deployments`. The default `zitadel` ServiceAccount has no such
 # permission (it's scoped to running Zitadel itself, not mutating
 # its own Deployment). A dedicated minimum-privilege identity keeps
@@ -35,14 +35,14 @@ metadata:
   name: zitadel-restart
   annotations:
     liverty-music.app/temporary: "until-rootcause-self-hosted-zitadel-§18.6"
-# Minimum-privilege: only `patch` on the specific `zitadel`
+# Minimum-privilege: only `patch` on the specific `zitadel-api`
 # Deployment (resourceNames pin), nothing else in the namespace.
 # `patch` is what `kubectl rollout restart` issues — it sets the
 # `kubectl.kubernetes.io/restartedAt` annotation on the pod template.
 rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  resourceNames: ["zitadel"]
+  resourceNames: ["zitadel-api"]
   verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -119,7 +119,7 @@ spec:
             args:
             - rollout
             - restart
-            - deployment/zitadel
+            - deployment/zitadel-api
             resources:
               requests:
                 cpu: 10m

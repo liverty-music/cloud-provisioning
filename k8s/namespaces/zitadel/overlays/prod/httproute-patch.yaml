@@ -1,0 +1,13 @@
+# Prod overlay supplies the env-specific hostname for the Zitadel HTTPRoute.
+# Prod is the canonical environment, so the bare apex `auth.liverty-music.app`
+# is used (no `prod.` subdomain). The base HTTPRoute deliberately omits
+# `hostnames` because each overlay must scope its `/` catch-all rule to its
+# own auth domain — otherwise the catch-all would intercept backend/frontend
+# traffic on the shared Gateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: zitadel-route
+spec:
+  hostnames:
+  - auth.liverty-music.app
