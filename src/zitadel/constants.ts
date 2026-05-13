@@ -72,7 +72,7 @@ export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
  * The id below is the dev environment's `admin` org id, discovered
  * post-bootstrap via `POST /admin/v1/orgs/_search` against the machine
  * user whose JSON key the bootstrap-uploader sidecar writes to GSM
- * (`zitadel-admin-sa-key`). The value is stable across pod restarts but
+ * (`zitadel-machine-key-for-pulumi-admin`). The value is stable across pod restarts but
  * instance-specific — if the dev Zitadel database is wiped and
  * re-bootstrapped, this constant MUST be updated to the new admin org id
  * before running `pulumi up` against the re-bootstrapped instance.

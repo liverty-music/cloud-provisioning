@@ -19,7 +19,7 @@ infrastructure changes:
    client, the admin org's `LoginPolicy`, the `IdpGoogle` Pulumi
    resource, and the `ZitadelUserIdpLink` pre-link. Many moving parts.
 2. **Machine admin** (`pulumi-admin`, `IAM_OWNER`) — JSON service
-   account key in GSM secret `zitadel-admin-sa-key` → JWT-bearer
+   account key in GSM secret `zitadel-machine-key-for-pulumi-admin` → JWT-bearer
    exchange → Zitadel admin REST API. The `@pulumiverse/zitadel`
    Pulumi provider is the typical consumer. Depends on **only** the
    GSM secret + Cloud SQL eventstore being intact.
@@ -39,9 +39,9 @@ break-glass identity itself](#recovering-the-break-glass-identity-itself)):
 ```bash
 # 1. The pulumi-admin user still exists in the admin org.
 PROJECT=liverty-music-dev
-gcloud secrets versions access latest --secret=zitadel-admin-sa-key \
-  --project="$PROJECT" > /tmp/zitadel-admin-sa-key.json
-jq -r '.userId' /tmp/zitadel-admin-sa-key.json
+gcloud secrets versions access latest --secret=zitadel-machine-key-for-pulumi-admin \
+  --project="$PROJECT" > /tmp/zitadel-machine-key-for-pulumi-admin.json
+jq -r '.userId' /tmp/zitadel-machine-key-for-pulumi-admin.json
 # expected: a Zitadel user-id snowflake (numeric string)
 
 # 2. The Cloud SQL eventstore is reachable.
@@ -54,8 +54,8 @@ kubectl -n zitadel get pods -l app=zitadel
 ### Step 1 — fetch the SA key locally
 
 ```bash
-gcloud secrets versions access latest --secret=zitadel-admin-sa-key \
-  --project=liverty-music-dev > /tmp/zitadel-admin-sa-key.json
+gcloud secrets versions access latest --secret=zitadel-machine-key-for-pulumi-admin \
+  --project=liverty-music-dev > /tmp/zitadel-machine-key-for-pulumi-admin.json
 ```
 
 The file contains the `pulumi-admin` machine user's RSA private key.
@@ -78,7 +78,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 ZITADEL = "https://auth.dev.liverty-music.app"
 
 def b64url(d): return urlsafe_b64encode(d).rstrip(b"=").decode()
-with open("/tmp/zitadel-admin-sa-key.json") as f: key = json.load(f)
+with open("/tmp/zitadel-machine-key-for-pulumi-admin.json") as f: key = json.load(f)
 now = int(time.time())
 header = {"alg":"RS256","typ":"JWT","kid":key["keyId"]}
 payload = {"iss":key["userId"],"sub":key["userId"],"aud":ZITADEL,"iat":now,"exp":now+300}
@@ -112,7 +112,7 @@ itself](#recovering-the-break-glass-identity-itself).
 
 ### Step 3 — let Pulumi take over
 
-The `@pulumiverse/zitadel` provider reads `zitadel-admin-sa-key` from
+The `@pulumiverse/zitadel` provider reads `zitadel-machine-key-for-pulumi-admin` from
 GSM directly via `gcp.secretmanager.getSecretVersionOutput` (see
 [`src/zitadel/index.ts`](../../src/zitadel/index.ts) — the
 `jwtProfileJson` wiring). No additional config is needed; running
@@ -156,7 +156,7 @@ After Pulumi reconciles the broken resources:
 
 The break-glass path **fails** if any of the following are broken:
 
-- The `zitadel-admin-sa-key` GSM secret is missing or corrupt.
+- The `zitadel-machine-key-for-pulumi-admin` GSM secret is missing or corrupt.
 - The `pulumi-admin` user is gone from Zitadel (someone deleted it
   through the Console or ran `DELETE /management/v1/users/<id>`).
 - The `eventstore` schema in Cloud SQL is corrupt.
@@ -178,7 +178,7 @@ versions and look for a known-good one (created on or before the
 last successful Pulumi run):
 
 ```bash
-gcloud secrets versions list zitadel-admin-sa-key \
+gcloud secrets versions list zitadel-machine-key-for-pulumi-admin \
   --project=liverty-music-dev \
   --format='table(name,state,createTime)'
 ```
@@ -187,13 +187,13 @@ If a prior `STATE=ENABLED` version exists, fetch and verify it:
 
 ```bash
 PRIOR=<version-number>
-gcloud secrets versions access "$PRIOR" --secret=zitadel-admin-sa-key \
-  --project=liverty-music-dev > /tmp/zitadel-admin-sa-key.json
+gcloud secrets versions access "$PRIOR" --secret=zitadel-machine-key-for-pulumi-admin \
+  --project=liverty-music-dev > /tmp/zitadel-machine-key-for-pulumi-admin.json
 # Run the sanity script from Step 2; if it succeeds, mark this version as
 # the new "latest" by adding a new version that is a copy of the prior:
-gcloud secrets versions access "$PRIOR" --secret=zitadel-admin-sa-key \
+gcloud secrets versions access "$PRIOR" --secret=zitadel-machine-key-for-pulumi-admin \
   --project=liverty-music-dev \
-  | gcloud secrets versions add zitadel-admin-sa-key \
+  | gcloud secrets versions add zitadel-machine-key-for-pulumi-admin \
     --project=liverty-music-dev --data-file=-
 ```
 
