@@ -241,14 +241,6 @@ export class Gcp {
 				...(zitadelMachineKey
 					? [
 							{
-								name: 'zitadel-machine-key',
-								value: pulumi.secret(zitadelMachineKey),
-							},
-							// Transitional dual-write: backend reads from the new
-							// name with fallback to the old. PR 4 of openspec change
-							// `rename-zitadel-machine-keys` removes the old entry;
-							// PR 6 destroys the underlying GSM resource.
-							{
 								name: 'zitadel-machine-key-for-backend-app',
 								value: pulumi.secret(zitadelMachineKey),
 							},
@@ -270,7 +262,7 @@ export class Gcp {
 				// the `zitadel` namespace mirrors this into a K8s Secret which the
 				// pod mounts as a file referenced by ZITADEL_SERVICE_USER_TOKEN_FILE.
 				// Backend-app does not need access — the backend talks to Zitadel
-				// via its own JWT-key (zitadel-machine-key), not this PAT.
+				// via its own JWT-key (zitadel-machine-key-for-backend-app), not this PAT.
 				...(zitadelLoginPat
 					? [
 							{
