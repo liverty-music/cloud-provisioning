@@ -4,7 +4,17 @@ Records the decisions made when designing the `liverty-music-prod` GKE cluster
 and surrounding infrastructure. Captured so future contributors and security
 auditors can trace the rationale.
 
-Last updated: 2026-05-11.
+Last updated: 2026-05-13.
+
+> **Migration history**: the original `provision-prod-gcp-resources` change
+> (archived 2026-05-13) created the prod cluster as **Standard regional**. The
+> subsequent `migrate-prod-to-autopilot` change (~2026-05) flipped the cluster
+> mode to **Autopilot regional** because (i) post-dev-retirement the GKE
+> $74.40/mo free-tier credit only covers Autopilot or *zonal* Standard, not
+> regional Standard, so Autopilot drops the management fee from $72/mo to $0,
+> and (ii) Autopilot's operational simplicity matches the HPA-driven, no-priv-
+> DaemonSet workload profile this project ended up with. Decisions §1, §5, §8
+> below have been rewritten; the irreversibility table reflects the new state.
 
 Companion documents:
 - [GKE_CLUSTER_MODE_DECISION.md](./GKE_CLUSTER_MODE_DECISION.md) — mode choice details, irreversible-vs-reversible reference table.
@@ -30,54 +40,72 @@ Companion documents:
 
 | Decision | Value | Reversibility |
 |---|---|---|
-| Cluster mode | Standard | Irreversible (re-create + migrate workloads) |
+| Cluster mode | **Autopilot** | Irreversible (re-create + migrate workloads) |
 | Cluster topology | Regional (`asia-northeast2`) | Irreversible |
 | Network mode | VPC-native (default) | Irreversible |
-| Dataplane V2 | ✅ Enabled (`datapathProvider: 'ADVANCED_DATAPATH'`) | Irreversible |
+| Dataplane V2 | ✅ Enabled (Autopilot default, implicit) | Irreversible |
 | etcd / Application-layer Secrets CMEK | ✅ Enabled | Irreversible at cluster level |
-| `enablePrivateNodes` | `false` (public nodes, no Cloud NAT) | Mutable — flip later |
-| Cloud NAT | Not provisioned | Mutable — add later |
-| Node pool: machine type | e2-medium Spot (same as dev) | Replaceable (new pool) |
-| Node pool: max nodes | 3 (same as dev initially) | Mutable — config value |
-| Boot disk | 30 GB pd-standard | Replaceable (new pool) |
-| Boot disk CMEK | ❌ Default Google encryption | Per-pool replaceable |
-| Cluster-level Confidential GKE Nodes | ❌ Skip | Irreversible (set if "yes") |
-| Node-pool Confidential Nodes | ❌ Skip initially, add for blockchain signing pool | Pool-level — add later OK |
+| Node provisioning | Autopilot-managed (no user-declared NodePool) | N/A — managed by Autopilot |
+| Spot scheduling | Per-Pod via `cloud.google.com/gke-spot: "true"` label | Per-workload |
+| Boot disk / machine type | Autopilot-managed (no user knob) | N/A |
+| Shielded GKE Nodes | Autopilot enforced (no user knob) | N/A |
+| Public vs private nodes | Autopilot default network config (no user knob) | N/A |
+| Cloud NAT | Not provisioned (no egress workloads yet) | Mutable — add later |
+| Cluster-level Confidential GKE Nodes | ❌ Not user-exposed on Autopilot | Per-workload via ComputeClasses (deferred) |
 | HSM-protected KMS keys | ❌ Defer to blockchain mainnet phase | Add per-key later |
-| GMP / managedPrometheus | Disabled (same as dev) | Mutable |
-| Logging components | `SYSTEM_COMPONENTS` + `WORKLOADS` | Mutable |
+| GMP / managedPrometheus | ✅ Enabled with cost-control (60s scrape + metric_relabel keep-list) | Required by Autopilot ≥1.25 |
+| Logging | Autopilot-managed defaults | Autopilot-managed |
 | Service IP secondary range | `10.30.0.0/20` (4,096 services, same as dev) | **Irreversible — cannot expand** |
 | Pod IP secondary range | `10.20.0.0/16` (256 nodes max) | Expandable (add more ranges) but not shrinkable |
 | Primary subnet range | `10.10.0.0/20` | Expandable, not shrinkable |
 | Master IPv4 CIDR | `172.16.0.0/28` | Irreversible |
-| Node service account | `gke-node` (per project) | Irreversible |
+| Node service account (Autopilot auto-provision) | `gke-node` (per project) | Irreversible |
 
 ## Decisions in Detail
 
-### 1. Cluster mode: Standard (not Autopilot)
+### 1. Cluster mode: Autopilot (revised from Standard)
 
-**Why**: User-chosen for consistency with dev. Standard offers fine-grained
-node-pool control (Spot, machine type, disk type) that we exercised in dev to
-hit ~50% cost reduction. Same mental model across envs.
+**Why** (revised 2026-05 in `migrate-prod-to-autopilot`):
 
-**Trade-off**: Google's official recommendation is "Autopilot for most
-production workloads". Once prod has users and operational toil becomes
-expensive, revisit.
+- **Free-tier math drives it.** The GKE billing-account-wide $74.40/mo credit
+  applies to either Autopilot or *zonal* Standard, but not to regional
+  Standard. Once dev is retired, prod is the only billable cluster — Autopilot
+  ends up at $0/mo management fee, regional Standard at $72/mo.
+- **Net savings $50-70/mo (~$600-900/yr)** even after Autopilot's mandatory
+  GMP — which cannot be disabled (per
+  [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed):
+  *"You can't turn off managed collection in GKE Autopilot clusters running
+  GKE version 1.25 or greater"*) — and which we bound by setting
+  `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'` at
+  cluster creation (disables auto-discovery of application Pods). System-pod
+  ingestion (kubelet, cAdvisor, kube-state-metrics) is the unavoidable cost
+  floor (see decision §8).
+- **Operational fit.** The workload set (backend, frontend, Zitadel, ArgoCD,
+  ESO, Reloader, Atlas, OTel, NATS, KEDA, Image Updater) is HPA-driven and
+  uses no privileged DaemonSets, so the Autopilot security/restriction
+  envelope is comfortably met.
 
-**Reversibility**: NOT in-place mutable. Switching modes = create new cluster
-+ workload migration. Per [Prepare to migrate to Autopilot from Standard](https://cloud.google.com/kubernetes-engine/docs/how-to/prepare-migrate-cluster-mode):
+**Trade-off**: No fine-grained node knob (machine type, disk type, autoscaler
+behavior). Spot is now per-Pod (`cloud.google.com/gke-spot: "true"` label).
+For dev's aggressive cost optimization (e2-medium + pd-standard 30 GB) we
+keep Standard zonal — see `GKE_CLUSTER_MODE_DECISION.md`.
+
+**Reversibility**: NOT in-place mutable in either direction. Switching modes =
+create new cluster + workload migration. The migration from Standard to
+Autopilot was safe to execute because prod had zero application workloads at
+the time of the cutover. Per
+[Prepare to migrate to Autopilot from Standard](https://cloud.google.com/kubernetes-engine/docs/how-to/prepare-migrate-cluster-mode):
 > "Neither direction supports in-place conversion."
 
 ### 2. Topology: Regional (asia-northeast2)
 
 **Why**: Even without SLO, single-AZ failure recovery should not require
-manual intervention. Free-tier credit eligibility is identical for regional
-Standard vs zonal (in fact, regional Standard does **not** qualify for free
-tier; only zonal Standard and Autopilot do). Net additional cost:
-$0.10/hr × 24 × 30 = $72/month management fee (uncovered by free tier).
+manual intervention. With Autopilot, regional clusters are the standard
+shape — and they ARE free-tier-eligible under Autopilot mode (the free-tier
+exclusion only applies to *regional Standard*, not regional Autopilot).
 
-**Trade-off**: ~¥10,800/month extra vs zonal. Accepted because the
-zonal → regional migration is irreversible.
+**Trade-off**: None at the Autopilot tier — regional Autopilot gets the same
+$74.40/mo free-tier credit as zonal Autopilot.
 
 **Reversibility**: ❌ Cannot be changed after creation.
 
@@ -125,31 +153,34 @@ operation.
 prod project. Configure via Pulumi `databaseEncryption` field on
 `gcp.container.Cluster`.
 
-### 5. enablePrivateNodes: false (public nodes), no Cloud NAT
+### 5. Public-vs-private nodes: Autopilot default (revised from explicit `enablePrivateNodes: false`)
 
-**Why**: Cost-first phase, no users. Mirrors dev — saves ~¥5,292/month on
-Cloud NAT fixed cost. Acceptable because **this setting is mutable**:
-> "You can change these settings at any time."
-> — [Network isolation docs](https://cloud.google.com/kubernetes-engine/docs/concepts/network-isolation)
+**Why**: On Autopilot, public-vs-private node configuration is not a
+user-exposed cluster-level toggle the way it is on Standard — Autopilot
+applies its default network configuration. The original Standard decision
+explicitly set `enablePrivateNodes: false` to avoid Cloud NAT cost; under
+Autopilot, the equivalent intent (no Cloud NAT, no egress workload yet) is
+preserved by simply not provisioning Cloud NAT.
 
 **Future revisit trigger**: First real users / external traffic.
-Flip `enablePrivateNodes` → `true` and add Cloud NAT in the same Pulumi
-update. Workloads continue running.
+If outbound egress (e.g., calls to external APIs from prod Pods) becomes
+required, provision Cloud NAT (and, if Autopilot is operating in
+private-nodes mode, ensure egress flows through it).
 
 ### 6. Confidential GKE Nodes (cluster level): Skip
 
 **Why**:
-- Cluster-level enablement is **irreversible**.
-- Forces machine family from e2 → N2D / C3, raising node cost ~4-5x at the
-  smallest size before the Confidential premium itself.
+- Cluster-level Confidential Nodes are **not user-exposed on Autopilot**.
+  The Autopilot equivalent (Confidential workloads) is requested per-workload
+  via ComputeClasses, not cluster-wide.
 - Does NOT solve the blockchain-key-protection problem (a compromised
   container can still read its own memory). KMS-based signing is the right
   abstraction for that.
-- Node-pool-level Confidential Nodes can be added later as a dedicated
-  blockchain-signing node pool (taint-isolated).
 
-**Future revisit trigger**: Blockchain mainnet GA, or auditor explicitly
-requires it.
+**Future revisit trigger**: Blockchain mainnet GA — at that point, request
+Confidential compute per-workload via Autopilot ComputeClasses for the
+signing path. Until then, the cluster-level intent of "no cluster-wide
+Confidential Nodes" is preserved by default.
 
 ### 7. CIDR ranges: same as dev
 
@@ -167,18 +198,41 @@ cluster creation. `/20` = 4,096 services is generous and accepted.
 The Pod range can be expanded by adding additional Pod IP ranges
 (discontiguous CIDR) if scale ever exceeds 256 nodes.
 
-### 8. Workload set: same as dev (GMP, Spot, etc.)
+### 8. Workload set: GMP enabled with cost-control, Spot via per-Pod label
 
-**Why**: No users → no alerting need → GMP off, logging minimal.
-Spot VMs acceptable because preemption only affects internal dogfooding,
-not external SLO. Same `cloud.google.com/gke-spot: "true"` nodeSelector
-in workload manifests works unchanged.
+**Why** (revised 2026-05 in `migrate-prod-to-autopilot`, refined during PR #450 review):
+
+- **GMP managed collection is mandatory** under Autopilot ≥1.25 (cannot be
+  disabled per
+  [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed)).
+  Cost is bounded by setting
+  `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'` at
+  the cluster (Pulumi) level. That flag prevents GKE from auto-discovering
+  and scraping every application Pod. The unavoidable floor is the GKE-
+  managed system pipeline — kubelet, cAdvisor, and kube-state-metrics —
+  whose ingestion is a function of cluster size (system Pod count). Empirical
+  target band: `$5-15/mo` for an idle/light cluster.
+- **No user `ClusterPodMonitoring` with metric_relabel keep-rule.** The earlier
+  draft authored such a resource; review (`PR #450` discussion 3232006619)
+  pointed out that user-applied scrape CRs only filter metrics they scrape
+  themselves — they do NOT intercept GKE's managed-collection system scrapes.
+  The cluster-level `autoMonitoringConfig.scope: 'NONE'` is the correct (and
+  sufficient) lever for prod's empty-workload starting state.
+- **Workload metrics become opt-in** via per-namespace `PodMonitoring` CRDs
+  deferred to the `prod-k8s-manifests` follow-up, when application workloads
+  arrive that need active alerting.
+- **Spot scheduling is per-Pod** on Autopilot (no node pool to declare).
+  Workloads that tolerate preemption already use the
+  `cloud.google.com/gke-spot: "true"` nodeSelector (same convention dev uses);
+  Autopilot honors it and bills the Pod at Spot Pod rates.
+- **Logging** falls back to Autopilot's defaults — Autopilot exposes fewer
+  knobs than Standard. The cluster's default logging behavior is accepted.
 
 **Future revisit trigger**: Going live with users. At that point, expect to:
-- Enable GMP (`managedPrometheus.enabled: true`)
-- Add `WORKLOADS` log streaming (already on after [e72720f](https://github.com/liverty-music/cloud-provisioning/commit/e72720f))
-- Add a non-Spot node pool for latency-sensitive workloads, retain Spot for
-  background / batch.
+- Add per-namespace PodMonitoring CRDs for the application metrics that need
+  active alerting (this re-introduces app-metric ingestion, opt-in).
+- Add a non-Spot ComputeClass workload preference for latency-sensitive Pods
+  (background / batch stay on Spot).
 
 ## Future Revisit Triggers
 
@@ -218,25 +272,35 @@ The target pattern is:
 This eliminates entire classes of attack (memory dump, core dump, log
 leakage) that Confidential Nodes can only partially mitigate.
 
-## Implementation Sketch (not yet coded)
+## Implementation Reference
 
-The following Pulumi changes are NOT yet implemented. They are the planned
-shape of the prod cluster definition derived from the decisions above.
+Prod cluster is implemented in
+[`src/gcp/components/kubernetes.ts`](../src/gcp/components/kubernetes.ts) as
+the `environment === 'prod'` branch. Key shape:
 
-```typescript
-// In kubernetes.ts, replace the `if (environment === 'prod') return;` block
-// with a Standard-mode cluster definition mirroring dev but with:
-//   • location: `${region}`           (regional, not `${region}-a`)
-//   • datapathProvider: 'ADVANCED_DATAPATH'   (Dataplane V2)
-//   • databaseEncryption: { state: 'ENCRYPTED', keyName: <prod KMS key> }
-//   • enablePrivateNodes: false      (mutable, defer until users arrive)
-//   • node pool: identical to dev (e2-medium Spot, 30 GB pd-standard)
-//
-// New Cloud KMS resources needed in prod project:
-//   • KeyRing 'gke-cluster'
-//   • CryptoKey 'gke-etcd-encryption' (PURPOSE_ENCRYPT_DECRYPT, software)
-//   • IAM binding: GKE service agent → roles/cloudkms.cryptoKeyEncrypterDecrypter
-```
+- `enableAutopilot: true`
+- `location: ${region}` (regional, not `${region}-a`)
+- `databaseEncryption: { state: 'ENCRYPTED', keyName: <KMS key> }`
+- `ipAllocationPolicy` with `pods-range` / `services-range` secondary names
+- `clusterAutoscaling.autoProvisioningDefaults.serviceAccount: gke-node` SA
+- `workloadIdentityConfig.workloadPool: ${projectId}.svc.id.goog`
+- `gatewayApiConfig.channel: CHANNEL_STANDARD`
+- `costManagementConfig.enabled: true`
+- `releaseChannel.channel: REGULAR`
+- `deletionProtection: true`
+- `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'`
+  — disables Autopilot's auto-discovery of application Pod metrics. The
+  GKE-managed system pipeline (kubelet, cAdvisor, kube-state-metrics)
+  remains unavoidable on Autopilot ≥ 1.25 and forms the GMP cost floor.
+
+Dataplane V2, Shielded GKE Nodes, and node provisioning are Autopilot-
+managed — no explicit flags.
+
+Cloud KMS resources (unchanged from the original Standard cluster, reused by
+the Autopilot cluster):
+  - KeyRing `gke-cluster`
+  - CryptoKey `gke-etcd-encryption` (PURPOSE_ENCRYPT_DECRYPT, software)
+  - IAM binding: GKE service agent → `roles/cloudkms.cryptoKeyEncrypterDecrypter`
 
 ## Sources
 

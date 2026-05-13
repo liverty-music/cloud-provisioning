@@ -4,7 +4,7 @@ Reference document for choosing between GKE Autopilot and Standard for each
 environment in Liverty Music. Captures the reasoning so future contributors
 don't need to re-derive it.
 
-Last verified against GCP docs: 2026-05-11.
+Last verified against GCP docs: 2026-05-13.
 
 ## TL;DR
 
@@ -12,9 +12,12 @@ Last verified against GCP docs: 2026-05-11.
 |---|---|---|---|---|
 | `dev` | Standard | Zonal (`asia-northeast2-a`) | Public, Spot e2-medium | None |
 | `staging` | Autopilot | Regional | Private | Cloud NAT |
-| `prod` | **Autopilot** | Regional | Private | Cloud NAT |
+| `prod` | **Autopilot** (revised from Standard) | Regional | Autopilot-managed | Not provisioned (cost-first) |
 
 `dev` is deliberately the outlier: it trades availability and security for cost.
+`prod` was initially Standard regional and was migrated to Autopilot regional
+in `migrate-prod-to-autopilot` (~2026-05) once the free-tier math became clear
+post-dev-retirement plan — see "Why we revised the prod decision" below.
 
 ## Pricing facts (verified May 2026)
 
@@ -77,15 +80,54 @@ Specific reasons for Liverty Music prod:
    privileges, no GPU/accelerator demand, no CPU pinning needs.
 2. **Operational savings**: small team. Node pool sizing, autoscaler tuning,
    GKE version upgrades, disk type/size decisions are non-revenue work.
-3. **No management-fee arbitrage**: prod is regional → does not qualify for
-   the free tier in either mode. Both modes pay $74.40/month on the
-   management fee.
+3. **Free-tier covers Autopilot management fee**: regional Autopilot IS
+   free-tier-eligible (only *regional Standard* is excluded). With dev
+   retired, prod's $72/mo management fee is fully offset by the $74.40/mo
+   billing-account credit, dropping it to $0.
 4. **Bin-packing**: prod needs HA headroom on Standard nodes (~30-50% idle
    capacity reserve). Autopilot's per-Pod billing eliminates that waste.
 5. **Hybrid escape hatch**: as of Sept 2025, per-workload Autopilot ComputeClasses
    work inside Standard clusters and vice versa, so the decision is not
    one-way. See
    <https://cloud.google.com/blog/products/containers-kubernetes/gke-gets-new-pricing-and-capabilities-on-10th-birthday>.
+
+## Why we revised the prod decision (2026-05)
+
+The original `provision-prod-gcp-resources` change picked **Standard regional**
+on the rationale that node-level control (Spot e2-medium, pd-standard 30 GB,
+GMP disabled) would carry over from dev. After provisioning prod and looking
+at the billing impact, two facts reshaped the decision:
+
+1. **Free-tier math**. The GKE $74.40/mo billing-account-wide credit applies
+   to Autopilot (zonal or regional) OR *zonal* Standard, but NOT to regional
+   Standard. As soon as dev is retired (planned post-launch), prod becomes
+   the only billable cluster — Autopilot pays $0/mo management fee, regional
+   Standard pays $72/mo. Net annual delta: ~$864 of pure waste.
+
+2. **GMP cost is bounded, not free**. GMP managed collection cannot be
+   disabled on Autopilot ≥1.25 per
+   [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed):
+   *"You can't turn off managed collection in GKE Autopilot clusters running
+   GKE version 1.25 or greater"*. Empirically a stock dev Autopilot once cost
+   "a few thousand yen" in unfiltered GMP ingestion. The lever to bound this
+   is the cluster's
+   `monitoringConfig.managedPrometheus.autoMonitoringConfig.scope: 'NONE'`
+   flag, which disables Autopilot's auto-discovery of application Pods. The
+   GKE-managed system pipeline (kubelet, cAdvisor, kube-state-metrics) is
+   the unavoidable cost floor. Target band for an idle / light prod cluster:
+   `$5-15/mo`, well inside the savings envelope. (Note: a user
+   `ClusterPodMonitoring` with `metric_relabeling` keep-rules does NOT
+   filter the managed-collection system pipeline — its relabel rules only
+   apply to metrics it scrapes itself. That mechanism was floated in the
+   first draft of `migrate-prod-to-autopilot` but rejected during PR review.)
+
+Net post-migration math: Standard regional was $77.76/mo (management + Spot
+compute); Autopilot regional is $5-22/mo (GMP + Pod-level Spot). Savings:
+$55-72/mo, ~$660-864/yr.
+
+The decision to migrate was made safely because prod had **zero application
+workloads** at the time — the destroy-and-recreate operation has no live-user
+blast radius.
 
 ## When to revisit (prod)
 
