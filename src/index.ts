@@ -64,7 +64,7 @@ if (env === 'prod') {
 
 // 4. Zitadel Identity (self-hosted, dev only post-cutover).
 // Provider points at `https://auth.dev.liverty-music.app`; admin SA key is
-// pulled from GSM `zitadel-admin-sa-key` (populated once by the in-cluster
+// pulled from GSM `zitadel-machine-key-for-pulumi-admin` (populated once by the in-cluster
 // bootstrap-uploader sidecar). Cutover scope is dev-only (OpenSpec D10);
 // the env guard inside the Zitadel class throws if invoked from staging /
 // prod until those environments get their own self-hosted instance.
@@ -110,7 +110,7 @@ const gcp = new Gcp({
 // 5. Self-hosted Zitadel infra phase (dev only).
 // Provisions GSM secret shells (masterkey, empty admin-sa-key) that the
 // in-cluster Zitadel pod's bootstrap sidecar will populate on first boot.
-// The cutover PR reads `zitadel-admin-sa-key` from GSM to reconfigure the
+// The cutover PR reads `zitadel-machine-key-for-pulumi-admin` from GSM to reconfigure the
 // Zitadel Pulumi provider at the self-hosted hostname. Always running this
 // phase (even before cutover) is safe: the secret shells don't affect the
 // Cloud-tenant Zitadel resources above.
