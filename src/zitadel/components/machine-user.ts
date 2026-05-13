@@ -83,18 +83,7 @@ export class MachineUserComponent extends pulumi.ComponentResource {
 				// three sources of truth (Zitadel DB, GSM, Pulumi state).
 				expirationDate: '2099-01-01T00:00:00Z',
 			},
-			{
-				...resourceOptions,
-				dependsOn: [this.machineUser],
-				// Map the legacy Pulumi URN onto the new one so existing
-				// state aligns to the new logical name WITHOUT triggering a
-				// create-replace-delete cycle. Without this, renaming the
-				// resource id would re-mint the MachineKey — the exact
-				// failure mode the §13.15 incident produced
-				// (Errors.AuthNKey.NotFound). Removed by a follow-up PR
-				// after a ≥ 14-day soak.
-				aliases: [{ name: 'backend-app-key' }],
-			},
+			{ ...resourceOptions, dependsOn: [this.machineUser] },
 		)
 
 		this.orgMember = new zitadel.OrgMember(
