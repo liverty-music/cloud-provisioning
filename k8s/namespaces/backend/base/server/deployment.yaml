@@ -23,10 +23,6 @@ spec:
         secret:
           secretName: backend-secrets
           items:
-          - key: zitadel-machine-key.json
-            path: zitadel-machine-key.json
-          # Transitional second item during the rename-zitadel-machine-keys
-          # migration. Removed in PR 4 alongside the legacy entry above.
           - key: zitadel-machine-key-for-backend-app.json
             path: zitadel-machine-key-for-backend-app.json
       containers:
