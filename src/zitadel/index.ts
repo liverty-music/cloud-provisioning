@@ -4,6 +4,7 @@ import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
 import { ActionsV2Component } from './components/actions-v2.js'
 import { AdminOrgConfigComponent } from './components/admin-org-config.js'
+import { E2eTestUserComponent } from './components/e2e-test-user.js'
 import { FrontendComponent } from './components/frontend.js'
 import { GoogleAdminIdpComponent } from './components/google-admin-idp.js'
 import { HumanAdminComponent } from './components/human-admin.js'
@@ -18,6 +19,7 @@ import {
 
 export * from './components/actions-v2.js'
 export * from './components/admin-org-config.js'
+export * from './components/e2e-test-user.js'
 export * from './components/frontend.js'
 export * from './components/google-admin-idp.js'
 export * from './components/human-admin.js'
@@ -55,6 +57,13 @@ export interface ZitadelArgs {
 	 * userLogin or auto-creation.
 	 */
 	pannpersGoogleSub: pulumi.Input<string>
+	/**
+	 * Initial password for the dev-only Playwright E2E test user.
+	 * Sourced from ESC `pulumiConfig.zitadel.e2eTestUser.password`
+	 * (secret). Consumed by `E2eTestUserComponent`. See OpenSpec
+	 * change `playwright-password-test-user` for rationale.
+	 */
+	e2eTestUserPassword: pulumi.Input<string>
 }
 
 /**
@@ -107,6 +116,7 @@ export class Zitadel {
 	public readonly googleAdminIdp: GoogleAdminIdpComponent
 	public readonly adminOrgConfig: AdminOrgConfigComponent
 	public readonly humanAdmin: HumanAdminComponent
+	public readonly e2eTestUser: E2eTestUserComponent
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
@@ -124,6 +134,7 @@ export class Zitadel {
 			googleAdminIdpClientId,
 			googleAdminIdpClientSecret,
 			pannpersGoogleSub,
+			e2eTestUserPassword,
 		} = args
 
 		if (env !== 'dev') {
@@ -306,6 +317,20 @@ export class Zitadel {
 			googleSub: pannpersGoogleSub,
 			domain,
 			jwtProfileJson,
+			provider: this.provider,
+		})
+
+		// E2E test user — password-based HumanUser for Playwright headless
+		// capture. Lives in `productOrg` to ride on the same end-user
+		// LoginPolicy that real users hit; password sign-in only works
+		// because `productOrg.loginPolicy.userLogin = true` (see
+		// `components/frontend.ts` and the upstream Zitadel issue cited
+		// there). See OpenSpec change `playwright-password-test-user`
+		// for the full design + risk record.
+		this.e2eTestUser = new E2eTestUserComponent(name, {
+			env,
+			orgId: this.productOrg.id,
+			initialPassword: e2eTestUserPassword,
 			provider: this.provider,
 		})
 	}
