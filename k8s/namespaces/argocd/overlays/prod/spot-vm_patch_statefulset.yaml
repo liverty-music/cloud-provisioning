@@ -1,0 +1,4 @@
+- op: replace
+  path: /spec/template/spec/nodeSelector
+  value:
+    cloud.google.com/gke-spot: "true"
