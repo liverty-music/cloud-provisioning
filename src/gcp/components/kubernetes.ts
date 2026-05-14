@@ -416,36 +416,40 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			//     mandatory floor per
 			//     [configure-metrics docs](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-metrics):
 			//     *"For GKE Autopilot clusters, you cannot disable the
-			//     collection of system metrics."*
+			//     collection of system metrics."* Reducing this list also
+			//     causes GKE to remove the corresponding addon workloads
+			//     (e.g., the `kube-state-metrics` StatefulSet in
+			//     `gke-managed-cim` is uninstalled when these components
+			//     drop out — confirmed empirically post-PR #252).
 			//   • `managedPrometheus.enabled: true` — mandatory on Autopilot
 			//     ≥ 1.25 per
 			//     [GMP setup-managed docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed):
 			//     *"You can't turn off managed collection in GKE Autopilot
 			//     clusters running GKE version 1.25 or greater."*
-			//   • `advancedDatapathObservabilityConfig.enableMetrics: false`
-			//     — disables Cilium/Hubble per-node network-flow metrics,
-			//     the biggest variable cost driver as nodes scale up.
 			//   • `autoMonitoringConfig.scope` is left unset — Autopilot's
 			//     default per
 			//     [GMP auto-monitoring docs](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/auto-monitoring)
 			//     is OFF for both Autopilot and Standard, so unset == NONE
 			//     and no application Pods are auto-discovered.
-			//
-			// The unavoidable cost floor is the GKE-managed system pipeline:
-			// the `kube-state-metrics` and `gke-managed-dcgm-exporter` CRs
-			// in `gke-managed-cim` / `gke-gmp-system` namespaces (both
-			// addon-managed with `addonmanager.kubernetes.io/mode: Reconcile`,
-			// so user edits are reverted). At idle (zero workloads → zero
-			// nodes) the kube-state-metrics Pod stays Pending and the
-			// empirical GMP cost is ~$0. When workloads land, per-node
-			// kubelet/cAdvisor + kube-state-metrics emission begins.
+			//   • `advancedDatapathObservabilityConfig` is left unmanaged —
+			//     PR #252 tried setting `enableMetrics: false` to silence
+			//     DPv2/Cilium per-node network-flow metrics, but Autopilot
+			//     silently enforces `true` regardless of the input. Pulumi
+			//     reported `update: succeeded` but the field reverted on the
+			//     live API, producing a perpetual phantom diff on every
+			//     subsequent preview. Omitting the field lets Pulumi accept
+			//     whatever Autopilot returns; cost stays at Autopilot's
+			//     floor (per-node Hubble metrics) and cannot be reduced
+			//     further via cluster config.
 			//
 			// **Pulumi serializer gotcha (resolved)**: an earlier draft set
 			// `monitoringConfig` with ONLY `managedPrometheus` — Pulumi/TF
 			// serialized the missing `enableComponents` as `[]`, which
 			// Autopilot rejected with `Error 400: Autopilot clusters must
 			// have monitoring enabled`. Setting `enableComponents` explicitly
-			// avoids the trap (PR #250 hotfix, then this PR's tightening).
+			// avoids the trap (PR #250 hotfix, then PR #252 tightening,
+			// then PR drop-dpv2-observability-pulumi-drift removing the
+			// non-converging DPv2 field).
 			//
 			// User workload metrics become opt-in via per-namespace
 			// `PodMonitoring` CRDs in the `prod-k8s-manifests` follow-up.
@@ -521,15 +525,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					},
 
 					// Minimum monitoring config — see leading block comment
-					// for rationale + GCP doc citations.
+					// for rationale + GCP doc citations. `advancedDatapath
+					// ObservabilityConfig` is intentionally NOT declared here
+					// because Autopilot silently enforces `enableMetrics: true`
+					// regardless of what Pulumi sets — declaring `false`
+					// caused perpetual phantom drift on every subsequent
+					// `pulumi up` (Pulumi inputs `false`, Autopilot outputs
+					// `true`, never converges). Leaving the field unmanaged
+					// lets Pulumi accept whatever Autopilot returns.
 					monitoringConfig: {
 						enableComponents: ['SYSTEM_COMPONENTS'],
 						managedPrometheus: {
 							enabled: true,
-						},
-						advancedDatapathObservabilityConfig: {
-							enableMetrics: false,
-							enableRelay: false,
 						},
 					},
 				},
