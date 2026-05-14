@@ -138,6 +138,14 @@ export async function httpRequest(
 /**
  * Convenience helper that runs the token exchange + an authenticated REST call
  * in one step. Used by Dynamic Resource CRUD handlers below.
+ *
+ * `headers` lets a caller add request headers on top of the always-present
+ * `Authorization`, `Content-Type`, `Accept`. The most common use is
+ * `x-zitadel-orgid` to scope a Management API call to a specific
+ * org when the SA token's default org differs from the target user's
+ * resourceOwner — without it, `passwordWriteModel(ctx, userID, saOrgID)`
+ * loads an empty event stream and Zitadel returns
+ * `COMMAND-G8dh3 "Password not found"`.
  */
 export async function zitadelApiCall(opts: {
 	domain: string
@@ -145,6 +153,7 @@ export async function zitadelApiCall(opts: {
 	method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 	path: string
 	body?: unknown
+	headers?: Record<string, string>
 }): Promise<{ statusCode: number; body: string }> {
 	const token = await getAccessToken(opts.domain, opts.profile)
 	return httpRequest({
@@ -154,6 +163,7 @@ export async function zitadelApiCall(opts: {
 			Authorization: `Bearer ${token}`,
 			'Content-Type': 'application/json',
 			Accept: 'application/json',
+			...opts.headers,
 		},
 		body: opts.body ? JSON.stringify(opts.body) : undefined,
 	})

@@ -30,6 +30,7 @@ const baseProfile = {
 const baseInputs = {
 	domain: 'auth.example.test',
 	jwtProfileJson: JSON.stringify(baseProfile),
+	orgId: 'product-org-snowflake',
 	userId: 'human-user-snowflake',
 	password: 'sup3r-secret-passw0rd!',
 }
@@ -48,7 +49,7 @@ describe('permanentPasswordProvider.create', () => {
 		mockedCall.mockReset()
 	})
 
-	it('POSTs /management/v1/users/{userId}/password with noChangeRequired=true', async () => {
+	it('POSTs /management/v1/users/{userId}/password with noChangeRequired=true and x-zitadel-orgid header', async () => {
 		mockedCall.mockResolvedValueOnce({ statusCode: 200, body: '{}' })
 
 		const result = await provider.create(baseInputs)
@@ -60,12 +61,19 @@ describe('permanentPasswordProvider.create', () => {
 			'/management/v1/users/human-user-snowflake/password',
 		)
 		expect(call.domain).toBe('auth.example.test')
+		// The x-zitadel-orgid header is required so Zitadel resolves the
+		// password write model against the user's actual org (not the
+		// admin SA's default org, which would return COMMAND-G8dh3).
+		expect(call.headers).toEqual({
+			'x-zitadel-orgid': 'product-org-snowflake',
+		})
 		expect(call.body).toEqual({
 			password: baseInputs.password,
 			noChangeRequired: true,
 		})
 		expect(result.id).toBe('permanent-password:human-user-snowflake')
 		expect(result.outs?.userId).toBe('human-user-snowflake')
+		expect(result.outs?.orgId).toBe('product-org-snowflake')
 		expect(result.outs?.markedAt).toMatch(
 			/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
 		)
@@ -128,6 +136,9 @@ describe('permanentPasswordProvider.update', () => {
 		expect(call.path).toBe(
 			'/management/v1/users/human-user-snowflake/password',
 		)
+		expect(call.headers).toEqual({
+			'x-zitadel-orgid': 'product-org-snowflake',
+		})
 		// password is the unchanged prior-state value (ignoreChanges
 		// guarantees news.password === olds.password in practice).
 		expect(call.body).toEqual({
