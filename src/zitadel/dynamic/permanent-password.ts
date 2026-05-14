@@ -161,6 +161,27 @@ function isAlreadyPermanent(body: string): boolean {
  * See OpenSpec change `zitadel-permanent-password` for the full
  * decision record (D1–D5) and risk table.
  */
+/**
+ * Bake `password` + `jwtProfileJson` into `additionalSecretOutputs` so the
+ * secret-output contract cannot regress at any call site. `pulumi.secret(...)`
+ * inputs do NOT auto-propagate across the dynamic-resource boundary: without
+ * this, `outs: { ...inputs, markedAt }` in `create()` would land both as
+ * plaintext in the Pulumi state checkpoint. Merge with caller-supplied
+ * additions rather than overwrite. Exported for unit-test coverage.
+ */
+export function mergeSecretOutputs(
+	opts?: pulumi.CustomResourceOptions,
+): pulumi.CustomResourceOptions {
+	return {
+		...opts,
+		additionalSecretOutputs: [
+			'password',
+			'jwtProfileJson',
+			...(opts?.additionalSecretOutputs ?? []),
+		],
+	}
+}
+
 export class ZitadelHumanUserPasswordPermanent extends pulumi.dynamic.Resource {
 	public readonly markedAt!: pulumi.Output<string>
 
@@ -176,7 +197,7 @@ export class ZitadelHumanUserPasswordPermanent extends pulumi.dynamic.Resource {
 				...args,
 				markedAt: undefined,
 			},
-			opts,
+			mergeSecretOutputs(opts),
 		)
 	}
 }

@@ -5,7 +5,9 @@ vi.mock('../api-client.js', () => ({
 }))
 
 const apiClient = await import('../api-client.js')
-const { permanentPasswordProvider } = await import('../permanent-password.js')
+const { permanentPasswordProvider, mergeSecretOutputs } = await import(
+	'../permanent-password.js'
+)
 
 const mockedCall = vi.mocked(apiClient.zitadelApiCall)
 
@@ -168,5 +170,44 @@ describe('permanentPasswordProvider.read', () => {
 		expect(mockedCall).not.toHaveBeenCalled()
 		expect(result.id).toBe('permanent-password:human-user-snowflake')
 		expect(result.props).toEqual(baseOutputs)
+	})
+})
+
+describe('mergeSecretOutputs', () => {
+	it('returns the two required secret outputs when no opts are supplied', () => {
+		const merged = mergeSecretOutputs()
+
+		expect(merged.additionalSecretOutputs).toEqual([
+			'password',
+			'jwtProfileJson',
+		])
+	})
+
+	it('preserves other CustomResourceOptions while injecting secret outputs', () => {
+		const merged = mergeSecretOutputs({
+			deleteBeforeReplace: true,
+			ignoreChanges: ['password'],
+			replaceOnChanges: ['userId'],
+		})
+
+		expect(merged.deleteBeforeReplace).toBe(true)
+		expect(merged.ignoreChanges).toEqual(['password'])
+		expect(merged.replaceOnChanges).toEqual(['userId'])
+		expect(merged.additionalSecretOutputs).toEqual([
+			'password',
+			'jwtProfileJson',
+		])
+	})
+
+	it('appends caller-supplied additionalSecretOutputs without losing the builtins', () => {
+		const merged = mergeSecretOutputs({
+			additionalSecretOutputs: ['customSecret'],
+		})
+
+		expect(merged.additionalSecretOutputs).toEqual([
+			'password',
+			'jwtProfileJson',
+			'customSecret',
+		])
 	})
 })
