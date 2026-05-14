@@ -45,6 +45,11 @@ patches:
 # Relax both PDBs to minAvailable=0 so the single replicas can be voluntarily
 # evicted (Spot preemption, drain). Required after replicas=1 patches above.
 - path: pdb-patch.yaml
+# Remove podAntiAffinity from both Deployments. Autopilot's Warden rejects
+# Deployments that use podAntiAffinity with CPU requests <500m per Pod, and
+# replicas=1 (above) makes anti-affinity a no-op anyway. See the file header
+# for the full Warden error message and the right-size-prod follow-up plan.
+- path: affinity-patch.yaml
 # Override the Workload Identity GCP SA on the `zitadel` ServiceAccount
 # (base annotates the dev project's SA; prod pods need the prod SA).
 - path: serviceaccount-patch.yaml
