@@ -75,6 +75,22 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				// TODO: Revert to false once upstream fix is released.
 				// Login V2 Register page does not render form fields when userLogin=false,
 				// even with passwordlessType=ALLOWED. See: https://github.com/zitadel/zitadel/issues/11682
+				//
+				// LOAD-BEARING for E2E: the dev password-based test user provisioned
+				// by `E2eTestUserComponent` (see ../index.ts and OpenSpec change
+				// `playwright-password-test-user`) signs in via username + password
+				// against THIS productOrg LoginPolicy. Password sign-in only works
+				// while `userLogin: true`. When the upstream fix lands and this flag
+				// is reverted to `false`, the reverting PR MUST EITHER:
+				//   (a) remove `E2eTestUserComponent` and switch the headless E2E
+				//       capture path back to passkey (currently no working option
+				//       for WSL2), OR
+				//   (b) move the e2e-test-user into a separate org whose own
+				//       LoginPolicy has `userLogin: true`, OR
+				//   (c) defer the revert until per-user passwordless-override
+				//       support exists in Zitadel.
+				// See the design.md Risks table in the `playwright-password-test-user`
+				// OpenSpec change for the full mitigation record.
 				userLogin: true,
 				allowRegister: true,
 				// Disable external IDPs (Google etc.) to enforce passkey-only authentication
