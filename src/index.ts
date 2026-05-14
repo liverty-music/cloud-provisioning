@@ -1,6 +1,4 @@
-import * as gcpProvider from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
-import * as zitadelProvider from '@pulumiverse/zitadel'
 import type { CloudflareConfig } from './cloudflare/config.js'
 import type { Environment } from './config.js'
 import type { BlockchainConfig, GcpConfig } from './gcp/components/project.js'
@@ -128,77 +126,17 @@ if (env === 'dev' || env === 'prod') {
 }
 
 // 6. Prod self-hosted Zitadel: backend MachineUser + key + GSM bundle.
-// This block closes the gap discovered post-`prod-k8s-manifests` deploy:
-// the `Zitadel` class above is dev-only (SaaS Cloud-tenant), so prod's
-// `pulumi up` never created `zitadel-machine-key-for-backend-app` and the
-// backend Pods sat in `ContainerCreating`. The fix is a focused
-// `BackendMachineKeyComponent` that:
-//   1. Reads the admin JWT from the GSM Secret populated by the in-cluster
-//      bootstrap-uploader sidecar on first Zitadel API Pod boot (design D3).
-//      The JWT value never round-trips through Pulumi config or ESC.
-//   2. Looks up the first-boot "admin" org via the Zitadel data source
-//      (design D2). Pulumi does NOT create the org — it was auto-created
-//      by `ZITADEL_FIRSTINSTANCE_ORG_NAME` and owning it would create a
-//      destroy-cascade hazard.
-//   3. Creates the prod backend `MachineUser` + `MachineKey` + `OrgMember`
-//      (via the existing `MachineUserComponent`) and writes the resulting
-//      JWT-profile to a SEPARATE GSM Secret `zitadel-machine-key-for-backend-app`
-//      that the backend Pod mounts via ESO.
-//
-// Blast-radius separation preserved: the org-admin JWT is consumed only by
-// Pulumi at plan/apply time; runtime Pods only mount the derived
-// lower-privilege MachineKey JWT (per `prod-k8s-manifests` round-12 fix).
+// Closes the gap discovered post-`prod-k8s-manifests` deploy. The existing
+// `Zitadel` class above is dev-only (SaaS Cloud-tenant), so prod's
+// `pulumi up` was never creating `zitadel-machine-key-for-backend-app` and
+// backend Pods sat in `ContainerCreating`. The new component owns the full
+// orchestration (admin JWT lookup → Zitadel provider → org data source →
+// MachineUser/Key/OrgMember + GSM Secret bundle) so this dispatch line is
+// the thin contract.
 if (env === 'prod') {
-	const prodProject = `${brandId}-${env}` // liverty-music-prod
-	const adminJwt = gcpProvider.secretmanager.getSecretVersionAccessOutput({
-		project: prodProject,
-		secret: 'zitadel-machine-key-for-pulumi-admin',
-	})
-
-	const zitadelProdProvider = new zitadelProvider.Provider('zitadel-prod', {
-		domain: 'auth.liverty-music.app',
-		insecure: false,
-		port: '443',
-		jwtProfileJson: adminJwt.secretData,
-	})
-
-	// Look up the first-boot "admin" org by name. The Zitadel provider's
-	// data source supports name-based query via `getOrgs` (plural) returning
-	// `ids: string[]`; assert exactly one match before using it (design
-	// risk-mitigation note: lookup must be unambiguous).
-	const adminOrgs = zitadelProvider.getOrgsOutput(
-		{
-			name: 'admin',
-			nameMethod: 'TEXT_QUERY_METHOD_EQUALS',
-			state: 'ORG_STATE_ACTIVE',
-		},
-		{ provider: zitadelProdProvider },
-	)
-
-	const adminOrgId = adminOrgs.apply((result) => {
-		if (!result.ids || result.ids.length === 0) {
-			throw new Error(
-				"zitadel.getOrgs returned zero ACTIVE orgs named 'admin' against " +
-					'auth.liverty-music.app. Expected the first-boot bootstrap to have ' +
-					'created this org. Check Zitadel API logs and `ZITADEL_FIRSTINSTANCE_ORG_NAME`.',
-			)
-		}
-		if (result.ids.length > 1) {
-			throw new Error(
-				`zitadel.getOrgs returned ${result.ids.length} orgs named 'admin' ` +
-					`(ids: ${result.ids.join(', ')}). Expected exactly one — refuse ` +
-					'to guess which is the first-boot org. Inspect Zitadel and either ' +
-					'delete the stale orgs or switch this lookup to a unique discriminator.',
-			)
-		}
-		return result.ids[0]
-	})
-
 	new BackendMachineKeyComponent('backend-app-prod', {
 		env,
-		gcpProject: prodProject,
-		zitadelProvider: zitadelProdProvider,
-		orgId: adminOrgId,
+		gcpProject: `${brandId}-${env}`,
 		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
 	})
 }
