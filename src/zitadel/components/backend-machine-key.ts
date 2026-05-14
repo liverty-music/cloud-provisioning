@@ -45,26 +45,34 @@ export interface BackendMachineKeyComponentArgs {
  *   2. Create a `zitadel.Provider` targeting `zitadelDomainMap[env]`
  *      (e.g., `auth.liverty-music.app` for prod). The domain uses the
  *      central map to avoid drift between this file and the constants.
- *   3. Look up the first-boot "admin" org via `zitadel.getOrgsOutput`
- *      (design D2). Pulumi does NOT create the org — it was auto-created by
- *      `ZITADEL_FIRSTINSTANCE_ORG_NAME` at first boot; owning it would
- *      create a destroy-cascade hazard. Lookup asserts exactly one result.
- *   4. Instantiate the existing `MachineUserComponent` to create the
- *      backend `MachineUser` + `MachineKey` + `OrgMember` (ORG_USER_MANAGER
- *      role) inside the resolved org.
+ *   3. Create a NEW `liverty-music` product org via `zitadel.Org` (matching
+ *      dev's two-org topology). The backend MachineUser lives here, NOT in
+ *      the first-boot "admin" org — placing `backend-app` (with its
+ *      ORG_USER_MANAGER role) in the admin org would give the runtime
+ *      backend Pod user-management authority over operator identities
+ *      (pulumi-admin, login-client, human IAM_OWNER admins). Per the
+ *      `Place Machine Users by Responsibility` rule. Pulumi does NOT touch
+ *      the first-boot "admin" org — that one was auto-created by
+ *      `ZITADEL_FIRSTINSTANCE_ORG_NAME` and owning it would create a
+ *      destroy-cascade hazard.
+ *   4. Instantiate the existing `MachineUserComponent` inside the product
+ *      org to create the backend `MachineUser` + `MachineKey` + `OrgMember`
+ *      (ORG_USER_MANAGER role scoped to the product org).
  *   5. Write the resulting JWT-profile JSON to a SEPARATE GSM Secret
  *      `zitadel-machine-key-for-backend-app` (wrapped in `pulumi.secret()`
  *      to prevent state leakage). ESO will mirror this Secret into the
  *      backend namespace via the existing ExternalSecret CR; Reloader rolls
  *      the backend Deployment.
  *
- * Blast-radius separation preserved: the org-admin JWT is consumed only by
- * the Zitadel provider at plan/apply time and never reaches a Pod; the
- * derived lower-privilege MachineKey JWT is what backend mounts at runtime
- * (per `prod-k8s-manifests` round-12 fix).
+ * Blast-radius separation preserved on two axes: (a) the org-admin JWT is
+ * consumed only by the Zitadel provider at plan/apply time and never reaches
+ * a Pod (per `prod-k8s-manifests` round-12 fix); (b) the backend MachineUser
+ * is scoped to the product org and cannot reach the admin org's operator
+ * identities (this component's design).
  */
 export class BackendMachineKeyComponent extends pulumi.ComponentResource {
 	public readonly provider: zitadel.Provider
+	public readonly productOrg: zitadel.Org
 	public readonly machineUser: MachineUserComponent
 	public readonly secret: gcp.secretmanager.Secret
 	public readonly secretVersion: gcp.secretmanager.SecretVersion
@@ -118,41 +126,21 @@ export class BackendMachineKeyComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
-		// Look up the first-boot "admin" org by name. `getOrg` (singular)
-		// requires id; `getOrgs` (plural) supports name-based query and
-		// returns `ids: string[]`. Assert exactly one match before using —
-		// refuse to guess on ambiguity.
-		const adminOrgs = zitadel.getOrgsOutput(
-			{
-				name: 'admin',
-				nameMethod: 'TEXT_QUERY_METHOD_EQUALS',
-				state: 'ORG_STATE_ACTIVE',
-			},
+		// Product org — Pulumi-created, scoped to backend app workloads.
+		// NOT the first-boot "admin" org (which the bootstrap auto-created
+		// and holds operator identities: pulumi-admin, login-client, human
+		// IAM_OWNERs). Mirrors dev's `productOrg` topology so backend-app's
+		// ORG_USER_MANAGER role grants user-management only over end-user
+		// principals in this org — never over operator identities.
+		this.productOrg = new zitadel.Org(
+			'liverty-music',
+			{ name: 'liverty-music', isDefault: false },
 			{ provider: this.provider, parent: this },
 		)
 
-		const adminOrgId = adminOrgs.apply((result) => {
-			if (!result.ids || result.ids.length === 0) {
-				throw new Error(
-					`zitadel.getOrgs returned zero ACTIVE orgs named 'admin' against ${zitadelDomainMap[env]}. ` +
-						'Expected the first-boot bootstrap to have created this org. ' +
-						'Check Zitadel API logs and `ZITADEL_FIRSTINSTANCE_ORG_NAME` in the configmap.',
-				)
-			}
-			if (result.ids.length > 1) {
-				throw new Error(
-					`zitadel.getOrgs returned ${result.ids.length} orgs named 'admin' ` +
-						`(ids: ${result.ids.join(', ')}). Expected exactly one — refuse ` +
-						'to guess which is the first-boot org. Inspect Zitadel and either ' +
-						'delete the stale orgs or switch this lookup to a unique discriminator.',
-				)
-			}
-			return result.ids[0]
-		})
-
 		this.machineUser = new MachineUserComponent(
 			name,
-			{ orgId: adminOrgId, provider: this.provider },
+			{ orgId: this.productOrg.id, provider: this.provider },
 			{ parent: this },
 		)
 
@@ -207,6 +195,7 @@ export class BackendMachineKeyComponent extends pulumi.ComponentResource {
 
 		this.registerOutputs({
 			provider: this.provider,
+			productOrg: this.productOrg,
 			machineUser: this.machineUser,
 			secret: this.secret,
 			secretVersion: this.secretVersion,
