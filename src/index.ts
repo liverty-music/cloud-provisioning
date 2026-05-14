@@ -44,6 +44,7 @@ const postmarkConfig = config.requireObject(
 const zitadelConfig = config.requireSecretObject<{
 	googleAdminIdp: { clientId: string; clientSecret: string }
 	adminGoogleSubs: { pannpers: string }
+	e2eTestUser: { password: string }
 }>('zitadel')
 
 const env = pulumi.getStack() as Environment
@@ -87,6 +88,7 @@ if (env === 'dev') {
 		pannpersGoogleSub: zitadelConfig.apply(
 			(z) => z.adminGoogleSubs.pannpers,
 		),
+		e2eTestUserPassword: zitadelConfig.apply((z) => z.e2eTestUser.password),
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails
 	zitadelLoginPat = zitadel.loginClientToken
