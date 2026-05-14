@@ -99,9 +99,22 @@ describe('permanentPasswordProvider.update', () => {
 		mockedCall.mockReset()
 	})
 
-	it('re-POSTs SetPassword with the new password and preserves the original markedAt', async () => {
+	// Under the call-site directives `ignoreChanges: ['password']` +
+	// `replaceOnChanges: ['userId']`, the Pulumi engine only invokes
+	// `update()` when `domain` or `jwtProfileJson` changes. Password
+	// rotation routes through `replaceOnChanges` into a fresh
+	// `create()`, NOT through this handler. To mirror what Pulumi
+	// would pass after applying ignoreChanges, the tests below set
+	// `news.password === olds.password` and vary the non-ignored
+	// inputs instead.
+	it('re-asserts permanence with the prior-state password when jwtProfileJson rotates', async () => {
 		mockedCall.mockResolvedValueOnce({ statusCode: 200, body: '{}' })
-		const news = { ...baseInputs, password: 'rotated-passw0rd!' }
+		const rotatedProfile = JSON.stringify({
+			...baseProfile,
+			keyId: 'kid-2',
+			key: 'new-private-key-pem',
+		})
+		const news = { ...baseInputs, jwtProfileJson: rotatedProfile }
 
 		const result = await provider.update(
 			'permanent-password:human-user-snowflake',
@@ -115,12 +128,14 @@ describe('permanentPasswordProvider.update', () => {
 		expect(call.path).toBe(
 			'/management/v1/users/human-user-snowflake/password',
 		)
+		// password is the unchanged prior-state value (ignoreChanges
+		// guarantees news.password === olds.password in practice).
 		expect(call.body).toEqual({
-			password: 'rotated-passw0rd!',
+			password: baseInputs.password,
 			noChangeRequired: true,
 		})
 		expect(result.outs?.markedAt).toBe(baseOutputs.markedAt)
-		expect(result.outs?.password).toBe('rotated-passw0rd!')
+		expect(result.outs?.password).toBe(baseInputs.password)
 	})
 
 	it('throws on a genuine non-2xx error during update', async () => {
