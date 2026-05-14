@@ -326,11 +326,15 @@ export class Zitadel {
 		// because `productOrg.loginPolicy.userLogin = true` (see
 		// `components/frontend.ts` and the upstream Zitadel issue cited
 		// there). See OpenSpec change `playwright-password-test-user`
-		// for the full design + risk record.
+		// for the full design + risk record, and `zitadel-permanent-password`
+		// for the `ZitadelHumanUserPasswordPermanent` marker resource that
+		// makes the user's password permanent at provision time.
 		this.e2eTestUser = new E2eTestUserComponent(name, {
 			env,
 			orgId: this.productOrg.id,
 			initialPassword: e2eTestUserPassword,
+			domain,
+			jwtProfileJson,
 			provider: this.provider,
 		})
 	}

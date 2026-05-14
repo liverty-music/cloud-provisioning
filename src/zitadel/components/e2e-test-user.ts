@@ -1,6 +1,7 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../../config.js'
+import { ZitadelHumanUserPasswordPermanent } from '../dynamic/permanent-password.js'
 
 export interface E2eTestUserComponentArgs {
 	/** Pulumi stack environment. The component throws synchronously if
@@ -17,8 +18,20 @@ export interface E2eTestUserComponentArgs {
 	/** Initial password for the test user. Source: ESC
 	 *  `pulumiConfig.zitadel.e2eTestUser.password`. The caller wraps it
 	 *  with `pulumi.secret()` when extracting from the parent
-	 *  `requireSecretObject<>` so Pulumi marks it `[secret]` in state. */
+	 *  `requireSecretObject<>` so Pulumi marks it `[secret]` in state.
+	 *  Threaded into BOTH the `HumanUser.initialPassword` field AND the
+	 *  `ZitadelHumanUserPasswordPermanent` marker resource — they always
+	 *  agree by construction. */
 	initialPassword: pulumi.Input<string>
+	/** Zitadel domain (e.g. `auth.dev.liverty-music.app`). Used by the
+	 *  `ZitadelHumanUserPasswordPermanent` marker resource to call the
+	 *  Management API. */
+	domain: pulumi.Input<string>
+	/** Admin machine user JWT profile JSON (stringified) for Management
+	 *  API auth. Used by the `ZitadelHumanUserPasswordPermanent` marker
+	 *  resource. Same value the `Zitadel` composition root reads from
+	 *  GCP Secret Manager for the other dynamic resources. */
+	jwtProfileJson: pulumi.Input<string>
 	provider: zitadel.Provider
 }
 
@@ -81,9 +94,35 @@ export interface E2eTestUserComponentArgs {
  *   1. `pulumi up --replace` against this resource explicitly, AND
  *   2. update `.auth/password.md` (read fresh from ESC), AND
  *   3. regenerate `.auth/storageState.json` via the capture script.
+ *
+ * ## Permanent-password marker
+ *
+ * `@pulumiverse/zitadel.HumanUser` v0.2.0 sets the user's credential
+ * state with `changeRequired = true` and exposes no knob to flip it.
+ * Without an explicit `SetPassword(noChangeRequired = true)` call, the
+ * user is redirected to `/ui/v2/login/password/change` on first sign-in
+ * and refuses to issue tokens until the password is changed. Headless
+ * Playwright cannot tolerate this gate.
+ *
+ * Mitigation: `ZitadelHumanUserPasswordPermanent` (a Pulumi Dynamic
+ * Resource under `../dynamic/permanent-password.ts`) calls the
+ * Management API `POST /management/v1/users/{user_id}/password` with
+ * `noChangeRequired: true` immediately after the HumanUser is created.
+ * The same ESC password is threaded to both the HumanUser's
+ * `initialPassword` and the marker resource — they agree by
+ * construction. See OpenSpec change `zitadel-permanent-password` for
+ * the full design + risk record.
+ *
+ * The marker mirrors the HumanUser's `ignoreChanges` on its password
+ * input AND adds `replaceOnChanges: ['userId']` so that a `--replace`
+ * on the HumanUser cascades into a fresh marker create (which picks up
+ * the new password from create-time inputs, not from ignored state).
+ * Net effect: the rotation protocol above remains a single
+ * `--replace` on the HumanUser URN; the marker follows automatically.
  */
 export class E2eTestUserComponent extends pulumi.ComponentResource {
 	public readonly humanUser: zitadel.HumanUser
+	public readonly passwordPermanent: ZitadelHumanUserPasswordPermanent
 
 	constructor(
 		name: string,
@@ -92,7 +131,14 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:E2eTestUser', name, {}, opts)
 
-		const { env, orgId, initialPassword, provider } = args
+		const {
+			env,
+			orgId,
+			initialPassword,
+			domain,
+			jwtProfileJson,
+			provider,
+		} = args
 
 		// Defensive depth — the parent Zitadel class already throws on
 		// non-dev, but this catches accidental refactors that lift the
@@ -131,6 +177,46 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 			},
 		)
 
-		this.registerOutputs({ humanUser: this.humanUser })
+		// Mark the password permanent (noChangeRequired = true) so first
+		// sign-in does not redirect to /ui/v2/login/password/change. See
+		// the header comment "Permanent-password marker" for the rationale.
+		//
+		// `ignoreChanges: ['password']` mirrors the HumanUser's
+		// `ignoreChanges: ['initialPassword']` directive. Without it, an
+		// ESC-secret edit would be ignored on the HumanUser (per the
+		// rotation protocol above) but would silently trigger `update()`
+		// on this marker, re-POSTing SetPassword with the new value to
+		// Zitadel — silently rotating the live credential, exactly the
+		// scenario the parent guard exists to prevent.
+		//
+		// `replaceOnChanges: ['userId']` ensures the marker is replaced
+		// (destroyed + freshly created) when the HumanUser is replaced
+		// via `pulumi up --replace`. The HumanUser's new snowflake id
+		// flows into `userId` here; without this directive the marker
+		// would call `update()` with the new userId but the old
+		// (ignored) password, overwriting the freshly-rotated credential
+		// with the stale value. With it, `create()` runs against the
+		// new user with the new password — rotation works end-to-end
+		// with a single `--replace` on the HumanUser URN.
+		this.passwordPermanent = new ZitadelHumanUserPasswordPermanent(
+			'e2e-test-password-permanent',
+			{
+				domain,
+				jwtProfileJson,
+				userId: this.humanUser.id,
+				password: pulumi.secret(initialPassword),
+			},
+			{
+				parent: this,
+				dependsOn: [this.humanUser],
+				ignoreChanges: ['password'],
+				replaceOnChanges: ['userId'],
+			},
+		)
+
+		this.registerOutputs({
+			humanUser: this.humanUser,
+			passwordPermanent: this.passwordPermanent,
+		})
 	}
 }
