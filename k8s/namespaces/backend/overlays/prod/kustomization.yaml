@@ -1,0 +1,138 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Prod backend overlay. Env-divergent fields per design D2 / spec Requirement 3:
+#   - GSA: backend-app@liverty-music-prod (vs liverty-music-dev)
+#   - Cloud SQL: liverty-music-prod:asia-northeast2:postgres-osaka
+#     (sql-proxy/deployment.yaml + ConfigMap DATABASE_HOST / DATABASE_INSTANCE_CONNECTION_NAME)
+#   - PSC DNS: 298474959c18.25pf3r4b6sfkn.asia-northeast2.sql.goog
+#   - DATABASE_USER: backend-app@liverty-music-prod.iam
+#   - CORS_ALLOWED_ORIGINS: https://liverty-music.app (apex)
+#   - OIDC_ISSUER_URL: https://auth.liverty-music.app
+#   - HTTPRoute hostname: api.liverty-music.app
+#   - GCP_PROJECT_ID, ENVIRONMENT=production
+#
+# Replicas: 1 (per design D8). Resource sizing matches dev exactly.
+#
+# IMPORTANT placeholders (replace before launch):
+#   - TICKET_SBT_ADDRESS (mainnet contract address)
+#   - VAPID_PUBLIC_KEY (prod keypair public key)
+# The concert-discovery CronJob runs on the base daily schedule (no
+# Fridays-only patch), because prod's concert ingestion should be regular.
+
+resources:
+- ../../base
+- sql-proxy/deployment.yaml
+- podmonitoring.yaml
+
+namespace: backend
+
+patches:
+- path: serviceaccount_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: backend-app
+
+# Global Spot VM patch for all Deployments
+- path: spot-vm_patch.yaml
+  target:
+    kind: Deployment
+
+- path: spot-vm_patch_cronjob.yaml
+  target:
+    kind: CronJob
+
+# Replicas: 1 (per design D8 — single replica during bootstrap)
+- target:
+    kind: Deployment
+    name: server-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: server-app
+    spec:
+      replicas: 1
+
+# Match dev's resource sizing exactly (design D2)
+- target:
+    kind: Deployment
+    name: server-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: server-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: server
+            resources:
+              requests:
+                cpu: 10m
+                memory: 60Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+
+# Prod HTTPRoute hostname.
+- target:
+    kind: HTTPRoute
+    name: server-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["api.liverty-music.app"]
+
+# Match dev's consumer resource sizing.
+- target:
+    kind: Deployment
+    name: consumer-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: consumer-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: consumer
+            resources:
+              requests:
+                cpu: 10m
+                memory: 20Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi
+
+# Consumer ScaledObject — start with maxReplicas: 1 (per design D8). KEDA can scale up via Pulumi tweak.
+- target:
+    kind: ScaledObject
+    name: consumer-app
+  patch: |-
+    apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata:
+      name: consumer-app
+    spec:
+      maxReplicaCount: 1
+
+configMapGenerator:
+- name: server-config
+  behavior: merge
+  envs:
+  - server/configmap.env
+- name: concert-discovery-job-config
+  behavior: merge
+  envs:
+  - cronjob/concert-discovery/configmap.env
+- name: artist-image-sync-job-config
+  behavior: merge
+  envs:
+  - cronjob/artist-image-sync/configmap.env
+- name: consumer-consumer-config
+  behavior: merge
+  envs:
+  - consumer/configmap.env

@@ -1,6 +1,7 @@
 # Prod overlay for the Zitadel Web (Login V2 UI) Deployment — same posture
-# as the API deployment: inherit base replicas: 2 + PDB minAvailable: 1,
-# apply Spot-pool nodeSelector.
+# as the API deployment per design D8: replicas=1 during prod bootstrap +
+# spot-pool nodeSelector. PDB minAvailable=1 from base is relaxed in
+# pdb-patch.yaml.
 #
 # Also overrides ZITADEL_API_URL to the prod public URL. Base hardcodes the
 # dev URL; without this patch, prod's Login UI would call the dev domain,
@@ -12,6 +13,7 @@ kind: Deployment
 metadata:
   name: zitadel-web
 spec:
+  replicas: 1
   template:
     spec:
       nodeSelector:

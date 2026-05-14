@@ -1,0 +1,47 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Atlas Operator is a singleton controller with no env-divergent state (no
+# ESC secrets mounted, no hostnames, no per-env config). The dev overlay's
+# spot-nodeSelector and right-sized resource requests are the right baseline
+# for prod too — per design D2 / spec Requirement 3, resource sizing matches
+# dev exactly until real prod load justifies a `right-size-prod` follow-up.
+
+resources:
+- ../../base
+
+patches:
+- target:
+    kind: Deployment
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: atlas-operator
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/gke-spot: "true"
+
+# Match dev's resource requests/limits exactly (design D2).
+- target:
+    kind: Deployment
+    name: atlas-operator
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: atlas-operator
+    spec:
+      template:
+        spec:
+          containers:
+          - name: manager
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi

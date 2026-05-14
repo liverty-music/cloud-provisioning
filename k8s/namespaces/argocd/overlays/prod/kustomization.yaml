@@ -27,3 +27,19 @@ patches:
   target:
     kind: Deployment
     name: argocd-server
+# Spot VM nodeSelector — required by `check-spot-nodeselector.sh` on every
+# Pod template in prod overlays (per spec Requirement 4 of the
+# prod-k8s-manifests change). Matches dev's pattern; needed because the
+# ArgoCD Helm-rendered base lacks a Spot nodeSelector that would otherwise
+# survive to the prod overlay. Targets ALL Deployments / StatefulSets /
+# Jobs so child resources (argocd-image-updater-controller, redis-secret-init,
+# application-controller, etc.) are covered without per-resource patches.
+- path: spot-vm_patch_deployment.yaml
+  target:
+    kind: Deployment
+- path: spot-vm_patch_statefulset.yaml
+  target:
+    kind: StatefulSet
+- path: spot-vm_patch_job.yaml
+  target:
+    kind: Job

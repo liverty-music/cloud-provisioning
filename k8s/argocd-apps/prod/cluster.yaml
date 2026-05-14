@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: core
+  namespace: argocd
+  # Wave 1: apply ClusterSecretStore after ESO CRDs are installed (wave 0)
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/liverty-music/cloud-provisioning.git
+    targetRevision: main
+    path: k8s/cluster/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd # Application resource lives here, but it manages cluster-wide/other-ns resources
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
