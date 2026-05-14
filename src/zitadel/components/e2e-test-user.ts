@@ -112,6 +112,13 @@ export interface E2eTestUserComponentArgs {
  * `initialPassword` and the marker resource — they agree by
  * construction. See OpenSpec change `zitadel-permanent-password` for
  * the full design + risk record.
+ *
+ * The marker mirrors the HumanUser's `ignoreChanges` on its password
+ * input AND adds `replaceOnChanges: ['userId']` so that a `--replace`
+ * on the HumanUser cascades into a fresh marker create (which picks up
+ * the new password from create-time inputs, not from ignored state).
+ * Net effect: the rotation protocol above remains a single
+ * `--replace` on the HumanUser URN; the marker follows automatically.
  */
 export class E2eTestUserComponent extends pulumi.ComponentResource {
 	public readonly humanUser: zitadel.HumanUser
@@ -173,6 +180,24 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 		// Mark the password permanent (noChangeRequired = true) so first
 		// sign-in does not redirect to /ui/v2/login/password/change. See
 		// the header comment "Permanent-password marker" for the rationale.
+		//
+		// `ignoreChanges: ['password']` mirrors the HumanUser's
+		// `ignoreChanges: ['initialPassword']` directive. Without it, an
+		// ESC-secret edit would be ignored on the HumanUser (per the
+		// rotation protocol above) but would silently trigger `update()`
+		// on this marker, re-POSTing SetPassword with the new value to
+		// Zitadel — silently rotating the live credential, exactly the
+		// scenario the parent guard exists to prevent.
+		//
+		// `replaceOnChanges: ['userId']` ensures the marker is replaced
+		// (destroyed + freshly created) when the HumanUser is replaced
+		// via `pulumi up --replace`. The HumanUser's new snowflake id
+		// flows into `userId` here; without this directive the marker
+		// would call `update()` with the new userId but the old
+		// (ignored) password, overwriting the freshly-rotated credential
+		// with the stale value. With it, `create()` runs against the
+		// new user with the new password — rotation works end-to-end
+		// with a single `--replace` on the HumanUser URN.
 		this.passwordPermanent = new ZitadelHumanUserPasswordPermanent(
 			'e2e-test-password-permanent',
 			{
@@ -181,7 +206,12 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 				userId: this.humanUser.id,
 				password: pulumi.secret(initialPassword),
 			},
-			{ parent: this, dependsOn: [this.humanUser] },
+			{
+				parent: this,
+				dependsOn: [this.humanUser],
+				ignoreChanges: ['password'],
+				replaceOnChanges: ['userId'],
+			},
 		)
 
 		this.registerOutputs({
