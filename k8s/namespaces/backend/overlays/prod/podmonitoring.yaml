@@ -1,0 +1,29 @@
+# PodMonitoring CRD — opts the backend server pods into Google Managed
+# Service for Prometheus (GMP) ingestion. Per design D5: opt-in only for
+# workloads with active alerts; metricRelabeling keep-rule bounds the
+# ingested series so we never accidentally enable a high-cardinality scrape.
+#
+# Keep-rule scope:
+#   - connect_server_*   : Connect-RPC core (request count, latency, errors)
+#   - go_goroutines      : Go runtime health
+#   - go_memstats_*      : Go memory profile (heap, gc pauses)
+#   - process_*          : Process-level (CPU, RSS, fd count)
+#
+# Interval: 60s (4× reduction vs the default 15s) keeps ingestion rate
+# bounded per design D5 / spec Requirement 6.
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: backend-server
+  namespace: backend
+spec:
+  selector:
+    matchLabels:
+      app: server-app
+  endpoints:
+  - port: metrics
+    interval: 60s
+    metricRelabeling:
+    - sourceLabels: [__name__]
+      regex: connect_server_.+|go_goroutines|go_memstats_.+|process_.+
+      action: keep

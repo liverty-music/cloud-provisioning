@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Prod gateway overlay. The Gateway base references `api-gateway-static-ip`
+# (the NamedAddress) and `api-gateway-cert-map` — both are project-scoped GCP
+# resources with the same name in dev and prod, so the base manifest works
+# unchanged for prod. The Gateway in this overlay claims the prod project's
+# `api-gateway-static-ip` global address (34.110.151.208), transitioning it
+# from RESERVED to IN_USE.
+#
+# Per-route hostname configuration (api.liverty-music.app, auth.liverty-music.app)
+# is in the backend and zitadel overlays' HTTPRoute patches, not here.
+
+resources:
+- ../../base

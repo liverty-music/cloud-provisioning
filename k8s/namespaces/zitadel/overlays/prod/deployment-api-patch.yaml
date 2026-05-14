@@ -1,9 +1,9 @@
 # Prod overlay for the Zitadel API Deployment.
-# Inherits base `replicas: 2` and `PodDisruptionBudget minAvailable: 1`.
-# Applies the Spot-pool nodeSelector for pre-launch cost — safe because the
-# base `podAntiAffinity` (hostname topology) ensures the two replicas land
-# on different nodes, so a single Spot preemption cannot take the entire
-# API plane down.
+# Per design D8 of the prod-k8s-manifests change: replicas=1 during initial
+# prod bootstrap (no users yet — second-replica HA is over-provisioning at
+# idle); HA replicas are a follow-up `right-size-prod` change. The base PDB
+# minAvailable=1 must be relaxed in pdb-patch.yaml so the single replica can
+# be voluntarily evicted (Spot preemption, node drain).
 #
 # Also overrides the cloud-sql-proxy `args` to point at the prod Cloud SQL
 # instance. Base hardcodes the dev instance connection name
@@ -17,6 +17,7 @@ kind: Deployment
 metadata:
   name: zitadel-api
 spec:
+  replicas: 1
   template:
     spec:
       nodeSelector:

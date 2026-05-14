@@ -1,0 +1,53 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Prod otel-collector overlay. Env-divergent fields:
+#   - ServiceAccount GSA email: otel-collector@liverty-music-prod (vs dev).
+# Resource sizing + spot label match dev exactly.
+
+resources:
+- ../../base
+
+namespace: otel-collector
+
+patches:
+- path: serviceaccount_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: otel-collector
+
+# Spot VM nodeSelector for prod
+- target:
+    kind: Deployment
+    name: otel-collector
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: otel-collector
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/gke-spot: "true"
+
+- target:
+    kind: Deployment
+    name: otel-collector
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: otel-collector
+    spec:
+      template:
+        spec:
+          containers:
+          - name: otel-collector
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi

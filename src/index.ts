@@ -109,14 +109,14 @@ const gcp = new Gcp({
 	zitadelLoginPat,
 })
 
-// 5. Self-hosted Zitadel infra phase (dev only).
+// 5. Self-hosted Zitadel infra phase (dev + prod).
 // Provisions GSM secret shells (masterkey, empty admin-sa-key) that the
 // in-cluster Zitadel pod's bootstrap sidecar will populate on first boot.
 // The cutover PR reads `zitadel-machine-key-for-pulumi-admin` from GSM to reconfigure the
 // Zitadel Pulumi provider at the self-hosted hostname. Always running this
 // phase (even before cutover) is safe: the secret shells don't affect the
 // Cloud-tenant Zitadel resources above.
-if (env === 'dev') {
+if (env === 'dev' || env === 'prod') {
 	new SecretsComponent('zitadel-secrets', {
 		project: gcp.project,
 		zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,

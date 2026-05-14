@@ -5,6 +5,15 @@ namespace: zitadel
 
 resources:
 - ../../base
+# Prod DB grant Job — idempotent ALTER DATABASE OWNER + GRANT scoped to the
+# prod Cloud SQL `zitadel` DB. Mirrors the dev pattern at
+# `../dev/job-grant-db.yaml` but targets the prod connection name and the
+# prod IAM user `zitadel@liverty-music-prod.iam`.
+- job-grant-db.yaml
+# Per design D5 + spec Requirement 6: opt-in PodMonitoring CRD for prod-only
+# GMP scrape of zitadel-api `/debug/metrics`, keep-rule bounded to
+# `zitadel_command_*` + `http_server_request_duration_*` series.
+- podmonitoring.yaml
 # NOTE: `cronjob-restart-zitadel.yaml` is intentionally NOT imported here.
 # That resource is a dev-only band-aid for the `self-hosted-zitadel` §18.6
 # hang (search the `liverty-music.app/temporary` annotation in the dev
@@ -12,20 +21,19 @@ resources:
 
 configMapGenerator:
 # Merge prod env-specific overrides into the base `zitadel-config` ConfigMap.
-# Currently overrides ZITADEL_EXTERNALDOMAIN and the Cloud SQL IAM SA
-# usernames — see `configmap-patch.env` for the full set + rationale.
+# Currently overrides ZITADEL_EXTERNALDOMAIN, Cloud SQL IAM SA usernames,
+# and connection pool tuning — see `configmap-patch.env` for the full set +
+# rationale.
 - name: zitadel-config
   behavior: merge
   envs:
   - configmap-patch.env
 
 patches:
-# Apply Spot-pool nodeSelector to both Deployments + override cloud-sql-proxy
-# args (deployment-api) and ZITADEL_API_URL env (deployment-web). Replica
-# count and PDB minAvailable inherit from base (replicas: 2,
-# minAvailable: 1) — spot is acceptable pre-launch because base
-# podAntiAffinity ensures different-host placement; revisit non-spot when
-# SLO/traffic justifies.
+# Per design D8 of the prod-k8s-manifests change: both Deployments patched
+# to replicas=1 + spot-pool nodeSelector. `deployment-api-patch.yaml` also
+# overrides cloud-sql-proxy args to the prod instance; `deployment-web-patch.yaml`
+# also sets ZITADEL_API_URL to the prod public URL.
 - path: deployment-api-patch.yaml
   target:
     kind: Deployment
@@ -34,6 +42,9 @@ patches:
   target:
     kind: Deployment
     name: zitadel-web
+# Relax both PDBs to minAvailable=0 so the single replicas can be voluntarily
+# evicted (Spot preemption, drain). Required after replicas=1 patches above.
+- path: pdb-patch.yaml
 # Override the Workload Identity GCP SA on the `zitadel` ServiceAccount
 # (base annotates the dev project's SA; prod pods need the prod SA).
 - path: serviceaccount-patch.yaml
