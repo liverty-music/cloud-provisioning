@@ -10,6 +10,7 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
+import { BackendMachineKeyComponent } from './zitadel/components/backend-machine-key.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
@@ -120,6 +121,22 @@ if (env === 'dev' || env === 'prod') {
 	new SecretsComponent('zitadel-secrets', {
 		project: gcp.project,
 		zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
+		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
+	})
+}
+
+// 6. Prod self-hosted Zitadel: backend MachineUser + key + GSM bundle.
+// Closes the gap discovered post-`prod-k8s-manifests` deploy. The existing
+// `Zitadel` class above is dev-only (SaaS Cloud-tenant), so prod's
+// `pulumi up` was never creating `zitadel-machine-key-for-backend-app` and
+// backend Pods sat in `ContainerCreating`. The new component owns the full
+// orchestration (admin JWT lookup → Zitadel provider → org data source →
+// MachineUser/Key/OrgMember + GSM Secret bundle) so this dispatch line is
+// the thin contract.
+if (env === 'prod') {
+	new BackendMachineKeyComponent('backend-app-prod', {
+		env,
+		gcpProject: `${brandId}-${env}`,
 		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
 	})
 }
