@@ -172,6 +172,33 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			this.secrets.push(anthropicApiKeySecret)
 		}
 
+		// Authenticates the reusable Claude review workflow
+		// (`liverty-music/.github/.github/workflows/claude-review.yml`)
+		// against the Claude.ai Max plan subscription instead of the
+		// console.anthropic.com pay-as-you-go API credit balance. See
+		// OpenSpec change `claude-review-check-run` design.md for the
+		// auth-path rationale.
+		//
+		// `visibility: 'all'` makes the secret available to every repo in
+		// the org, including any repo-level `CLAUDE_CODE_OAUTH_TOKEN` that
+		// may have been manually configured earlier — when both exist,
+		// GitHub's `secrets` context resolves to the repo-level secret,
+		// so this org-level secret only supplies the value to repos that
+		// do not yet have it (currently backend/frontend/cloud-provisioning).
+		if (githubConfig.claudeCodeOauthToken) {
+			const claudeCodeOauthTokenSecret =
+				new github.ActionsOrganizationSecret(
+					'claude-code-oauth-token',
+					{
+						secretName: 'CLAUDE_CODE_OAUTH_TOKEN',
+						visibility: 'all',
+						plaintextValue: githubConfig.claudeCodeOauthToken,
+					},
+					{ provider: this.provider, parent: this },
+				)
+			this.secrets.push(claudeCodeOauthTokenSecret)
+		}
+
 		// Register outputs
 		this.registerOutputs({
 			provider: this.provider,

@@ -4,6 +4,7 @@ export interface GitHubConfig {
 	billingEmail: string
 	geminiApiKey?: string
 	anthropicApiKey?: string
+	claudeCodeOauthToken?: string
 }
 
 export interface BufConfig {
