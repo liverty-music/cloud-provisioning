@@ -16,7 +16,9 @@ kind: Kustomization
 #
 # IMPORTANT placeholders (replace before launch):
 #   - TICKET_SBT_ADDRESS (mainnet contract address)
-#   - VAPID_PUBLIC_KEY (prod keypair public key)
+# Resolved 2026-05-15:
+#   - VAPID_PUBLIC_KEY → prod-specific value derived from the GSM
+#     `vapid-private-key` private scalar (see server/configmap.env note).
 # The concert-discovery CronJob runs on the base daily schedule (no
 # Fridays-only patch), because prod's concert ingestion should be regular.
 
