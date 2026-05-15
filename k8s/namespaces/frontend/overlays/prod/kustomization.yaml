@@ -44,3 +44,27 @@ patches:
     - op: add
       path: /spec/hostnames
       value: ["liverty-music.app"]
+
+# Pin the web-app image to prod Artifact Registry. Per OpenSpec
+# `prepare-prod-service-in` §9 + the `prod-image-pipeline` spec, prod
+# must pull from `liverty-music-prod/frontend/*` and never from dev AR.
+# The `<sha>` tag is the commit SHA of liverty-music/frontend `main` HEAD
+# at the time `v1.0.0` was published (= merge commit of PR #356). Bump
+# this tag on each subsequent prod release tag cut.
+#
+# Note on the `name:` field: `base/web/kustomization.yaml` already has
+# its own `images:` transformer that rewrites the bare container
+# `image: web-app` → `asia-northeast2-docker.pkg.dev/liverty-music-dev/
+# frontend/web-app:latest` (env-specific config in base is pre-existing
+# tech debt; out of scope for this change). By the time this overlay's
+# `images:` block runs, the rendered image is already the dev-AR form,
+# so we match against THAT name. Kustomize's last-write-wins semantics
+# then rewrites to the prod AR FQDN + commit-SHA tag.
+#
+# Dev overlay omits an `images:` block: ArgoCD Image Updater resolves
+# the dev-AR `:latest` reference dynamically. Prod uses explicit
+# pinning (no `:latest` allowed per spec).
+images:
+- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
+  newTag: 51f5bce376d4eda670f83b4a654cf1f924c2f4f1
