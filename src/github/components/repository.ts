@@ -56,25 +56,62 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
-		// Create Environment
+		// Create Environment.
+		//
+		// Both dev and prod use `customBranchPolicies: true` so each env can
+		// explicitly allow-list the refs it accepts. The previous prod-only
+		// `protectedBranches: true` blocked release-tag deploys with
+		// "Tag X is not allowed to deploy to prod due to environment
+		// protection rules" because tags are never "protected branches" in
+		// GitHub's data model. The OpenSpec change `prepare-prod-service-in`
+		// §5 release-tag-triggered prod build path needs the `v*` tag
+		// pattern declared below; D7 OQ1 anticipated this gap.
 		this.environment = new github.RepositoryEnvironment(
 			`${repositoryName}`,
 			{
 				repository: repositoryName,
 				environment: environment,
-				deploymentBranchPolicy:
-					environment === 'dev'
-						? {
-								protectedBranches: false,
-								customBranchPolicies: true,
-							}
-						: {
-								protectedBranches: true,
-								customBranchPolicies: false,
-							},
+				deploymentBranchPolicy: {
+					protectedBranches: false,
+					customBranchPolicies: true,
+				},
 			},
 			{ provider, parent: this },
 		)
+
+		// Per-env allowed deployment branches / tags. dev historically ran
+		// with zero patterns yet permitted push-to-main deploys (GitHub
+		// empirically allows refs when custom_branch_policies is true and
+		// patterns are absent); making the allow-list explicit removes that
+		// ambiguity and gives prod the `v*` tag entry it needs for the
+		// release-triggered build path. The Pulumi `@pulumi/github` API
+		// distinguishes `branchPattern` from `tagPattern` (two different
+		// resources cover the two ref types), so we declare them as separate
+		// arrays.
+		const allowedBranches = ['main']
+		const allowedTags = environment === 'prod' ? ['v*'] : []
+		for (const pattern of allowedBranches) {
+			new github.RepositoryEnvironmentDeploymentPolicy(
+				`${repositoryName}-deploy-branch-${pattern.replace(/[^a-z0-9-]/gi, '-')}`,
+				{
+					repository: repositoryName,
+					environment: this.environment.environment,
+					branchPattern: pattern,
+				},
+				{ provider, parent: this, dependsOn: [this.environment] },
+			)
+		}
+		for (const pattern of allowedTags) {
+			new github.RepositoryEnvironmentDeploymentPolicy(
+				`${repositoryName}-deploy-tag-${pattern.replace(/[^a-z0-9-]/gi, '-')}`,
+				{
+					repository: repositoryName,
+					environment: this.environment.environment,
+					tagPattern: pattern,
+				},
+				{ provider, parent: this, dependsOn: [this.environment] },
+			)
+		}
 
 		// Create Variables
 		for (const [key, value] of Object.entries(variables)) {
