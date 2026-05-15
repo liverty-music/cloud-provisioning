@@ -15,4 +15,5 @@ export enum RepositoryName {
 	SPECIFICATION = 'specification',
 	BACKEND = 'backend',
 	FRONTEND = 'frontend',
+	DOT_GITHUB = '.github',
 }

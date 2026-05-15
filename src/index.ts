@@ -158,7 +158,10 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.SPECIFICATION,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: ['CI Success'],
+	// Pilot repo for the Claude review Check Run gate introduced by
+	// OpenSpec change `claude-review-check-run`. Other repos keep
+	// `['CI Success']` until the pilot graduates.
+	requiredStatusCheckContexts: ['CI Success', 'Claude review'],
 })
 
 // Cloud Provisioning Repository
