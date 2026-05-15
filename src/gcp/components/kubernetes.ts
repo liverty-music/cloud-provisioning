@@ -1,5 +1,6 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import type { Environment } from '../../config.js'
 import type { Region, RegionName } from '../region.js'
 import { ApiService, type GoogleApis } from '../services/api.js'
 import { IamService, Roles } from '../services/iam.js'
@@ -13,7 +14,7 @@ export interface SecretConfig {
 
 export interface KubernetesComponentArgs {
 	project: gcp.organizations.Project
-	environment: 'dev' | 'staging' | 'prod'
+	environment: Environment
 	region: Region
 	regionName: RegionName
 
@@ -82,7 +83,15 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			subnetCidr,
 			podsCidr,
 			servicesCidr,
-			masterCidr,
+			// `masterCidr` is kept in the arg interface (and consumed by callers)
+			// for a near-future re-introduction: when prod migrates to
+			// `enablePrivateNodes: true` (post-launch, per
+			// docs/PROD_BOOTSTRAP_DECISIONS.md D6), the private-cluster config
+			// will reference it via `privateClusterConfig.masterIpv4CidrBlock`.
+			// It is currently unused by either active cluster branch — dev
+			// uses public nodes and prod Autopilot manages master CIDR internally.
+			// Do NOT remove from the arg interface; doing so forces a breaking
+			// downstream change at re-introduction time.
 			etcdCmekKeyName,
 			artifactRegistries,
 			secrets = [],
@@ -90,13 +99,15 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		} = args
 
 		const apiService = new ApiService(project)
-		// `places.googleapis.com` is dev-only (gated by gcp-cost-guardrails:
-		// dev has a per-day quota override for venue enrichment; prod does
-		// not use the Places API directly).
-		const apisToEnable: GoogleApis[] = ['container.googleapis.com']
-		if (environment === 'dev') {
-			apisToEnable.push('places.googleapis.com')
-		}
+		// API enablement on a GCP project is free at the enable step (per-call
+		// pricing kicks in only when the API is invoked). `places.googleapis.com`
+		// is currently used by the dev venue-enrichment feature; prod does not
+		// call it but enabling the API costs nothing. Per
+		// `refactor-unify-env-dispatch`, no env-gated enablement.
+		const apisToEnable: GoogleApis[] = [
+			'container.googleapis.com',
+			'places.googleapis.com',
+		]
 		const enabledApis = apiService.enableApis(apisToEnable, this)
 		const allSecrets = [...secrets, ...esoOnlySecrets]
 		const enabledSecretManagerApi =
@@ -395,6 +406,31 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
+		// 6. GKE Cluster.
+		//
+		// `sharedClusterConfig` carries fields identical across all envs;
+		// `sharedAutopilotConfig` extends it with Autopilot-mode shared
+		// fields. Per `refactor-unify-env-dispatch` D5, the `if (env === 'dev')`
+		// branch below remains because Autopilot vs Standard mode is a
+		// structural difference (different `gcp.container.Cluster` argument
+		// shapes; Standard requires a separate `gcp.container.NodePool` that
+		// Autopilot manages internally) — the spread eliminates the
+		// surrounding boilerplate duplication, not the structural branch.
+		const sharedClusterConfig = {
+			network: networkId,
+			subnetwork: this.subnet.id,
+			ipAllocationPolicy: {
+				clusterSecondaryRangeName: 'pods-range',
+				servicesSecondaryRangeName: 'services-range',
+			},
+			workloadIdentityConfig: {
+				workloadPool: pulumi.interpolate`${project.projectId}.svc.id.goog`,
+			},
+			releaseChannel: { channel: 'REGULAR' },
+			costManagementConfig: { enabled: true },
+			gatewayApiConfig: { channel: 'CHANNEL_STANDARD' },
+		}
+
 		if (environment === 'prod') {
 			// 6. GKE Autopilot Cluster (regional) — prod.
 			//
@@ -478,14 +514,12 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			const cluster = new gcp.container.Cluster(
 				`autopilot-cluster-${regionName}`,
 				{
+					...sharedClusterConfig,
 					name: `autopilot-cluster-${regionName}`,
 					// Regional (3-zone). Irreversible after creation.
 					location: region,
 					enableAutopilot: true,
 					deletionProtection: true,
-					network: networkId,
-					subnetwork: this.subnet.id,
-
 					// etcd Application-layer Secrets Encryption using a customer-
 					// managed Cloud KMS key. Encrypts Kubernetes Secret resources
 					// stored in etcd. Irreversible at cluster creation.
@@ -493,12 +527,6 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 						state: 'ENCRYPTED',
 						keyName: etcdCmekKeyName,
 					},
-
-					ipAllocationPolicy: {
-						clusterSecondaryRangeName: 'pods-range',
-						servicesSecondaryRangeName: 'services-range',
-					},
-
 					// Autopilot auto-provisioning uses this SA for node-level
 					// logging/monitoring; workloads still bind to their own GCP
 					// SAs via Workload Identity (which Autopilot enforces).
@@ -507,23 +535,6 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 							serviceAccount: gkeNodeSa.email,
 						},
 					},
-
-					workloadIdentityConfig: {
-						workloadPool: pulumi.interpolate`${project.projectId}.svc.id.goog`,
-					},
-
-					releaseChannel: {
-						channel: 'REGULAR',
-					},
-
-					costManagementConfig: {
-						enabled: true,
-					},
-
-					gatewayApiConfig: {
-						channel: 'CHANNEL_STANDARD',
-					},
-
 					// Minimum monitoring config — see leading block comment
 					// for rationale + GCP doc citations. `advancedDatapath
 					// ObservabilityConfig` is intentionally NOT declared here
@@ -579,47 +590,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			const cluster = new gcp.container.Cluster(
 				`standard-cluster-${regionName}`,
 				{
+					...sharedClusterConfig,
 					name: `standard-cluster-${regionName}`,
 					location: `${region}-a`, // Zonal — eligible for $74.40/mo free-tier credit per billing account.
 					deletionProtection: false,
-					network: networkId,
-					subnetwork: this.subnet.id,
 					// Remove default node pool immediately; managed via separate NodePool resource
 					removeDefaultNodePool: true,
 					initialNodeCount: 1,
-
-					// Networking
-					ipAllocationPolicy: {
-						clusterSecondaryRangeName: 'pods-range',
-						servicesSecondaryRangeName: 'services-range',
-					},
-
 					// Public nodes — eliminates Cloud NAT requirement
 					privateClusterConfig: {
 						enablePrivateNodes: false,
 						enablePrivateEndpoint: false,
 					},
-
-					// Workload Identity
-					workloadIdentityConfig: {
-						workloadPool: pulumi.interpolate`${project.projectId}.svc.id.goog`,
-					},
-
-					// Release Channel
-					releaseChannel: {
-						channel: 'REGULAR',
-					},
-
-					// Cost Management
-					costManagementConfig: {
-						enabled: true,
-					},
-
-					// Gateway API (required for GKE Gateway resources)
-					gatewayApiConfig: {
-						channel: 'CHANNEL_STANDARD',
-					},
-
 					// Logging: include `WORKLOADS` so log-based AlertPolicies
 					// (e.g., `alert-error-log-server`, `alert-poison-queue-message`,
 					// `alert-atlas-migration-failure`, `alert-backend-jwt-zitadel-errors`)
@@ -723,56 +705,12 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			return
 		}
 
-		// 6. GKE Autopilot Cluster (staging)
-		const cluster = new gcp.container.Cluster(
-			`cluster-${regionName}`,
-			{
-				name: `cluster-${regionName}`,
-				location: region,
-				enableAutopilot: true,
-				deletionProtection: true,
-				network: networkId,
-				subnetwork: this.subnet.id,
-				datapathProvider: 'ADVANCED_DATAPATH',
-
-				clusterAutoscaling: {
-					autoProvisioningDefaults: {
-						serviceAccount: gkeNodeSa.email,
-					},
-				},
-
-				ipAllocationPolicy: {
-					clusterSecondaryRangeName: 'pods-range',
-					servicesSecondaryRangeName: 'services-range',
-				},
-
-				privateClusterConfig: {
-					enablePrivateNodes: true,
-					enablePrivateEndpoint: false,
-					masterIpv4CidrBlock: masterCidr,
-				},
-
-				releaseChannel: {
-					channel: 'REGULAR',
-				},
-
-				costManagementConfig: {
-					enabled: true,
-				},
-			},
-			{ parent: this, dependsOn: enabledApis },
-		)
-
-		this.registerOutputs({
-			clusterName: cluster.name,
-			clusterEndpoint: cluster.endpoint,
-			subnetId: this.subnet.id,
-			nodeServiceAccountEmail: this.nodeServiceAccountEmail,
-			backendAppServiceAccountEmail: this.backendAppServiceAccountEmail,
-			otelCollectorServiceAccountEmail:
-				this.otelCollectorServiceAccountEmail,
-			zitadelServiceAccountEmail: this.zitadelServiceAccountEmail,
-			esoServiceAccountEmail: this.esoServiceAccountEmail,
-		})
+		// `Environment = 'dev' | 'prod'` is exhaustive — both branches return
+		// above. The staging cluster block (previously here) was deleted by
+		// `refactor-unify-env-dispatch` D1 (staging dropped from near-term
+		// plans). When staging is reintroduced, write a fresh block from
+		// `sharedClusterConfig` + `sharedAutopilotConfig` rather than
+		// resurrecting the previous staging code (which had dormant bugs:
+		// missing gatewayApiConfig, missing monitoringConfig).
 	}
 }

@@ -43,9 +43,13 @@ export interface ZitadelMonitoringComponentArgs {
  * existing `app-error-log-alerting` capability — same alerting pattern,
  * different subject system.
  *
- * Dev-only: the caller must guard instantiation with `env === 'dev'`.
- * Prod thresholds will be re-tuned when the self-hosted Zitadel migration
- * extends past dev.
+ * **Runs in all envs** (refactored from dev-only by `refactor-unify-env-dispatch`).
+ * The threshold values are deliberately generous (50× over steady-state
+ * for latency p99; 10 errors per 60s for JWT validation) — they will not
+ * page on pre-launch prod traffic shape. If they become noisy after prod
+ * launch traffic ramps up, threshold tuning is a separate operational
+ * concern handled in a follow-up change with threshold args added to
+ * `ZitadelMonitoringComponentArgs`.
  */
 export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 	public readonly latencyAlertPolicy: gcp.monitoring.AlertPolicy

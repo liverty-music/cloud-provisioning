@@ -13,15 +13,9 @@ import type { Environment } from '../config.js'
  * Zitadel issuer hostname. The frontend's redirect URIs are at
  * `https://${baseDomainMap[env]}` and the Zitadel issuer is at
  * `https://auth.${baseDomainMap[env]}`.
- *
- * dev is the only environment served by self-hosted Zitadel today
- * (per OpenSpec D10 cooldown plan); staging / prod entries are present
- * so that `frontend.ts` redirect URI computation continues to work
- * across environments without duplicating the table.
  */
 export const baseDomainMap: Record<Environment, string> = {
 	dev: 'dev.liverty-music.app',
-	staging: 'staging.liverty-music.app',
 	prod: 'liverty-music.app',
 }
 
@@ -29,12 +23,10 @@ export const baseDomainMap: Record<Environment, string> = {
  * Zitadel issuer hostname per environment.
  *
  *     https://auth.dev.liverty-music.app
- *     https://auth.staging.liverty-music.app   (future)
- *     https://auth.liverty-music.app           (future)
+ *     https://auth.liverty-music.app
  */
 export const zitadelDomainMap: Record<Environment, string> = {
 	dev: `auth.${baseDomainMap.dev}`,
-	staging: `auth.${baseDomainMap.staging}`,
 	prod: `auth.${baseDomainMap.prod}`,
 }
 
@@ -57,9 +49,9 @@ export const BACKEND_WEBHOOK_BASE_URL =
 export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
 
 /**
- * Bootstrap-created `admin` Role Org ID for the dev environment.
+ * Bootstrap-created `admin` Role Org IDs per environment.
  *
- * Per OpenSpec change `add-zitadel-console-admin-via-google-idp`, the
+ * Per OpenSpec change `add-zitadel-console-admin-via-google-idp`, each
  * Zitadel instance is split into two orgs:
  *   - `admin` role org — created by Zitadel at first-instance bootstrap
  *     because the configmap sets `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`.
@@ -69,19 +61,24 @@ export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
  *     Hosts the product Project, ApplicationOidc, end-user LoginPolicy,
  *     `backend-app` machine user, and end-user accounts.
  *
- * The id below is the dev environment's `admin` org id, discovered
- * post-bootstrap via `POST /admin/v1/orgs/_search` against the machine
- * user whose JSON key the bootstrap-uploader sidecar writes to GSM
- * (`zitadel-machine-key-for-pulumi-admin`). The value is stable across pod restarts but
- * instance-specific — if the dev Zitadel database is wiped and
- * re-bootstrapped, this constant MUST be updated to the new admin org id
- * before running `pulumi up` against the re-bootstrapped instance.
+ * Each id was discovered post-bootstrap via `POST /admin/v1/orgs/_search`
+ * against the env's `pulumi-admin` machine user JWT (uploaded to GSM
+ * `zitadel-machine-key-for-pulumi-admin` by the in-cluster
+ * `bootstrap-uploader` sidecar). The values are stable across pod
+ * restarts but instance-specific — if a Zitadel database is wiped and
+ * re-bootstrapped, the corresponding entry MUST be updated to the new
+ * admin org id before running `pulumi up` against the re-bootstrapped
+ * instance.
  *
- * Captured 2026-05-03 after the dev DB wipe + re-bootstrap step in
- * tasks.md Section 5: configmap.env now sets
- * `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`, so this id refers to the org
- * named `admin` (verified via `POST /admin/v1/orgs/_search`). Staging /
- * prod adoption (separate change) extends this with an env-keyed map
- * or a Dynamic Resource that discovers the orgId from the admin SA key.
+ *   dev:  captured 2026-05-03 after dev DB wipe + re-bootstrap
+ *   prod: captured 2026-05-15 after prod first-boot bootstrap
+ *
+ * The unified `Zitadel` class (`src/zitadel/index.ts`) consumes this map
+ * via `import: adminOrgIdMap[env]` on the `zitadel.Org('admin', ...)`
+ * resource, bringing the bootstrap-created admin org into Pulumi state
+ * across all envs without a per-env wrapper class.
  */
-export const ZITADEL_DEV_ADMIN_ORG_ID = '371280364565496672'
+export const adminOrgIdMap: Record<Environment, string> = {
+	dev: '371280364565496672',
+	prod: '372892288692584603',
+}

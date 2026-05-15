@@ -1,6 +1,7 @@
 import * as cloudflare from '@pulumi/cloudflare'
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import type { Environment } from '../../config.js'
 import { toKebabCase } from '../../lib/lib.js'
 import type { Region, RegionName } from '../region.js'
 import { ApiService } from '../services/api.js'
@@ -14,7 +15,7 @@ export interface NetworkComponentArgs {
 	region: Region
 	regionName: RegionName
 	project: gcp.organizations.Project
-	environment: string
+	environment: Environment
 	cloudflareConfig: {
 		apiToken: pulumi.Input<string>
 		zoneId: pulumi.Input<string>
@@ -38,8 +39,12 @@ export class NetworkComponent extends pulumi.ComponentResource {
 		super('gcp:liverty-music:NetworkComponent', name, args, opts)
 
 		const {
-			region,
-			regionName,
+			// `region` and `regionName` were referenced by the staging Cloud
+			// NAT block (now commented out per `refactor-unify-env-dispatch` D7).
+			// Underscore-prefix marks them intentionally-unused until the NAT
+			// block is uncommented at re-introduction.
+			region: _region,
+			regionName: _regionName,
 			project,
 			cloudflareConfig,
 			environment,
@@ -190,42 +195,59 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			)
 		}
 
-		// 4. Cloud Router + Cloud NAT (staging only)
-		// Dev uses public nodes (enablePrivateNodes: false), so Cloud NAT is not
-		// needed. Prod currently mirrors dev's public-node + no-NAT setup as
-		// the cost-first pre-launch state (mutable; flip when real users
-		// arrive — see docs/PROD_BOOTSTRAP_DECISIONS.md D6). Only staging
-		// keeps private nodes today and therefore needs NAT for internet
-		// egress.
-		if (environment === 'staging') {
-			this.router = new gcp.compute.Router(
-				`nat-router-${regionName}`,
-				{
-					name: `nat-router-${regionName}`,
-					network: this.network.id,
-					region: region,
-				},
-				{ parent: this },
-			)
-
-			this.nat = new gcp.compute.RouterNat(
-				`nat-${regionName}`,
-				{
-					name: `nat-${regionName}`,
-					router: this.router.name,
-					region: region,
-					natIpAllocateOption: 'AUTO_ONLY',
-					sourceSubnetworkIpRangesToNat:
-						'ALL_SUBNETWORKS_ALL_IP_RANGES',
-					enableDynamicPortAllocation: true,
-					logConfig: {
-						enable: true,
-						filter: 'ERRORS_ONLY',
-					},
-				},
-				{ parent: this },
-			)
-		}
+		// 4. Cloud Router + Cloud NAT — currently commented out per
+		// `refactor-unify-env-dispatch` D7. Re-introduction is expected when
+		// EITHER (a) prod migrates to `privateClusterConfig.enablePrivateNodes:
+		// true` (post-launch, per docs/PROD_BOOTSTRAP_DECISIONS.md D6 — NAT
+		// becomes mandatory for private-node clusters to reach the internet),
+		// OR (b) a staging stack is reintroduced.
+		//
+		// **Re-enable instructions** when the trigger fires:
+		//   1. Restore the `if (environment === 'private')` / `'staging'` /
+		//      whatever-the-trigger-env-is gate (or remove the gate if NAT
+		//      becomes universal across all envs).
+		//   2. If `Environment` type was narrowed in this change to drop
+		//      `'staging'`, restore the union before re-enabling staging-gated
+		//      NAT. See `src/config.ts`.
+		//   3. Repopulate `senderAddressMap.staging` in `smtp.ts`,
+		//      `baseDomainMap.staging` / `zitadelDomainMap.staging` in
+		//      `zitadel/constants.ts`, `adminOrgIdMap.staging` in
+		//      `zitadel/constants.ts` (discover via post-bootstrap Zitadel
+		//      admin API).
+		//   4. Uncomment the block below.
+		//
+		// TODO(refactor-unify-env-dispatch D7): re-enable when private-prod-
+		// nodes flip OR staging reintroduction.
+		//
+		// if (environment === 'staging') {
+		// 	this.router = new gcp.compute.Router(
+		// 		`nat-router-${regionName}`,
+		// 		{
+		// 			name: `nat-router-${regionName}`,
+		// 			network: this.network.id,
+		// 			region: region,
+		// 		},
+		// 		{ parent: this },
+		// 	)
+		//
+		// 	this.nat = new gcp.compute.RouterNat(
+		// 		`nat-${regionName}`,
+		// 		{
+		// 			name: `nat-${regionName}`,
+		// 			router: this.router.name,
+		// 			region: region,
+		// 			natIpAllocateOption: 'AUTO_ONLY',
+		// 			sourceSubnetworkIpRangesToNat:
+		// 				'ALL_SUBNETWORKS_ALL_IP_RANGES',
+		// 			enableDynamicPortAllocation: true,
+		// 			logConfig: {
+		// 				enable: true,
+		// 				filter: 'ERRORS_ONLY',
+		// 			},
+		// 		},
+		// 		{ parent: this },
+		// 	)
+		// }
 
 		// 5. Public DNS zones + Certificate Manager + shared Gateway resources.
 		//
@@ -440,18 +462,18 @@ interface ZoneTopologyEntry {
 /**
  * Build the (zone × services) assignment for the current environment.
  *
- * - **dev / staging**: a single zone `<env>.<tld>` containing every
- *   service from {@link SERVICES}. The web app sits at the zone apex
- *   (hostname == zone dnsName), api/auth at subdomains.
+ * - **dev**: a single zone `dev.<tld>` containing every service from
+ *   {@link SERVICES}. The web app sits at the zone apex (hostname ==
+ *   zone dnsName), api/auth at subdomains.
  * - **prod**: one zone per non-apex service (apex stays on Cloudflare).
  *   The web app is excluded.
  *
- * Pulumi resource names returned for dev/staging mirror the names that
- * existed before this refactor, so the rewrite produces zero-diff on
- * dev. Prod adds new resources with distinct names.
+ * Pulumi resource names returned for dev mirror the names that existed
+ * before the `refactor-unify-env-dispatch` cleanup, so the rewrite
+ * produces zero-diff on dev. Prod uses its own per-subdomain naming.
  */
 function buildZoneTopology(
-	environment: string,
+	environment: 'dev' | 'prod',
 	tld: string,
 ): ZoneTopologyEntry[] {
 	if (environment === 'prod') {
@@ -470,7 +492,8 @@ function buildZoneTopology(
 		})
 	}
 
-	// dev / staging
+	// dev (the only remaining non-prod env after `refactor-unify-env-dispatch`
+	// D1 dropped staging)
 	const managedZoneName = `${environment}.${tld}`
 	return [
 		{

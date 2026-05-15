@@ -1,12 +1,13 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import type { Environment } from '../../config.js'
 import { ApiService } from '../services/api.js'
 
 export interface PostgresComponentArgs {
 	project: gcp.organizations.Project
 	region: pulumi.Input<string>
 	regionName: pulumi.Input<string>
-	environment: 'dev' | 'staging' | 'prod'
+	environment: Environment
 	/**
 	 * The ID of the subnet where the PSC Endpoint (IP) will be placed.
 	 */

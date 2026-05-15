@@ -131,24 +131,13 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:E2eTestUser', name, {}, opts)
 
-		const {
-			env,
-			orgId,
-			initialPassword,
-			domain,
-			jwtProfileJson,
-			provider,
-		} = args
+		const { orgId, initialPassword, domain, jwtProfileJson, provider } =
+			args
 
-		// Defensive depth — the parent Zitadel class already throws on
-		// non-dev, but this catches accidental refactors that lift the
-		// component out of the dev-only constructor branch.
-		if (env !== 'dev') {
-			throw new Error(
-				`E2eTestUserComponent: E2E test user is dev-only; got env=${env}. ` +
-					'See OpenSpec change "playwright-password-test-user" for the rationale.',
-			)
-		}
+		// Env guard removed per `refactor-unify-env-dispatch` D2: the parent
+		// `Zitadel` class gates instantiation via `if (env === 'dev')`. The
+		// component itself is env-agnostic — it produces the same shape
+		// wherever it's instantiated. The caller decides if-and-when.
 
 		this.humanUser = new zitadel.HumanUser(
 			'e2e-test-password',

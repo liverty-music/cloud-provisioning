@@ -20,7 +20,6 @@ export interface SmtpComponentArgs {
 // Subdomains isolate email sending reputation from the web domain.
 const senderAddressMap: Record<Environment, string> = {
 	dev: 'noreply@mail.dev.liverty-music.app',
-	staging: 'noreply@mail.staging.liverty-music.app',
 	prod: 'noreply@mail.liverty-music.app',
 }
 

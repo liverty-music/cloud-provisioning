@@ -12,6 +12,7 @@ import { LoginClientComponent } from './components/login-client.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
 import {
+	adminOrgIdMap,
 	BACKEND_WEBHOOK_BASE_URL,
 	PRE_ACCESS_TOKEN_PATH,
 	zitadelDomainMap,
@@ -62,14 +63,18 @@ export interface ZitadelArgs {
 	 * Sourced from ESC `pulumiConfig.zitadel.e2eTestUser.password`
 	 * (secret). Consumed by `E2eTestUserComponent`. See OpenSpec
 	 * change `playwright-password-test-user` for rationale.
+	 *
+	 * Required only when `env === 'dev'`. Other envs do not provision
+	 * the E2E test user; this arg is ignored.
 	 */
-	e2eTestUserPassword: pulumi.Input<string>
+	e2eTestUserPassword?: pulumi.Input<string>
 }
 
 /**
  * Zitadel orchestrates all Zitadel identity resources against the
  * in-cluster self-hosted Zitadel instance reachable at the env-specific
- * issuer hostname (e.g. `https://auth.dev.liverty-music.app` for dev).
+ * issuer hostname (`https://auth.dev.liverty-music.app` for dev,
+ * `https://auth.liverty-music.app` for prod).
  *
  * ## Two-org topology
  *
@@ -85,7 +90,7 @@ export interface ZitadelArgs {
  *   password sign-in and exposes the Google IdP.
  *
  * - **`liverty-music` product org** — created by Pulumi as
- *   `zitadel.Org('liverty-music', { isDefault: true })`. Hosts product
+ *   `zitadel.Org('liverty-music', { isDefault: false })`. Hosts product
  *   resources and end-user identities only: the `liverty-music` Project,
  *   the frontend `ApplicationOidc`, the passkey-only end-user
  *   `LoginPolicy`, the `backend-app` machine user (used by the backend
@@ -96,12 +101,24 @@ export interface ZitadelArgs {
  * profile JSON from GSM `zitadel-machine-key-for-pulumi-admin`, and
  * provisions everything else from there.
  *
- * Cutover scope is dev-only. Staging / prod adoption is a separate
- * change; the `env` guard below makes a staging / prod attempt fail
- * loudly until those environments get their own
- * `ZITADEL_<ENV>_ADMIN_ORG_ID`, configmap with
- * `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`, and Google OAuth client wired
- * through Pulumi ESC.
+ * ## All-envs unified class (refactor-unify-env-dispatch)
+ *
+ * This class is the **single source of truth** for the Zitadel topology
+ * across all envs. Previously two parallel "prod-only" wrapper classes
+ * (`BackendMachineKeyComponent` from `enable-zitadel-prod-pulumi-provider`
+ * and `ZitadelProdStackComponent` from `complete-zitadel-prod-pulumi-stack`)
+ * cloned this assembly for prod with subset config — that pattern was
+ * retired in `refactor-unify-env-dispatch` for being drift-prone and
+ * fighting the env-aware leaf-component grain. Env-specific values
+ * (admin org id, redirect URIs, sender address) are sourced from
+ * `Record<Environment, T>` maps in `constants.ts` and downstream
+ * leaf components.
+ *
+ * The only env-conditional resource at this layer is `E2eTestUserComponent`,
+ * which is dev-only by product decision (not env-dispatch anti-pattern):
+ * E2E test infrastructure is dev-scoped per `playwright-password-test-user`
+ * and `enable-zitadel-prod-e2e-user` (the future change planning prod
+ * adoption).
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider
@@ -116,7 +133,8 @@ export class Zitadel {
 	public readonly googleAdminIdp: GoogleAdminIdpComponent
 	public readonly adminOrgConfig: AdminOrgConfigComponent
 	public readonly humanAdmin: HumanAdminComponent
-	public readonly e2eTestUser: E2eTestUserComponent
+	/** E2E test user — dev-only. `undefined` in prod (and any future env). */
+	public readonly e2eTestUser: E2eTestUserComponent | undefined
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
@@ -136,23 +154,6 @@ export class Zitadel {
 			pannpersGoogleSub,
 			e2eTestUserPassword,
 		} = args
-
-		if (env !== 'dev') {
-			// Self-hosted Zitadel + two-org admin topology is dev-only.
-			// Extending to staging / prod requires:
-			//   - An env-keyed admin-org-id source (constants.ts or a Dynamic
-			//     Resource that discovers it from the admin SA key).
-			//   - A bootstrapped self-hosted instance with admin-sa-key in
-			//     that environment's GSM, with
-			//     ZITADEL_FIRSTINSTANCE_ORG_NAME=admin in the configmap.
-			//   - Per-env Google OAuth client + ESC config.
-			//   - A separate cutover PR per environment.
-			throw new Error(
-				`Zitadel self-hosted topology is dev-only; got env=${env}. ` +
-					'See OpenSpec change "add-zitadel-console-admin-via-google-idp" ' +
-					'for the staging/prod adoption plan.',
-			)
-		}
 
 		const domain = zitadelDomainMap[env]
 
@@ -211,7 +212,19 @@ export class Zitadel {
 				name: 'admin',
 				isDefault: true,
 			},
-			{ provider: this.provider, protect: true },
+			{
+				provider: this.provider,
+				protect: true,
+				// Inline `import:` resource option (per `refactor-unify-env-dispatch`
+				// D2 + spec scenario "Admin org imported via inline import:"). Pulumi
+				// resolves this on first apply only; once the resource is in state,
+				// the value is a no-op. Each env's bootstrap-created admin org id
+				// is in `adminOrgIdMap` — dev's was imported via the legacy
+				// `pulumi import` CLI before this field existed, so its first
+				// apply post-refactor is the FIRST time Pulumi evaluates the
+				// `import:` against existing state (should be a no-op match).
+				import: adminOrgIdMap[env],
+			},
 		)
 
 		// Product org — Pulumi-created. NOT the default org (admin is). The
@@ -329,13 +342,29 @@ export class Zitadel {
 		// for the full design + risk record, and `zitadel-permanent-password`
 		// for the `ZitadelHumanUserPasswordPermanent` marker resource that
 		// makes the user's password permanent at provision time.
-		this.e2eTestUser = new E2eTestUserComponent(name, {
-			env,
-			orgId: this.productOrg.id,
-			initialPassword: e2eTestUserPassword,
-			domain,
-			jwtProfileJson,
-			provider: this.provider,
-		})
+		//
+		// **Dev-only by product decision**, not env-dispatch anti-pattern:
+		// prod E2E test infra is a separate concern tracked under the
+		// future `enable-zitadel-prod-e2e-user` change. This is the one
+		// remaining env-conditional resource in the unified class; per
+		// `refactor-unify-env-dispatch` spec, env-conditional leaf
+		// instantiation is acceptable when the leaf component is truly
+		// env-scoped at the product layer.
+		if (env === 'dev') {
+			if (!e2eTestUserPassword) {
+				throw new Error(
+					'e2eTestUserPassword is required when env === "dev". ' +
+						'Seed `pulumiConfig.zitadel.e2eTestUser.password` in dev ESC.',
+				)
+			}
+			this.e2eTestUser = new E2eTestUserComponent(name, {
+				env,
+				orgId: this.productOrg.id,
+				initialPassword: e2eTestUserPassword,
+				domain,
+				jwtProfileJson,
+				provider: this.provider,
+			})
+		}
 	}
 }
