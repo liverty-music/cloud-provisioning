@@ -112,8 +112,11 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 
 		// Hosts org-wide community files and reusable workflows (e.g., the
 		// Claude review reusable workflow consumed by every other repo).
+		// Pulumi logical name is kebab-case (per CLAUDE.md "Code
+		// Conventions"); the actual GitHub repo name is the dotted
+		// `.github` set via the `name:` field.
 		const dotGithubRepo = new github.Repository(
-			RepositoryName.DOT_GITHUB,
+			'dot-github',
 			{
 				...defaultRepositoryArgs,
 				name: RepositoryName.DOT_GITHUB,
