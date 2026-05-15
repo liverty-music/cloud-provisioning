@@ -7,6 +7,7 @@ export type GoogleApis =
 	| 'serviceusage.googleapis.com'
 	| 'iam.googleapis.com'
 	| 'cloudbilling.googleapis.com'
+	| 'billingbudgets.googleapis.com'
 	| 'compute.googleapis.com'
 	| 'storage.googleapis.com'
 	| 'logging.googleapis.com'

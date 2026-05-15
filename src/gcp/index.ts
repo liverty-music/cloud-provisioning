@@ -364,6 +364,23 @@ export class Gcp {
 		// `pulumi up` of this refactor because there's no existing state
 		// to migrate.
 		if (gcpConfig.billingAlertEmail) {
+			// Cloud Billing Budget needs `billingbudgets.googleapis.com`
+			// enabled on the consuming project. The `gcp.billing.Budget`
+			// resource itself doesn't have an implicit dependency on the
+			// API, so we declare it explicitly and dependsOn-link below.
+			// First prod up of this block on 2026-05-15 failed at
+			// `gcp.billing.Budget` because the API wasn't yet enabled;
+			// codifying the API enable here is the IaC fix.
+			const billingBudgetsApi = new gcp.projects.Service(
+				'billingbudgets',
+				{
+					project: this.projectId,
+					service: 'billingbudgets.googleapis.com',
+					disableOnDestroy: true,
+				},
+				{ parent: this.project },
+			)
+
 			const billingEmailChannel = new gcp.monitoring.NotificationChannel(
 				'billing-alert-email',
 				{
@@ -405,7 +422,7 @@ export class Gcp {
 						],
 					},
 				},
-				{ parent: this.project },
+				{ parent: this.project, dependsOn: [billingBudgetsApi] },
 			)
 		}
 	}
