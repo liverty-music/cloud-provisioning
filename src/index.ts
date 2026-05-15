@@ -10,7 +10,7 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
-import { BackendMachineKeyComponent } from './zitadel/components/backend-machine-key.js'
+import { ZitadelProdStackComponent } from './zitadel/components/zitadel-prod-stack.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
@@ -64,12 +64,17 @@ if (env === 'prod') {
 	})
 }
 
-// 4. Zitadel Identity (self-hosted, dev only post-cutover).
-// Provider points at `https://auth.dev.liverty-music.app`; admin SA key is
-// pulled from GSM `zitadel-machine-key-for-pulumi-admin` (populated once by the in-cluster
-// bootstrap-uploader sidecar). Cutover scope is dev-only (OpenSpec D10);
-// the env guard inside the Zitadel class throws if invoked from staging /
-// prod until those environments get their own self-hosted instance.
+// 4. Zitadel Identity (self-hosted).
+// dev:  `Zitadel` class — full 13-component assembly (Provider, two orgs,
+//       Project, Frontend, Smtp, ActionsV2, MachineUser, LoginClient,
+//       GoogleAdminIdp, AdminOrgConfig, HumanAdmin, E2eTestUser).
+// prod: `ZitadelProdStackComponent` — 9-component wrapper (same as dev
+//       minus `E2eTestUserComponent`, which is deferred per OpenSpec change
+//       `complete-zitadel-prod-pulumi-stack`). Re-uses every leaf component
+//       file unchanged; dev URNs do not churn.
+// Both providers pull the admin SA JWT from GSM
+// `zitadel-machine-key-for-pulumi-admin` (populated once by the in-cluster
+// `bootstrap-uploader` sidecar on first-instance Zitadel boot).
 let zitadelMachineKey: pulumi.Output<string> | undefined
 let zitadelLoginPat: pulumi.Output<string> | undefined
 if (env === 'dev') {
@@ -93,6 +98,30 @@ if (env === 'dev') {
 	})
 	zitadelMachineKey = zitadel.machineKeyDetails
 	zitadelLoginPat = zitadel.loginClientToken
+} else if (env === 'prod') {
+	const zitadelProd = new ZitadelProdStackComponent('liverty-music', {
+		env,
+		gcpProject: `${brandId}-${env}`,
+		postmarkServerApiToken: postmarkConfig.serverApiToken,
+		googleAdminIdpClientId: zitadelConfig.apply(
+			(z) => z.googleAdminIdp.clientId,
+		),
+		googleAdminIdpClientSecret: zitadelConfig.apply(
+			(z) => z.googleAdminIdp.clientSecret,
+		),
+		pannpersGoogleSub: zitadelConfig.apply(
+			(z) => z.adminGoogleSubs.pannpers,
+		),
+	})
+	zitadelLoginPat = zitadelProd.loginClientToken
+	// `zitadelMachineKey` intentionally NOT set for prod: the inner
+	// `BackendMachineKeyComponent` already creates the
+	// `zitadel-machine-key-for-backend-app` GSM Secret + Version + IAM
+	// binding directly. Routing the JWT through `Gcp.esoOnlySecrets` /
+	// `appServiceAccountSecrets` would duplicate the Secret and conflict
+	// at apply time. Dev does flow `zitadelMachineKey` through `Gcp`
+	// because dev's `Zitadel` class does not create the GSM Secret itself
+	// (handled by `Gcp.KubernetesComponent` in the dev path).
 }
 
 // 2. GCP Infrastructure (All Environments)
@@ -121,22 +150,6 @@ if (env === 'dev' || env === 'prod') {
 	new SecretsComponent('zitadel-secrets', {
 		project: gcp.project,
 		zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
-		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
-	})
-}
-
-// 6. Prod self-hosted Zitadel: backend MachineUser + key + GSM bundle.
-// Closes the gap discovered post-`prod-k8s-manifests` deploy. The existing
-// `Zitadel` class above is dev-only (SaaS Cloud-tenant), so prod's
-// `pulumi up` was never creating `zitadel-machine-key-for-backend-app` and
-// backend Pods sat in `ContainerCreating`. The new component owns the full
-// orchestration (admin JWT lookup → Zitadel provider → org data source →
-// MachineUser/Key/OrgMember + GSM Secret bundle) so this dispatch line is
-// the thin contract.
-if (env === 'prod') {
-	new BackendMachineKeyComponent('backend-app-prod', {
-		env,
-		gcpProject: `${brandId}-${env}`,
 		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
 	})
 }
