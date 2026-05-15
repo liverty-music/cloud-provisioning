@@ -138,3 +138,39 @@ configMapGenerator:
   behavior: merge
   envs:
   - consumer/configmap.env
+
+# Pin all four backend images to the prod Artifact Registry. Per OpenSpec
+# `prepare-prod-service-in` §9 + the `prod-image-pipeline` spec, prod must
+# pull from `liverty-music-prod/backend/*` and never from dev AR. The
+# `<sha>` tag is the commit SHA of liverty-music/backend `main` HEAD at
+# the time `v1.0.0` was published (= merge commit of PR #297 — see
+# `gcloud artifacts docker images list ... --include-tags` for the
+# v1.0.0 tag → SHA mapping). Bump these tags on each subsequent prod
+# release tag cut.
+#
+# Note on the `name:` field: each backend sub-base (`base/server/`,
+# `base/consumer/`, `base/cronjob/*/`) already has its own `images:`
+# transformer that rewrites the bare container `image: server` →
+# `asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server:latest`
+# (env-specific config in base is pre-existing tech debt; out of scope
+# for this change). By the time this overlay's `images:` block runs,
+# the rendered image is already the dev-AR form, so we match against
+# THAT name. Kustomize's last-write-wins semantics then rewrites to
+# the prod AR FQDN + commit-SHA tag.
+#
+# Dev overlay omits an `images:` block: ArgoCD Image Updater resolves
+# the dev-AR `:latest` reference dynamically. Prod uses explicit
+# pinning (no `:latest` allowed per spec).
+images:
+- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
+  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
+- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
+  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
+- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
+  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
+- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
+  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
