@@ -2,7 +2,6 @@ import * as cloudflare from '@pulumi/cloudflare'
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import type { Environment } from '../../config.js'
-import { toKebabCase } from '../../lib/lib.js'
 import type { Region, RegionName } from '../region.js'
 import { ApiService } from '../services/api.js'
 
@@ -28,8 +27,6 @@ export class NetworkComponent extends pulumi.ComponentResource {
 	public readonly router?: gcp.compute.Router
 	public readonly nat?: gcp.compute.RouterNat
 	public readonly sqlZone: gcp.dns.ManagedZone
-	public readonly publicZone: gcp.dns.ManagedZone | undefined
-	public readonly publicZoneNameservers: pulumi.Output<string[]> | undefined
 
 	constructor(
 		name: string,
@@ -156,47 +153,10 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: enabledApis },
 		)
 
-		// 4. Postmark Email DNS Records (prod: Cloudflare DNS)
-		if (environment === 'prod') {
-			const cfProvider = new cloudflare.Provider(
-				'postmark-cloudflare-provider',
-				{ apiToken: cloudflareConfig.apiToken },
-				{ parent: this },
-			)
-
-			// Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4206868)
-			new cloudflare.DnsRecord(
-				'postmark-dkim',
-				{
-					zoneId: cloudflareConfig.zoneId,
-					name: `${postmarkConfig.dkimSelector}._domainkey.mail`,
-					type: 'TXT',
-					content: `"k=rsa;p=${postmarkConfig.dkimPublicKey}"`,
-					ttl: 300,
-					comment:
-						'Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/4206868)',
-				},
-				{ parent: this, provider: cfProvider },
-			)
-
-			// Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/4206868)
-			new cloudflare.DnsRecord(
-				'postmark-return-path',
-				{
-					zoneId: cloudflareConfig.zoneId,
-					name: 'pm-bounces.mail',
-					type: 'CNAME',
-					content: 'pm.mtasv.net',
-					ttl: 300,
-					comment:
-						'Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/4206868)',
-				},
-				{ parent: this, provider: cfProvider },
-			)
-		}
-
-		// 4. Cloud Router + Cloud NAT — currently commented out per
-		// `refactor-unify-env-dispatch` D7. Re-introduction is expected when
+		// Cloud Router + Cloud NAT — currently disabled per
+		// `refactor-unify-env-dispatch` D7 (kept as commented-out scaffolding
+		// rather than deleted so re-introduction is grep-discoverable).
+		// Re-introduction is expected when
 		// EITHER (a) prod migrates to `privateClusterConfig.enablePrivateNodes:
 		// true` (post-launch, per docs/PROD_BOOTSTRAP_DECISIONS.md D6 — NAT
 		// becomes mandatory for private-node clusters to reach the internet),
@@ -249,23 +209,33 @@ export class NetworkComponent extends pulumi.ComponentResource {
 		// 	)
 		// }
 
-		// 5. Public DNS zones + Certificate Manager + shared Gateway resources.
+		// 4. Public DNS + Certificate Manager + shared Gateway resources.
 		//
-		// DNS topology differs by environment but the per-service resource
-		// shape (DnsAuthorization + Certificate + CertificateMapEntry + A
-		// record + ACME-challenge CNAME) is identical. The provisioning code
-		// below is driven by two tables:
+		// All public DNS lives in a single Cloudflare-authoritative zone
+		// (`liverty-music.app`). Per `consolidate-public-dns-on-cloudflare`,
+		// we no longer use Cloud DNS public zones nor NS subzone delegation —
+		// the Cloudflare Registrar's apex-NS-lock constraint made the
+		// subzone-delegation pattern a permanent dev/prod asymmetry. Google
+		// Certificate Manager's DNS-01 authorization works against any DNS
+		// provider, so ACME challenge CNAMEs live in Cloudflare too.
 		//
-		//   • SERVICES   — declarative catalog of every externally-facing
-		//                  hostname this stack manages.
-		//   • zoneTopology — env-derived list of Cloud DNS zones, each with
-		//                  the SERVICES that live inside it.
+		// Per-service shape (identical across envs and across services):
+		//   • DnsAuthorization → emits the ACME challenge CNAME label
+		//   • Certificate (single-hostname, managed.domains: [hostname])
+		//   • CertificateMapEntry → binds Certificate to the shared CertMap
+		//   • Cloudflare A record  → hostname → api-gateway-static-ip
+		//   • Cloudflare CNAME     → ACME challenge resolution
 		//
-		// Dev/staging keep the original single-zone-per-env layout
-		// (`<env>.liverty-music.app`); prod uses one zone per subdomain
-		// (`api.liverty-music.app`, `auth.liverty-music.app`) because the
-		// apex stays on Cloudflare. Pulumi resource names are preserved
-		// across the refactor so existing dev state is not disturbed.
+		// Env-specific hostname mapping:
+		//   • dev:  web-app → `dev.liverty-music.app`         (subdomain '')
+		//           backend-server → `api.dev.liverty-music.app`
+		//           zitadel → `auth.dev.liverty-music.app`
+		//   • prod: web-app → `liverty-music.app` (apex)      (subdomain '')
+		//           backend-server → `api.liverty-music.app`
+		//           zitadel → `auth.liverty-music.app`
+		//
+		// Pulumi resource names are env-agnostic per `refactor-unify-env-
+		// dispatch` D8 — Pulumi stack URN handles env disambiguation.
 
 		const certManagerApi = apiService.enableApis(
 			['certificatemanager.googleapis.com'],
@@ -279,56 +249,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 		)
 
 		const tld = 'liverty-music.app'
-
-		const zoneTopology = buildZoneTopology(environment, tld)
-
-		// Provision each zone + its Cloudflare NS delegation. Returns
-		// per-zone bundles of (zone, services) used in the per-service loop.
-		const provisionedZones = zoneTopology.map(
-			({ zoneConfig, services }) => {
-				const zone = new gcp.dns.ManagedZone(
-					zoneConfig.resourceName,
-					{
-						name: zoneConfig.resourceName,
-						dnsName: zoneConfig.dnsName,
-						visibility: 'public',
-						description: `Public zone for ${zoneConfig.dnsName.replace(/\.$/, '')}`,
-					},
-					{ parent: this, dependsOn: enabledApis },
-				)
-
-				// Cloudflare NS records: delegate this zone's apex to the
-				// Cloud DNS nameservers. One record per NS server returned
-				// by GCP (typically 4).
-				zone.nameServers.apply((nameservers) => {
-					nameservers.forEach((ns, index) => {
-						new cloudflare.DnsRecord(
-							`${zoneConfig.cloudflareNsResourcePrefix}-dns-delegation-ns-${index}`,
-							{
-								zoneId: cloudflareConfig.zoneId,
-								name: zoneConfig.cloudflareNsName,
-								type: 'NS',
-								content: ns.endsWith('.') ? ns : `${ns}.`,
-								ttl: 3600,
-								comment: `Delegate ${zoneConfig.dnsName.replace(/\.$/, '')} to Cloud DNS`,
-							},
-							{ parent: this, provider: cloudflareProvider },
-						)
-					})
-				})
-
-				return { zone, services }
-			},
-		)
-
-		// Expose the primary public zone for back-compat. For dev/staging
-		// there is a single zone covering all hostnames. For prod multiple
-		// zones exist; downstream consumers do not currently use this field
-		// for prod, so leaving it unset (undefined) is safe.
-		if (environment !== 'prod') {
-			this.publicZone = provisionedZones[0]?.zone
-			this.publicZoneNameservers = provisionedZones[0]?.zone.nameServers
-		}
+		const protectInProd = environment === 'prod'
 
 		// Shared Gateway resources: one CertificateMap and one static IP
 		// across all hostnames in this stack (Gateway is a single ingress).
@@ -349,182 +270,140 @@ export class NetworkComponent extends pulumi.ComponentResource {
 		)
 
 		// Provision each service's hostname (DnsAuth + Cert + CertMapEntry
-		// + A record + ACME CNAME) into its assigned zone.
-		const certManagerAndDnsApis = [...certManagerApi, ...enabledApis]
-		for (const { zone, services } of provisionedZones) {
-			for (const svc of services) {
-				provisionManagedHostname(
-					this,
-					{ name: svc.name, hostname: svc.hostname, zone },
-					certMap,
-					staticIp,
-					certManagerAndDnsApis,
-				)
-			}
-		}
-
-		// Postmark Email DNS Records.
-		// dev/staging: GCP Cloud DNS, records placed in the single subdomain
-		// zone. prod: Cloudflare handles Postmark records at the apex (see
-		// `if (environment === 'prod')` Cloudflare provider block above);
-		// nothing to do here for prod.
-		if (environment !== 'prod') {
-			const publicZone = provisionedZones[0].zone
-			const mailSubdomain = `mail.${environment}`
-
-			// Postmark DKIM settings
-			// (https://account.postmarkapp.com/signature_domains/4169912)
-			new gcp.dns.RecordSet(
-				'postmark-dkim',
+		// in GCP; A record + ACME CNAME in Cloudflare).
+		for (const svc of SERVICES) {
+			provisionManagedHostname(
+				this,
 				{
-					name: `${postmarkConfig.dkimSelector}._domainkey.${mailSubdomain}.${tld}.`,
-					managedZone: publicZone.name,
-					type: 'TXT',
-					ttl: 300,
-					rrdatas: [`"k=rsa;p=${postmarkConfig.dkimPublicKey}"`],
+					name: svc.name,
+					hostname: buildHostname(environment, svc.subdomain, tld),
+					recordName: buildCloudflareRecordName(
+						environment,
+						svc.subdomain,
+					),
 				},
-				{ parent: this, dependsOn: enabledApis },
-			)
-
-			// Postmark Return-Path settings
-			// (https://account.postmarkapp.com/signature_domains/4169912)
-			new gcp.dns.RecordSet(
-				'postmark-return-path',
-				{
-					name: `pm-bounces.${mailSubdomain}.${tld}.`,
-					managedZone: publicZone.name,
-					type: 'CNAME',
-					ttl: 300,
-					rrdatas: ['pm.mtasv.net.'],
-				},
-				{ parent: this, dependsOn: enabledApis },
+				certMap,
+				staticIp,
+				cloudflareProvider,
+				cloudflareConfig.zoneId,
+				certManagerApi,
+				protectInProd,
 			)
 		}
+
+		// Postmark Email DNS Records (Cloudflare for all envs).
+		// dev hosts records under `mail.dev.liverty-music.app`; prod under
+		// `mail.liverty-music.app`. Verification is via Postmark's DKIM check
+		// against the public key in postmarkConfig.dkimPublicKey.
+		const postmarkSubdomain = environment === 'prod' ? 'mail' : 'mail.dev'
+
+		new cloudflare.DnsRecord(
+			'postmark-dkim',
+			{
+				zoneId: cloudflareConfig.zoneId,
+				name: `${postmarkConfig.dkimSelector}._domainkey.${postmarkSubdomain}`,
+				type: 'TXT',
+				content: `"k=rsa;p=${postmarkConfig.dkimPublicKey}"`,
+				ttl: 300,
+				comment:
+					'Postmark DKIM settings (https://account.postmarkapp.com/signature_domains/)',
+			},
+			{ parent: this, provider: cloudflareProvider },
+		)
+
+		new cloudflare.DnsRecord(
+			'postmark-return-path',
+			{
+				zoneId: cloudflareConfig.zoneId,
+				name: `pm-bounces.${postmarkSubdomain}`,
+				type: 'CNAME',
+				content: 'pm.mtasv.net',
+				ttl: 300,
+				comment:
+					'Postmark Return-Path settings (https://account.postmarkapp.com/signature_domains/)',
+			},
+			{ parent: this, provider: cloudflareProvider },
+		)
 
 		this.registerOutputs({
 			networkName: this.network.name,
 			sqlZoneName: this.sqlZone.name,
-			publicZoneNameservers: this.publicZoneNameservers,
 		})
 	}
 }
 
 /**
- * Declarative catalog of externally-facing services. Each entry maps a
- * service to its subdomain prefix. `subdomain: null` denotes a service
- * served at the zone apex (used by dev/staging where the apex is
- * `<env>.<tld>`; excluded for prod because the prod apex stays on
- * Cloudflare).
+ * Declarative catalog of externally-facing services. The `subdomain`
+ * field is the prefix label inside the registrar TLD — empty string
+ * denotes the apex-serving service (dev: zone is `dev.<tld>`, this is
+ * the apex of that subdomain; prod: this is the registrar apex
+ * `<tld>` itself).
  *
  * The `name` is the Pulumi resource-name prefix and MUST NOT change for
  * existing services — it is part of the stack URN.
  */
 const SERVICES: ReadonlyArray<{
 	name: string
-	subdomain: string | null
+	subdomain: string
 }> = [
 	{ name: 'backend-server', subdomain: 'api' },
-	{ name: 'web-app', subdomain: null },
+	{ name: 'web-app', subdomain: '' },
 	{ name: 'zitadel', subdomain: 'auth' },
 ]
 
 /**
- * Config describing one Cloud DNS public zone and the Cloudflare NS
- * delegation that points the parent zone at it.
- */
-interface ZoneConfig {
-	/** Pulumi resource name for the gcp.dns.ManagedZone. */
-	resourceName: string
-	/** Cloud DNS `dnsName` (FQDN, trailing dot). */
-	dnsName: string
-	/**
-	 * Cloudflare DNS record `name` field. Cloudflare appends the parent
-	 * zone, so this is the subdomain label being delegated.
-	 */
-	cloudflareNsName: string
-	/**
-	 * Pulumi resource-name prefix for the Cloudflare NS DnsRecord resources.
-	 * Kept separate from {@link cloudflareNsName} so dev's pre-existing URN
-	 * (`liverty-music-app-dns-delegation-ns-*`) survives the refactor.
-	 */
-	cloudflareNsResourcePrefix: string
-}
-
-/**
- * Per-zone bundle returned by {@link buildZoneTopology}. Each zone owns
- * one or more services whose hostnames resolve inside it.
- */
-interface ZoneTopologyEntry {
-	zoneConfig: ZoneConfig
-	services: Array<{ name: string; hostname: string }>
-}
-
-/**
- * Build the (zone × services) assignment for the current environment.
+ * Resolve a service's full hostname FQDN based on env and subdomain.
  *
- * - **dev**: a single zone `dev.<tld>` containing every service from
- *   {@link SERVICES}. The web app sits at the zone apex (hostname ==
- *   zone dnsName), api/auth at subdomains.
- * - **prod**: one zone per non-apex service (apex stays on Cloudflare).
- *   The web app is excluded.
- *
- * Pulumi resource names returned for dev mirror the names that existed
- * before the `refactor-unify-env-dispatch` cleanup, so the rewrite
- * produces zero-diff on dev. Prod uses its own per-subdomain naming.
+ * - **dev**: hostname is `<subdomain>.dev.<tld>`, or `dev.<tld>` when
+ *   `subdomain === ''` (the dev web app sits at the dev "apex"
+ *   `dev.liverty-music.app`).
+ * - **prod**: hostname is `<subdomain>.<tld>`, or `<tld>` when
+ *   `subdomain === ''` (the prod web app sits at the registrar apex
+ *   `liverty-music.app`).
  */
-function buildZoneTopology(
-	environment: 'dev' | 'prod',
+function buildHostname(
+	environment: Environment,
+	subdomain: string,
 	tld: string,
-): ZoneTopologyEntry[] {
-	if (environment === 'prod') {
-		return SERVICES.filter((svc) => svc.subdomain !== null).map((svc) => {
-			const subdomain = svc.subdomain as string
-			const fqdn = `${subdomain}.${tld}`
-			return {
-				zoneConfig: {
-					resourceName: `${subdomain}-${toKebabCase(tld)}-public-zone`,
-					dnsName: `${fqdn}.`,
-					cloudflareNsName: subdomain,
-					cloudflareNsResourcePrefix: subdomain,
-				},
-				services: [{ name: svc.name, hostname: fqdn }],
-			}
-		})
+): string {
+	if (environment === 'dev') {
+		return subdomain ? `${subdomain}.dev.${tld}` : `dev.${tld}`
 	}
+	// prod
+	return subdomain ? `${subdomain}.${tld}` : tld
+}
 
-	// dev (the only remaining non-prod env after `refactor-unify-env-dispatch`
-	// D1 dropped staging)
-	const managedZoneName = `${environment}.${tld}`
-	return [
-		{
-			zoneConfig: {
-				resourceName: `${toKebabCase(tld)}-public-zone`,
-				dnsName: `${managedZoneName}.`,
-				cloudflareNsName: environment,
-				cloudflareNsResourcePrefix: toKebabCase(tld),
-			},
-			services: SERVICES.map((svc) => ({
-				name: svc.name,
-				hostname: svc.subdomain
-					? `${svc.subdomain}.${managedZoneName}`
-					: managedZoneName,
-			})),
-		},
-	]
+/**
+ * Resolve a service's Cloudflare DnsRecord `name` field — the label
+ * relative to the Cloudflare zone (`liverty-music.app`).
+ *
+ * - **dev**: `<subdomain>.dev` or `dev` for the apex-serving service.
+ * - **prod**: `<subdomain>` or `@` (Cloudflare's convention for the
+ *   zone apex) for the apex-serving service.
+ */
+function buildCloudflareRecordName(
+	environment: Environment,
+	subdomain: string,
+): string {
+	if (environment === 'dev') {
+		return subdomain ? `${subdomain}.dev` : 'dev'
+	}
+	// prod
+	return subdomain || '@'
 }
 
 /**
  * Provision the per-hostname Pulumi resources that wire a service into
- * Google-managed TLS and DNS:
+ * Google-managed TLS and Cloudflare-managed DNS:
  *
  *   - `<name>-dns-auth`           — Certificate Manager DnsAuthorization
  *   - `<name>-cert`               — single-hostname Google-managed Certificate
  *   - `<name>-cert-map-entry`     — binds the cert to the shared
  *                                    {@link gcp.certificatemanager.CertificateMap}
- *   - `<name>-a-record`           — A record in {@link service.zone}
- *                                    pointing at {@link staticIp}
- *   - `<name>-dns-auth-cname`     — CNAME record satisfying the ACME
- *                                    DNS-01 challenge for the cert
+ *   - `<name>-a-record`           — Cloudflare A record pointing at
+ *                                    {@link staticIp}
+ *   - `<name>-dns-auth-cname`     — Cloudflare CNAME satisfying the
+ *                                    ACME DNS-01 challenge for the cert
  *
  * Per-service single-hostname certificates (rather than a shared SAN
  * cert) are intentional: GCP managed certs treat `domains` /
@@ -532,19 +411,29 @@ function buildZoneTopology(
  * cert forces replace, which deadlocks against any CertificateMapEntry
  * still referencing the cert. Single-hostname certs isolate that risk
  * and match the per-service granularity used everywhere else.
+ *
+ * When `protectInProd` is true, the GCP Certificate Manager resources
+ * (DnsAuthorization, Certificate, CertificateMapEntry) and the
+ * Cloudflare A record are flagged with `protect: true` to prevent
+ * accidental `pulumi destroy` from taking the prod site down. The
+ * ACME CNAME is intentionally not protected — it is regenerable from
+ * the DnsAuthorization on re-issue.
  */
 function provisionManagedHostname(
 	parent: pulumi.ComponentResource,
 	service: {
 		name: string
 		hostname: string
-		zone: gcp.dns.ManagedZone
+		recordName: string
 	},
 	certMap: gcp.certificatemanager.CertificateMap,
 	staticIp: gcp.compute.GlobalAddress,
+	cfProvider: cloudflare.Provider,
+	cfZoneId: pulumi.Input<string>,
 	dependsOn: pulumi.Resource[],
+	protectInProd: boolean,
 ): void {
-	const { name, hostname, zone } = service
+	const { name, hostname, recordName } = service
 
 	const dnsAuth = new gcp.certificatemanager.DnsAuthorization(
 		`${name}-dns-auth`,
@@ -553,7 +442,7 @@ function provisionManagedHostname(
 			location: 'global',
 			domain: hostname,
 		},
-		{ parent, dependsOn },
+		{ parent, dependsOn, protect: protectInProd },
 	)
 
 	const cert = new gcp.certificatemanager.Certificate(
@@ -567,7 +456,7 @@ function provisionManagedHostname(
 				dnsAuthorizations: [dnsAuth.id],
 			},
 		},
-		{ parent, dependsOn },
+		{ parent, dependsOn, protect: protectInProd },
 	)
 
 	new gcp.certificatemanager.CertificateMapEntry(
@@ -578,30 +467,44 @@ function provisionManagedHostname(
 			certificates: [cert.id],
 			hostname,
 		},
-		{ parent, dependsOn },
+		{ parent, dependsOn, protect: protectInProd },
 	)
 
-	new gcp.dns.RecordSet(
+	new cloudflare.DnsRecord(
 		`${name}-a-record`,
 		{
-			name: `${hostname}.`,
-			managedZone: zone.name,
+			zoneId: cfZoneId,
+			name: recordName,
 			type: 'A',
+			content: staticIp.address,
 			ttl: 300,
-			rrdatas: [staticIp.address],
+			proxied: false,
+			comment: `A record for ${hostname} → api-gateway-static-ip`,
 		},
-		{ parent, dependsOn },
+		{ parent, provider: cfProvider, protect: protectInProd },
 	)
 
-	new gcp.dns.RecordSet(
+	// ACME DNS-01 challenge CNAME. Google emits `dnsResourceRecords[0]`
+	// with `.name` as a fully-qualified label (trailing dot) and `.data`
+	// as the challenge target (also FQDN with trailing dot). Cloudflare's
+	// API expects the record `name` to be either the FQDN (no trailing
+	// dot) or the subdomain-relative form; we strip the trailing dot
+	// from both `name` and `content` for safety.
+	new cloudflare.DnsRecord(
 		`${name}-dns-auth-cname`,
 		{
-			name: dnsAuth.dnsResourceRecords.apply((r) => r[0].name),
-			managedZone: zone.name,
+			zoneId: cfZoneId,
+			name: dnsAuth.dnsResourceRecords.apply((r) =>
+				r[0].name.replace(/\.$/, ''),
+			),
 			type: 'CNAME',
+			content: dnsAuth.dnsResourceRecords.apply((r) =>
+				r[0].data.replace(/\.$/, ''),
+			),
 			ttl: 300,
-			rrdatas: dnsAuth.dnsResourceRecords.apply((r) => [r[0].data]),
+			proxied: false,
+			comment: `ACME DNS-01 challenge for ${hostname}`,
 		},
-		{ parent, dependsOn },
+		{ parent, provider: cfProvider },
 	)
 }

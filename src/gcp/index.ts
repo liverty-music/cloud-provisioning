@@ -65,8 +65,6 @@ export class Gcp {
 	public readonly region: string = Regions.Osaka
 	public readonly githubActionsSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
-	public readonly publicZone: gcp.dns.ManagedZone | undefined
-	public readonly publicZoneNameservers: pulumi.Output<string[]> | undefined
 	/** Backend application GCP SA email — exposed so callers can grant per-secret bindings. */
 	public readonly backendAppServiceAccountEmail: pulumi.Output<string>
 	/** Self-hosted Zitadel GCP SA email — exposed so Zitadel-scoped secrets can bind. */
@@ -112,9 +110,6 @@ export class Gcp {
 			cloudflareConfig,
 			postmarkConfig,
 		})
-		this.publicZone = network.publicZone
-		this.publicZoneNameservers = network.publicZoneNameservers
-
 		// 4. Concert Data Store (Vertex AI Search)
 		// new ConcertDataStore({
 		//   project: this.project,
