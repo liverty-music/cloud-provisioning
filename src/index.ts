@@ -177,3 +177,14 @@ export const folder = gcp.folder
 export const project = gcp.project
 // Export for debug/reference
 export const githubEnv = env
+
+// Frontend SPA OIDC client_id + product-org id — consumed by the
+// frontend repo's `.env.{dev,prod}` to bake into the SPA bundle at
+// build time. Operators retrieve via `pulumi stack output
+// webFrontendClientId` / `pulumi stack output productOrgId` after
+// `pulumi up`. See OpenSpec change `prepare-prod-service-in` §1.2 /
+// §2.3 for the prod consumption path; the identity-management spec's
+// "Manage OIDC Application" requirement makes these per-env values
+// the contract surface the frontend build depends on.
+export const webFrontendClientId = zitadel.frontend.application.clientId
+export const productOrgId = zitadel.productOrg.id
