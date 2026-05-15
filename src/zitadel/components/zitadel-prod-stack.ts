@@ -197,16 +197,45 @@ export class ZitadelProdStackComponent extends pulumi.ComponentResource {
 
 		// 2. Admin org — bootstrap-created by Zitadel (configmap sets
 		// `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`). Brought into Pulumi state
-		// via one-time `pulumi import zitadel:index/org:Org admin
-		// <prod-admin-org-id>` BEFORE the first `pulumi up --stack prod`
-		// after this change merges. `protect: true` is mandatory: `pulumi
-		// destroy` against the admin org would lock all operators out
-		// because the `pulumi-admin` MachineUser the provider authenticates
-		// as lives inside it. Mirrors the dev path exactly.
+		// via the `import:` resource option (inline, no separate `pulumi
+		// import` CLI step). `protect: true` is mandatory: `pulumi destroy`
+		// against the admin org would lock all operators out because the
+		// `pulumi-admin` MachineUser the provider authenticates as lives
+		// inside it. Mirrors the dev path's two-org topology.
+		//
+		// ## Why `import:` (resource option) instead of `pulumi import` (CLI)
+		//
+		// The CLI form `pulumi import zitadel:index/org:Org admin <id>` was
+		// documented in `2026-05-08-add-zitadel-console-admin-via-google-idp`
+		// design D8 as the dev approach (with `--provider liverty-music-
+		// provider=<urn>`). That works after a prior `pulumi up` has already
+		// created the Zitadel provider resource in state, leaving its URN
+		// available for the `--provider` flag. For prod the provider lives
+		// inside `BackendMachineKeyComponent`, which is itself first
+		// created on the same `pulumi up --stack prod` that needs to bring
+		// the admin org into state — the chicken-and-egg means there is no
+		// pre-existing provider URN to pass to `--provider`. The Pulumi
+		// `import:` resource option resolves this by importing the resource
+		// inline during the same apply that creates its parent + provider:
+		// Pulumi resolves the provider in-graph and binds the imported
+		// resource under the correct provider on the same pass.
+		//
+		// Pulumi treats `import:` as a one-time hint; once the resource is
+		// in state on a successful apply, the `import:` value is ignored on
+		// subsequent applies and can be left in source or removed. The
+		// archived dev change `add-zitadel-console-admin-via-google-idp`
+		// documents the CLI form because its provider already existed at
+		// the time; this file's prod path uses `import:` instead. Both
+		// land the same end-state.
 		this.adminOrg = new zitadel.Org(
 			'admin',
 			{ name: 'admin', isDefault: true },
-			{ provider, protect: true, parent: this },
+			{
+				provider,
+				protect: true,
+				parent: this,
+				import: '372892288692584603',
+			},
 		)
 
 		// 3. Product Project — hosts the frontend `ApplicationOidc` below.
