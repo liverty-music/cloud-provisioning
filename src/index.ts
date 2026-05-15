@@ -10,7 +10,6 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
-import { ZitadelProdStackComponent } from './zitadel/components/zitadel-prod-stack.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
@@ -64,65 +63,38 @@ if (env === 'prod') {
 	})
 }
 
-// 4. Zitadel Identity (self-hosted).
-// dev:  `Zitadel` class — full 13-component assembly (Provider, two orgs,
-//       Project, Frontend, Smtp, ActionsV2, MachineUser, LoginClient,
-//       GoogleAdminIdp, AdminOrgConfig, HumanAdmin, E2eTestUser).
-// prod: `ZitadelProdStackComponent` — 9-component wrapper (same as dev
-//       minus `E2eTestUserComponent`, which is deferred per OpenSpec change
-//       `complete-zitadel-prod-pulumi-stack`). Re-uses every leaf component
-//       file unchanged; dev URNs do not churn.
-// Both providers pull the admin SA JWT from GSM
-// `zitadel-machine-key-for-pulumi-admin` (populated once by the in-cluster
-// `bootstrap-uploader` sidecar on first-instance Zitadel boot).
-let zitadelMachineKey: pulumi.Output<string> | undefined
-let zitadelLoginPat: pulumi.Output<string> | undefined
-if (env === 'dev') {
-	const zitadel = new Zitadel('liverty-music', {
-		env,
-		gcpProjectId: `${brandId}-${env}`,
-		postmarkServerApiToken: postmarkConfig.serverApiToken,
-		// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
-		// `requireSecretObject` marks the entire object as secret. Both
-		// derived values are therefore secret-marked Outputs in Pulumi state.
-		googleAdminIdpClientId: zitadelConfig.apply(
-			(z) => z.googleAdminIdp.clientId,
-		),
-		googleAdminIdpClientSecret: zitadelConfig.apply(
-			(z) => z.googleAdminIdp.clientSecret,
-		),
-		pannpersGoogleSub: zitadelConfig.apply(
-			(z) => z.adminGoogleSubs.pannpers,
-		),
-		e2eTestUserPassword: zitadelConfig.apply((z) => z.e2eTestUser.password),
-	})
-	zitadelMachineKey = zitadel.machineKeyDetails
-	zitadelLoginPat = zitadel.loginClientToken
-} else if (env === 'prod') {
-	const zitadelProd = new ZitadelProdStackComponent('liverty-music', {
-		env,
-		gcpProject: `${brandId}-${env}`,
-		postmarkServerApiToken: postmarkConfig.serverApiToken,
-		googleAdminIdpClientId: zitadelConfig.apply(
-			(z) => z.googleAdminIdp.clientId,
-		),
-		googleAdminIdpClientSecret: zitadelConfig.apply(
-			(z) => z.googleAdminIdp.clientSecret,
-		),
-		pannpersGoogleSub: zitadelConfig.apply(
-			(z) => z.adminGoogleSubs.pannpers,
-		),
-	})
-	zitadelLoginPat = zitadelProd.loginClientToken
-	// `zitadelMachineKey` intentionally NOT set for prod: the inner
-	// `BackendMachineKeyComponent` already creates the
-	// `zitadel-machine-key-for-backend-app` GSM Secret + Version + IAM
-	// binding directly. Routing the JWT through `Gcp.esoOnlySecrets` /
-	// `appServiceAccountSecrets` would duplicate the Secret and conflict
-	// at apply time. Dev does flow `zitadelMachineKey` through `Gcp`
-	// because dev's `Zitadel` class does not create the GSM Secret itself
-	// (handled by `Gcp.KubernetesComponent` in the dev path).
-}
+// 4. Zitadel Identity (self-hosted, all envs).
+// Single unified `Zitadel` class per `refactor-unify-env-dispatch`. The
+// admin SA JWT is read from GSM `zitadel-machine-key-for-pulumi-admin`
+// (populated once by the in-cluster `bootstrap-uploader` sidecar on
+// first-instance Zitadel boot) inside the class. Both
+// `zitadelMachineKey` and `zitadelLoginPat` flow through `Gcp` for all
+// envs to create the corresponding GSM Secrets in the standard
+// `KubernetesComponent.secrets` / `esoOnlySecrets` paths.
+const zitadel = new Zitadel('liverty-music', {
+	env,
+	gcpProjectId: `${brandId}-${env}`,
+	postmarkServerApiToken: postmarkConfig.serverApiToken,
+	// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
+	// `requireSecretObject` marks the entire object as secret. Derived
+	// values are therefore secret-marked Outputs in Pulumi state.
+	googleAdminIdpClientId: zitadelConfig.apply(
+		(z) => z.googleAdminIdp.clientId,
+	),
+	googleAdminIdpClientSecret: zitadelConfig.apply(
+		(z) => z.googleAdminIdp.clientSecret,
+	),
+	pannpersGoogleSub: zitadelConfig.apply((z) => z.adminGoogleSubs.pannpers),
+	// E2E test user password — only consumed when `env === 'dev'` inside
+	// the unified class; the class's `if (env === 'dev')` gate validates
+	// presence at instantiation time.
+	e2eTestUserPassword:
+		env === 'dev'
+			? zitadelConfig.apply((z) => z.e2eTestUser.password)
+			: undefined,
+})
+const zitadelMachineKey = zitadel.machineKeyDetails
+const zitadelLoginPat = zitadel.loginClientToken
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
@@ -139,20 +111,17 @@ const gcp = new Gcp({
 	zitadelLoginPat,
 })
 
-// 5. Self-hosted Zitadel infra phase (dev + prod).
+// 5. Self-hosted Zitadel infra phase (all envs).
 // Provisions GSM secret shells (masterkey, empty admin-sa-key) that the
-// in-cluster Zitadel pod's bootstrap sidecar will populate on first boot.
-// The cutover PR reads `zitadel-machine-key-for-pulumi-admin` from GSM to reconfigure the
-// Zitadel Pulumi provider at the self-hosted hostname. Always running this
-// phase (even before cutover) is safe: the secret shells don't affect the
-// Cloud-tenant Zitadel resources above.
-if (env === 'dev' || env === 'prod') {
-	new SecretsComponent('zitadel-secrets', {
-		project: gcp.project,
-		zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
-		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
-	})
-}
+// in-cluster Zitadel pod's bootstrap sidecar populates on first boot.
+// Per `refactor-unify-env-dispatch` D1, the env allowlist guard
+// (`env === 'dev' || env === 'prod'`) was removed because `Environment`
+// is now `'dev' | 'prod'` — the guard was no-op.
+new SecretsComponent('zitadel-secrets', {
+	project: gcp.project,
+	zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
+	esoServiceAccountEmail: gcp.esoServiceAccountEmail,
+})
 
 // 3. GitHub Repository Environments (All Environments)
 const sharedVariables = {

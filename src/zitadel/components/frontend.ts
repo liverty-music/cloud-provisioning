@@ -26,12 +26,17 @@ export class FrontendComponent extends pulumi.ComponentResource {
 
 		const domain = baseDomainMap[env]
 
-		const redirectUris = [`https://${domain}/auth/callback`]
-		const postLogoutRedirectUris = [`https://${domain}/`]
-		if (env === 'dev') {
-			redirectUris.push('http://localhost:9000/auth/callback')
-			postLogoutRedirectUris.push('http://localhost:9000/')
-		}
+		// Ternary spread (per `refactor-unify-env-dispatch`): localhost URIs
+		// are only meaningful when env === 'dev'. Other envs receive the
+		// public domain only.
+		const redirectUris = [
+			`https://${domain}/auth/callback`,
+			...(env === 'dev' ? ['http://localhost:9000/auth/callback'] : []),
+		]
+		const postLogoutRedirectUris = [
+			`https://${domain}/`,
+			...(env === 'dev' ? ['http://localhost:9000/'] : []),
+		]
 
 		// 1. Define zitadel.ApplicationOidc resource
 		this.application = new zitadel.ApplicationOidc(

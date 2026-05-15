@@ -1,6 +1,7 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import type { CloudflareConfig } from '../cloudflare/config.js'
+import type { Environment } from '../config.js'
 import { KmsComponent } from './components/kms.js'
 import { KubernetesComponent } from './components/kubernetes.js'
 import { MonitoringComponent } from './components/monitoring.js'
@@ -22,7 +23,7 @@ import { RegionNames, Regions } from './region.js'
 export interface GcpArgs {
 	brandId: string
 	displayName: string
-	environment: 'dev' | 'staging' | 'prod'
+	environment: Environment
 	gcpConfig: GcpConfig
 	lastFmApiKey?: pulumi.Output<string>
 	fanartTvApiKey?: pulumi.Output<string>
@@ -306,10 +307,31 @@ export class Gcp {
 		this.githubWorkloadIdentityProvider = wif.githubProvider.name
 		this.githubActionsSAEmail = wif.githubActionsSA.email
 
-		// 8. Monitoring (Log-Based Alerts + Notification Channels)
+		// 8. Monitoring (Log-Based Alerts + Notification Channels).
+		// Runs in all envs (per `refactor-unify-env-dispatch` D4). The outer
+		// `gcpConfig.monitoring?.slackNotificationChannels` guard remains as
+		// the materialization gate — ESC seeding (Slack channel ID from the
+		// GCP Console OAuth flow) controls whether these resources exist
+		// in any given env's stack state.
 		if (gcpConfig.monitoring?.slackNotificationChannels) {
 			const { slackNotificationChannels, googleChatSpaces } =
 				gcpConfig.monitoring
+			// Cluster name + location are env-keyed so log-based alert
+			// filters target the cluster actually deployed in the current
+			// env. Without env-keying, prod alerts would silently match
+			// dev cluster log entries (the §refactor-unify-env-dispatch
+			// devil's-advocate-C4 bug fix).
+			const clusterNameByEnv: Record<Environment, string> = {
+				dev: `standard-cluster-${RegionNames.Osaka}`,
+				prod: `autopilot-cluster-${RegionNames.Osaka}`,
+			}
+			// `resource.labels.location` is the zone for dev's zonal Standard
+			// cluster, but the bare region for prod's regional Autopilot
+			// cluster.
+			const clusterLocationByEnv: Record<Environment, string> = {
+				dev: `${Regions.Osaka}-a`,
+				prod: Regions.Osaka,
+			}
 			const monitoring = new MonitoringComponent('monitoring', {
 				project: this.project,
 				slackNotificationChannelIds: [
@@ -318,86 +340,78 @@ export class Gcp {
 				googleChatSpaceIds: googleChatSpaces
 					? [googleChatSpaces.alertBackend]
 					: undefined,
-				// `resource.labels.location` on `k8s_container` log entries
-				// is the zone (`asia-northeast2-a`), not the region. The
-				// alert filter must use the zonal form to match real logs.
-				clusterLocation: `${Regions.Osaka}-a`,
-				// Cluster is created as `standard-cluster-${regionName}` in
-				// `kubernetes.ts`; the filter must reference the exact name.
-				clusterName: `standard-cluster-${RegionNames.Osaka}`,
+				clusterLocation: clusterLocationByEnv[environment],
+				clusterName: clusterNameByEnv[environment],
 			})
 
 			// Zitadel observability: latency p99 alert + JWT error rate
-			// alert + connection-pool dashboard. Dev-only — `self-hosted-zitadel`
-			// is dev-scoped until cooldown ends and prod migration begins,
-			// so the thresholds here are tuned to dev-traffic patterns and
-			// would page constantly on prod traffic without re-tuning.
-			// Reuses the same notification channels as the backend alerts;
-			// adding a separate Zitadel channel is overkill while alerting
-			// is rare.
-			if (environment === 'dev') {
-				new ZitadelMonitoringComponent('zitadel-monitoring', {
-					project: this.project,
-					slackNotificationChannelIds: [
-						slackNotificationChannels.alertBackend,
-					],
-					googleChatChannels: monitoring.googleChatChannels,
-				})
-			}
+			// alert + connection-pool dashboard. Runs in all envs (per
+			// `refactor-unify-env-dispatch` D4). Threshold values are
+			// generous (50× over steady-state) and won't page on pre-launch
+			// prod traffic; future threshold tuning is operational concern.
+			new ZitadelMonitoringComponent('zitadel-monitoring', {
+				project: this.project,
+				slackNotificationChannelIds: [
+					slackNotificationChannels.alertBackend,
+				],
+				googleChatChannels: monitoring.googleChatChannels,
+			})
 		}
 
-		// 9. Cost Guardrails (Dev only)
-		// Billing budget alert and per-API quota overrides to cap runaway external
-		// API costs. These are intentionally restricted to dev where quota limits
-		// are low enough to be meaningful as a safeguard.
-		if (environment === 'dev') {
-			// Billing Budget: alert at 50%/90%/100% of ¥3,000/month (~$20 USD)
-			if (gcpConfig.billingAlertEmail) {
-				const billingEmailChannel =
-					new gcp.monitoring.NotificationChannel(
-						'dev-billing-alert-email',
-						{
-							project: this.projectId,
-							displayName: 'Billing alert email',
-							type: 'email',
-							labels: {
-								email_address: gcpConfig.billingAlertEmail,
-							},
-						},
-						{ parent: this.project },
-					)
+		// 9. Cost Guardrails (all envs).
+		// Runs in any env that has `gcpConfig.billingAlertEmail` seeded in
+		// ESC. Per `refactor-unify-env-dispatch` D4, no env-gated wrapper.
+		// Both `cost-budget` and `billing-alert-email` resources are
+		// currently DORMANT in all envs (neither dev nor prod ESC has
+		// `billingAlertEmail` seeded). The rename from `dev-cost-budget` →
+		// `cost-budget` (and the parallel `dev-billing-alert-email` →
+		// `billing-alert-email`) triggers no destroy+create on the first
+		// `pulumi up` of this refactor because there's no existing state
+		// to migrate.
+		if (gcpConfig.billingAlertEmail) {
+			const billingEmailChannel = new gcp.monitoring.NotificationChannel(
+				'billing-alert-email',
+				{
+					project: this.projectId,
+					displayName: 'Billing alert email',
+					type: 'email',
+					labels: {
+						email_address: gcpConfig.billingAlertEmail,
+					},
+				},
+				{ parent: this.project },
+			)
 
-				new gcp.billing.Budget(
-					'dev-cost-budget',
-					{
-						billingAccount: gcpConfig.billingAccount,
-						displayName: 'liverty-music-dev monthly budget',
-						budgetFilter: {
-							projects: [
-								pulumi.interpolate`projects/${this.project.number}`,
-							],
-						},
-						amount: {
-							specifiedAmount: {
-								currencyCode: 'JPY',
-								units: '3000',
-							},
-						},
-						thresholdRules: [
-							{ thresholdPercent: 0.5 },
-							{ thresholdPercent: 0.9 },
-							{ thresholdPercent: 1.0 },
+			new gcp.billing.Budget(
+				'cost-budget',
+				{
+					billingAccount: gcpConfig.billingAccount,
+					displayName: `liverty-music-${environment} monthly budget`,
+					budgetFilter: {
+						projects: [
+							pulumi.interpolate`projects/${this.project.number}`,
 						],
-						allUpdatesRule: {
-							disableDefaultIamRecipients: false,
-							monitoringNotificationChannels: [
-								billingEmailChannel.name,
-							],
+					},
+					amount: {
+						specifiedAmount: {
+							currencyCode: 'JPY',
+							units: gcpConfig.budgetAmountJpy ?? '3000',
 						},
 					},
-					{ parent: this.project },
-				)
-			}
+					thresholdRules: [
+						{ thresholdPercent: 0.5 },
+						{ thresholdPercent: 0.9 },
+						{ thresholdPercent: 1.0 },
+					],
+					allUpdatesRule: {
+						disableDefaultIamRecipients: false,
+						monitoringNotificationChannels: [
+							billingEmailChannel.name,
+						],
+					},
+				},
+				{ parent: this.project },
+			)
 		}
 	}
 }

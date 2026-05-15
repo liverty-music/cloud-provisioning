@@ -1,5 +1,6 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import type { Environment } from '../../config.js'
 import { ApiService } from '../services/api.js'
 
 /** Blockchain (EVM) configuration for smart contract interactions. */
@@ -25,6 +26,9 @@ export interface GcpConfig {
 	argocdGoogleChatWebhookUrl?: string
 	/** Email address to receive Cloud Billing Budget alerts. */
 	billingAlertEmail?: string
+	/** Monthly Cloud Billing Budget amount, JPY units (e.g., `"3000"` for ¥3,000).
+	 *  Optional; falls back to `'3000'` if unset. Per-env values seeded in ESC. */
+	budgetAmountJpy?: string
 	/** Monitoring alert notification settings. */
 	monitoring?: {
 		/**
@@ -57,7 +61,7 @@ export interface GcpConfig {
 export interface ProjectComponentArgs {
 	brandId: string
 	displayName: string
-	environment: 'dev' | 'staging' | 'prod'
+	environment: Environment
 	gcpConfig: GcpConfig
 }
 
@@ -122,7 +126,7 @@ export class ProjectComponent extends pulumi.ComponentResource {
 	private createOrganizationFolder(
 		brandId: string,
 		displayName: string,
-		environment: 'dev' | 'staging' | 'prod',
+		environment: Environment,
 		gcpConfig: GcpConfig,
 	): gcp.organizations.Folder | pulumi.Output<gcp.organizations.Folder> {
 		if (environment === 'prod') {
@@ -153,7 +157,7 @@ export class ProjectComponent extends pulumi.ComponentResource {
 	private createProject(
 		brandId: string,
 		displayName: string,
-		environment: 'dev' | 'staging' | 'prod',
+		environment: Environment,
 		gcpConfig: GcpConfig,
 	): gcp.organizations.Project {
 		// Common labels for resources.
