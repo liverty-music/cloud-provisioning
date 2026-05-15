@@ -333,8 +333,20 @@ export class ZitadelProdStackComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
-		this.loginClientToken = this.loginClient.token
-		this.machineKeyDetails = this.backendMachineKey.keyDetails
+		// Wrap at the wrapper boundary per D4: both `LoginClient.token`
+		// (sourced from `@pulumiverse/zitadel`'s `PersonalAccessToken.token`)
+		// and `BackendMachineKey.keyDetails` (sourced from `MachineKey.
+		// keyDetails`) are plain `Output<string>` carrying credential bytes.
+		// Without `pulumi.secret()` here, the values would surface in this
+		// ComponentResource's `registerOutputs(...)` state record. Downstream
+		// consumers (`Gcp.esoOnlySecrets` for the PAT, the GSM SecretVersion
+		// for the MachineKey JWT) ALSO wrap defensively, but D4 requires the
+		// wrap as early as possible to prevent leak via intermediate
+		// component-graph traversal.
+		this.loginClientToken = pulumi.secret(this.loginClient.token)
+		this.machineKeyDetails = pulumi.secret(
+			this.backendMachineKey.keyDetails,
+		)
 
 		this.registerOutputs({
 			backendMachineKey: this.backendMachineKey,
