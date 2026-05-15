@@ -203,6 +203,12 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 			{
 				domain,
 				jwtProfileJson,
+				// The HumanUser lives in the product org; passing this
+				// explicitly via `x-zitadel-orgid` is required because the
+				// admin SA token's default org (admin org) cannot resolve
+				// product-org user events — Zitadel would otherwise
+				// return `COMMAND-G8dh3 "Password not found"`.
+				orgId,
 				userId: this.humanUser.id,
 				password: pulumi.secret(initialPassword),
 			},

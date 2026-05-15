@@ -6,6 +6,17 @@ export interface ZitadelHumanUserPasswordPermanentArgs {
 	domain: pulumi.Input<string>
 	/** Admin machine user JWT profile JSON (stringified) for Management API auth. */
 	jwtProfileJson: pulumi.Input<string>
+	/**
+	 * Resource-owner org id of the HumanUser. Sent as `x-zitadel-orgid`
+	 * header so Zitadel's `passwordWriteModel(ctx, userID, orgID)` loads
+	 * the right event stream. Without this, the SA token's default org
+	 * is used and Zitadel returns
+	 * `COMMAND-G8dh3 "Password not found"` whenever the SA org differs
+	 * from the user's org (which is the normal setup here: admin SA
+	 * lives in the admin org, e2e-test-password user lives in the
+	 * product org).
+	 */
+	orgId: pulumi.Input<string>
 	/** ID of the `HumanUser` whose password should be marked permanent. */
 	userId: pulumi.Input<string>
 	/**
@@ -20,6 +31,7 @@ export interface ZitadelHumanUserPasswordPermanentArgs {
 interface PermanentPasswordInputs {
 	domain: string
 	jwtProfileJson: string
+	orgId: string
 	userId: string
 	password: string
 }
@@ -62,6 +74,7 @@ export const permanentPasswordProvider: pulumi.dynamic.ResourceProvider = {
 			profile,
 			method: 'POST',
 			path: `/management/v1/users/${inputs.userId}/password`,
+			headers: { 'x-zitadel-orgid': inputs.orgId },
 			body: {
 				password: inputs.password,
 				noChangeRequired: true,
@@ -95,6 +108,7 @@ export const permanentPasswordProvider: pulumi.dynamic.ResourceProvider = {
 			profile,
 			method: 'POST',
 			path: `/management/v1/users/${news.userId}/password`,
+			headers: { 'x-zitadel-orgid': news.orgId },
 			body: {
 				password: news.password,
 				noChangeRequired: true,
@@ -154,9 +168,14 @@ function isAlreadyPermanent(body: string): boolean {
  * (the provider v0.2.0 exposes no knob to flip this flag at create
  * time).
  *
- * The caller MUST pass the same password value used for the HumanUser's
- * `initialPassword` input — the resource cannot read it back from the
- * upstream provider.
+ * The caller MUST pass:
+ * - the same password value used for the HumanUser's `initialPassword`
+ *   input (the resource cannot read it back — `initialPassword` is
+ *   write-only on the upstream @pulumiverse/zitadel provider), AND
+ * - the HumanUser's resource-owner `orgId` (sent as `x-zitadel-orgid`
+ *   so Zitadel scopes the password write-model lookup to the right
+ *   org; the admin SA's default org differs from the product org
+ *   where end-user HumanUsers live).
  *
  * See OpenSpec change `zitadel-permanent-password` for the full
  * decision record (D1–D5) and risk table.
