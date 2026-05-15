@@ -7,6 +7,11 @@ export interface AdminOrgConfigComponentArgs {
 	/** ID of the instance-level Google IdP that admins sign in with. */
 	googleIdpId: pulumi.Input<string>
 	provider: zitadel.Provider
+	/** Per-environment Zitadel Console URL used as the `defaultRedirectUri`
+	 *  fallback when an OIDC AuthN arrives without an explicit redirect.
+	 *  Defaults to the dev URL for backwards compatibility with dev's
+	 *  existing call site; prod passes `https://auth.liverty-music.app/ui/console`. */
+	consoleUrl?: pulumi.Input<string>
 }
 
 /**
@@ -49,8 +54,14 @@ export class AdminOrgConfigComponent extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:AdminOrgConfig', name, {}, opts)
 
-		const { adminOrgId, googleIdpId, provider } = args
+		const { adminOrgId, googleIdpId, provider, consoleUrl } = args
 		const resourceOptions = { provider, parent: this }
+		// Default preserves the dev URL so the existing dev call site
+		// (no `consoleUrl` arg passed) produces the same Pulumi state value
+		// as before — no diff on dev. Prod's wrapper passes the prod URL
+		// explicitly.
+		const defaultRedirectUri =
+			consoleUrl ?? 'https://auth.dev.liverty-music.app/ui/console'
 
 		// Shared policy fields. Most lifetimes are the same as the existing
 		// product-org LoginPolicy in `frontend.ts` for consistency. NOT
@@ -82,8 +93,10 @@ export class AdminOrgConfigComponent extends pulumi.ComponentResource {
 			// step (mirrors product-org policy).
 			ignoreUnknownUsernames: true,
 			// Default redirect after a context-less login completes. Send to
-			// the Console UI so admins land somewhere meaningful.
-			defaultRedirectUri: 'https://auth.dev.liverty-music.app/ui/console',
+			// the Console UI so admins land somewhere meaningful. Pulled from
+			// the env-keyed `consoleUrl` arg with dev as the backwards-compat
+			// default.
+			defaultRedirectUri,
 			// Standard session lifetimes (mirrored from product org policy).
 			passwordCheckLifetime: '240h0m0s',
 			externalLoginCheckLifetime: '240h0m0s',

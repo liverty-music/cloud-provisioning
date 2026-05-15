@@ -78,6 +78,16 @@ export class BackendMachineKeyComponent extends pulumi.ComponentResource {
 	public readonly secretVersion: gcp.secretmanager.SecretVersion
 	public readonly secretAccessorBinding: gcp.secretmanager.SecretIamMember
 
+	/** Admin (`pulumi-admin`) JWT-profile JSON read from GSM
+	 *  `zitadel-machine-key-for-pulumi-admin` at plan time, wrapped in
+	 *  `pulumi.secret()`. Exposed so sibling components needing direct
+	 *  Zitadel Management API calls outside the @pulumiverse provider
+	 *  surface (SmtpComponent activation, ActionsV2Component Target /
+	 *  Execution dynamic resources, HumanAdminComponent IdP-link dynamic
+	 *  resource) can re-use the same secret-wrapped value rather than
+	 *  re-fetching it from GSM. Never log directly. */
+	public readonly adminJwt: pulumi.Output<string>
+
 	/** The JWT-profile JSON for authenticating as the backend machine user.
 	 *  Stored in GSM via this component; exposed here for callers that want
 	 *  to test or reference it programmatically. Never log directly. */
@@ -192,6 +202,7 @@ export class BackendMachineKeyComponent extends pulumi.ComponentResource {
 		)
 
 		this.keyDetails = this.machineUser.keyDetails
+		this.adminJwt = adminJwt
 
 		this.registerOutputs({
 			provider: this.provider,
@@ -200,6 +211,7 @@ export class BackendMachineKeyComponent extends pulumi.ComponentResource {
 			secret: this.secret,
 			secretVersion: this.secretVersion,
 			secretAccessorBinding: this.secretAccessorBinding,
+			adminJwt: this.adminJwt,
 			keyDetails: this.keyDetails,
 		})
 	}
