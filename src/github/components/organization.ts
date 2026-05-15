@@ -110,11 +110,24 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			{ provider: this.provider, parent: this },
 		)
 
+		// Hosts org-wide community files and reusable workflows (e.g., the
+		// Claude review reusable workflow consumed by every other repo).
+		const dotGithubRepo = new github.Repository(
+			RepositoryName.DOT_GITHUB,
+			{
+				...defaultRepositoryArgs,
+				name: RepositoryName.DOT_GITHUB,
+				description: 'Org-wide community files and reusable workflows',
+			},
+			{ provider: this.provider, parent: this },
+		)
+
 		this.repositories = {
 			[RepositoryName.CLOUD_PROVISIONING]: cloudProvisioningRepo,
 			[RepositoryName.SPECIFICATION]: specificationRepo,
 			[RepositoryName.BACKEND]: backendRepo,
 			[RepositoryName.FRONTEND]: frontendRepo,
+			[RepositoryName.DOT_GITHUB]: dotGithubRepo,
 		}
 
 		// Create secrets
