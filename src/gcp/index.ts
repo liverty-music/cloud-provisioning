@@ -117,6 +117,10 @@ export class Gcp {
 		// })
 
 		// 4. Artifact Registry
+		// immutableTags: non-dev only; dev stays mutable for ArgoCD Image Updater
+		const dockerConfig =
+			environment !== 'dev' ? { immutableTags: true } : undefined
+
 		const backendArtifactRegistry = new gcp.artifactregistry.Repository(
 			'github-backend-repository',
 			{
@@ -125,6 +129,7 @@ export class Gcp {
 				format: 'DOCKER',
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Backend Repository',
+				dockerConfig,
 			},
 			{ parent: this.project },
 		)
@@ -137,6 +142,7 @@ export class Gcp {
 				format: 'DOCKER',
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Frontend Repository',
+				dockerConfig,
 			},
 			{ parent: this.project },
 		)
