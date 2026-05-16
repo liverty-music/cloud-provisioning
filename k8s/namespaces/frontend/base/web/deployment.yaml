@@ -2,6 +2,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
+  annotations:
+    # Trigger a rolling restart when web-app-runtime-config ConfigMap changes.
+    # The ConfigMap is mounted as a single-file subPath volume which kubelet
+    # does NOT live-update; explicit rollout via Reloader is the contract.
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
   template:
@@ -38,3 +43,15 @@ spec:
           limits:
             cpu: 200m
             memory: 128Mi
+        volumeMounts:
+        - name: runtime-config
+          mountPath: /srv/config.json
+          subPath: config.json
+          readOnly: true
+      volumes:
+      - name: runtime-config
+        configMap:
+          # ConfigMap with this name is provided by each environment overlay
+          # (overlays/<env>/configmap.yaml). The mounted file shadows the
+          # image's bundled public/config.json fallback.
+          name: web-app-runtime-config
