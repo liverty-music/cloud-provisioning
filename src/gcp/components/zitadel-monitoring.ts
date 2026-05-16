@@ -52,7 +52,11 @@ export interface ZitadelMonitoringComponentArgs {
  * `ZitadelMonitoringComponentArgs`.
  */
 export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
-	public readonly latencyAlertPolicy: gcp.monitoring.AlertPolicy
+	// Optional because `latencyAlertPolicy` creation is currently disabled
+	// (see the `TODO: re-enable...` comment below). When the underlying
+	// `workload.googleapis.com/rpc.server.duration` metric becomes
+	// available in the prod metric inventory the field returns to required.
+	public readonly latencyAlertPolicy?: gcp.monitoring.AlertPolicy
 	public readonly jwtErrorMetric: gcp.logging.Metric
 	public readonly jwtErrorAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly connectionPoolDashboard: gcp.monitoring.Dashboard
@@ -94,86 +98,115 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 		// shape was specifically `GetAuthRequest` hangs on the OIDC path.
 		// Other Zitadel RPCs are watched by the broader `app-error-log-alerting`
 		// or by their own future alerts.
-		this.latencyAlertPolicy = new gcp.monitoring.AlertPolicy(
-			'alert-zitadel-oidc-latency-p99',
-			{
-				displayName: 'Zitadel OIDCService p99 latency',
-				project: projectId,
-				combiner: 'OR',
-				conditions: [
-					{
-						displayName: 'OIDCService p99 > 10s for 60s',
-						conditionThreshold: {
-							filter:
-								'metric.type="workload.googleapis.com/rpc.server.duration" ' +
-								'AND resource.type="generic_task" ' +
-								'AND metric.labels.service_name="zitadel" ' +
-								'AND metric.labels.rpc_service=monitoring.regex.full_match(".*OIDCService.*")',
-							aggregations: [
-								{
-									// `rpc.server.duration` is a CUMULATIVE
-									// DISTRIBUTION metric (OTEL histogram, translated
-									// by the `googlecloud` exporter). The percentile
-									// aligner cannot be applied directly to cumulative
-									// distributions (GCP API rejects with "ALIGN_PERCENTILE_99
-									// cannot be applied to metrics with kind CUMULATIVE
-									// and value type DISTRIBUTION"). Two-stage pattern:
-									//   1. `ALIGN_DELTA` over 60 s converts cumulative
-									//      → delta DISTRIBUTION (matches OTEL_METRIC_EXPORT_INTERVAL
-									//      so each cycle sees ~1 fresh point with a full
-									//      60 s of in-process histogram aggregation).
-									//   2. `REDUCE_PERCENTILE_99` across series grouped
-									//      by `rpc_method` produces one p99 line per
-									//      method — fires when ANY method's p99 > 10 s.
-									alignmentPeriod: '60s',
-									perSeriesAligner: 'ALIGN_DELTA',
-									crossSeriesReducer: 'REDUCE_PERCENTILE_99',
-									groupByFields: ['metric.labels.rpc_method'],
-								},
-							],
-							comparison: 'COMPARISON_GT',
-							// `unit:"ms"` per the OTEL histogram descriptor →
-							// 10 s = 10000 ms. Healthy steady state is ~200 ms,
-							// so 10 s is 50× the high-water mark (design D3).
-							thresholdValue: 10000,
-							duration: '60s',
-							trigger: { count: 1 },
-						},
-					},
-				],
-				alertStrategy: {
-					// `notificationRateLimit` is not allowed on metric-threshold
-					// alerts (only on log-match alerts) per the GCP Monitoring
-					// API. Debouncing is provided by the 60 s alignmentPeriod
-					// + 60 s `duration` above — a transient blip cannot fire.
-					autoClose: '3600s', // 1 hour
-				},
-				notificationChannels,
-				documentation: {
-					content: [
-						'## Zitadel OIDCService p99 Latency Alert',
-						'',
-						'Zitadel API `OIDCService/*` p99 latency exceeded 10 seconds for at least 60 seconds.',
-						'',
-						'**Most likely cause**: the §18.6 cutover-incident hang shape — Zitadel API container hung on `GetAuthRequest` after extended uptime + a high-density burst of state-changing API calls.',
-						'',
-						'### Triage Steps',
-						'',
-						'1. Open the runbook: `cloud-provisioning/docs/runbooks/zitadel-hang.md`',
-						'2. **Capture forensic data BEFORE mitigation** (logs, connection-pool metrics, in-cluster smoke test) — restart erases in-memory state we need to disambiguate hypothesis A (projection-updater write-lock) vs. hypothesis B (connection-pool exhaustion)',
-						'3. Mitigation: `kubectl rollout restart deployment/zitadel-api -n zitadel`',
-						'4. Verify recovery: `/debug/healthz` → 200, OIDC discovery sub-second',
-						'',
-						'### Related signals to check',
-						'',
-						'- **Cloud SQL connection pool**: see the `Zitadel observability` dashboard for the `zitadel` database `num_backends` panel — saturation precedes the hang in hypothesis B',
-						'- **Backend JWT validation errors**: a correlated alert may also fire if Zitadel hangs are causing token validation failures at backend',
-					].join('\n'),
-					mimeType: 'text/markdown',
-				},
-			},
-			{ parent: this },
-		)
+		// TODO: re-enable when Zitadel prod emits
+		// `workload.googleapis.com/rpc.server.duration`.
+		//
+		// As of 2026-05-16 the `prod` metric inventory contains
+		// `workload.googleapis.com/{db.pool.active_connections,
+		// db.pool.idle_connections, http.client.request.body.size,
+		// http.client.request.duration}` from Zitadel's OTEL exporter, but
+		// NOT `rpc.server.duration`. That metric only appears once Zitadel
+		// has handled at least one gRPC server-side RPC AND that span has
+		// been flushed through the `googlecloud` exporter (default
+		// `OTEL_METRIC_EXPORT_INTERVAL` ~ 60 s) AND GCP has indexed it
+		// (~10 min). Without the metric in the inventory the AlertPolicy
+		// API rejects the filter with HTTP 404 "Cannot find metric(s)
+		// that match type=...", which then aborts every `pulumi up -s prod`
+		// for the entire stack.
+		//
+		// Disabling the alert here unblocks unrelated stack updates (e.g.,
+		// `claude-review-check-run` Required Status Check rollout in
+		// liverty-music/specification#474). The other Zitadel monitoring
+		// resources (JWT error metric/alert, connection-pool dashboard)
+		// are unaffected.
+		//
+		// Re-enablement criteria — verify the metric is present:
+		//   curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+		//     "https://monitoring.googleapis.com/v3/projects/liverty-music-prod/metricDescriptors?filter=metric.type=%22workload.googleapis.com/rpc.server.duration%22" \
+		//     | jq '.metricDescriptors | length'
+		// When this returns > 0, revert this commit (or open a follow-up
+		// that re-instantiates the block below verbatim).
+		//
+		// this.latencyAlertPolicy = new gcp.monitoring.AlertPolicy(
+		// 	'alert-zitadel-oidc-latency-p99',
+		// 	{
+		// 		displayName: 'Zitadel OIDCService p99 latency',
+		// 		project: projectId,
+		// 		combiner: 'OR',
+		// 		conditions: [
+		// 			{
+		// 				displayName: 'OIDCService p99 > 10s for 60s',
+		// 				conditionThreshold: {
+		// 					filter:
+		// 						'metric.type="workload.googleapis.com/rpc.server.duration" ' +
+		// 						'AND resource.type="generic_task" ' +
+		// 						'AND metric.labels.service_name="zitadel" ' +
+		// 						'AND metric.labels.rpc_service=monitoring.regex.full_match(".*OIDCService.*")',
+		// 					aggregations: [
+		// 						{
+		// 							// `rpc.server.duration` is a CUMULATIVE
+		// 							// DISTRIBUTION metric (OTEL histogram, translated
+		// 							// by the `googlecloud` exporter). The percentile
+		// 							// aligner cannot be applied directly to cumulative
+		// 							// distributions (GCP API rejects with "ALIGN_PERCENTILE_99
+		// 							// cannot be applied to metrics with kind CUMULATIVE
+		// 							// and value type DISTRIBUTION"). Two-stage pattern:
+		// 							//   1. `ALIGN_DELTA` over 60 s converts cumulative
+		// 							//      → delta DISTRIBUTION (matches OTEL_METRIC_EXPORT_INTERVAL
+		// 							//      so each cycle sees ~1 fresh point with a full
+		// 							//      60 s of in-process histogram aggregation).
+		// 							//   2. `REDUCE_PERCENTILE_99` across series grouped
+		// 							//      by `rpc_method` produces one p99 line per
+		// 							//      method — fires when ANY method's p99 > 10 s.
+		// 							alignmentPeriod: '60s',
+		// 							perSeriesAligner: 'ALIGN_DELTA',
+		// 							crossSeriesReducer: 'REDUCE_PERCENTILE_99',
+		// 							groupByFields: ['metric.labels.rpc_method'],
+		// 						},
+		// 					],
+		// 					comparison: 'COMPARISON_GT',
+		// 					// `unit:"ms"` per the OTEL histogram descriptor →
+		// 					// 10 s = 10000 ms. Healthy steady state is ~200 ms,
+		// 					// so 10 s is 50× the high-water mark (design D3).
+		// 					thresholdValue: 10000,
+		// 					duration: '60s',
+		// 					trigger: { count: 1 },
+		// 				},
+		// 			},
+		// 		],
+		// 		alertStrategy: {
+		// 			// `notificationRateLimit` is not allowed on metric-threshold
+		// 			// alerts (only on log-match alerts) per the GCP Monitoring
+		// 			// API. Debouncing is provided by the 60 s alignmentPeriod
+		// 			// + 60 s `duration` above — a transient blip cannot fire.
+		// 			autoClose: '3600s', // 1 hour
+		// 		},
+		// 		notificationChannels,
+		// 		documentation: {
+		// 			content: [
+		// 				'## Zitadel OIDCService p99 Latency Alert',
+		// 				'',
+		// 				'Zitadel API `OIDCService/*` p99 latency exceeded 10 seconds for at least 60 seconds.',
+		// 				'',
+		// 				'**Most likely cause**: the §18.6 cutover-incident hang shape — Zitadel API container hung on `GetAuthRequest` after extended uptime + a high-density burst of state-changing API calls.',
+		// 				'',
+		// 				'### Triage Steps',
+		// 				'',
+		// 				'1. Open the runbook: `cloud-provisioning/docs/runbooks/zitadel-hang.md`',
+		// 				'2. **Capture forensic data BEFORE mitigation** (logs, connection-pool metrics, in-cluster smoke test) — restart erases in-memory state we need to disambiguate hypothesis A (projection-updater write-lock) vs. hypothesis B (connection-pool exhaustion)',
+		// 				'3. Mitigation: `kubectl rollout restart deployment/zitadel-api -n zitadel`',
+		// 				'4. Verify recovery: `/debug/healthz` → 200, OIDC discovery sub-second',
+		// 				'',
+		// 				'### Related signals to check',
+		// 				'',
+		// 				'- **Cloud SQL connection pool**: see the `Zitadel observability` dashboard for the `zitadel` database `num_backends` panel — saturation precedes the hang in hypothesis B',
+		// 				'- **Backend JWT validation errors**: a correlated alert may also fire if Zitadel hangs are causing token validation failures at backend',
+		// 			].join('\n'),
+		// 			mimeType: 'text/markdown',
+		// 		},
+		// 	},
+		// 	{ parent: this },
+		// )
 
 		// 2. Backend JWT validation error rate
 		//
@@ -421,7 +454,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 		)
 
 		this.registerOutputs({
-			latencyAlertPolicyName: this.latencyAlertPolicy.name,
+			latencyAlertPolicyName: this.latencyAlertPolicy?.name,
 			jwtErrorAlertPolicyName: this.jwtErrorAlertPolicy.name,
 			dashboardName: this.connectionPoolDashboard.id,
 		})
