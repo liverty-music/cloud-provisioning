@@ -117,6 +117,15 @@ export class Gcp {
 		// })
 
 		// 4. Artifact Registry
+		// Prod repos enable Immutable Tags so that once a tag (e.g., v1.0.0) is
+		// pushed, it cannot be re-pointed to a different digest. This pairs with
+		// the prod kustomize overlays' semver-tag pin to give GitOps
+		// reproducibility at the registry boundary. Dev repos stay mutable so
+		// ArgoCD Image Updater can rewrite :latest/:main on every push.
+		// Policy: see docs/runbooks/prod-image-tag-pinning.md
+		const dockerConfig =
+			environment === 'prod' ? { immutableTags: true } : undefined
+
 		const backendArtifactRegistry = new gcp.artifactregistry.Repository(
 			'github-backend-repository',
 			{
@@ -125,6 +134,7 @@ export class Gcp {
 				format: 'DOCKER',
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Backend Repository',
+				dockerConfig,
 			},
 			{ parent: this.project },
 		)
@@ -137,6 +147,7 @@ export class Gcp {
 				format: 'DOCKER',
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Frontend Repository',
+				dockerConfig,
 			},
 			{ parent: this.project },
 		)

@@ -29,6 +29,23 @@ resources:
 
 namespace: backend
 
+# Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
+# rendered resource (Deployment, CronJob, Service, etc.). Value SHALL be the
+# bare semver without the leading `v` (per Kubernetes Recommended Labels
+# convention: `1.0.0`, not `v1.0.0`). Bump this in lock-step with the `images:`
+# block `newTag:` below — they SHALL refer to the same release.
+#
+# - `includeSelectors: false` keeps the label out of `selector.matchLabels`
+#   and Service selectors; modifying selectors mid-rollout would orphan running
+#   Pods. The label is metadata-only.
+# - `includeTemplates: true` propagates the label to `spec.template.metadata.labels`
+#   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
+labels:
+- pairs:
+    app.kubernetes.io/version: "1.0.0"
+  includeSelectors: false
+  includeTemplates: true
+
 patches:
 - path: serviceaccount_patch.yaml
   target:
@@ -139,38 +156,45 @@ configMapGenerator:
   envs:
   - consumer/configmap.env
 
-# Pin all four backend images to the prod Artifact Registry. Per OpenSpec
-# `prepare-prod-service-in` §9 + the `prod-image-pipeline` spec, prod must
-# pull from `liverty-music-prod/backend/*` and never from dev AR. The
-# `<sha>` tag is the commit SHA of liverty-music/backend `main` HEAD at
-# the time `v1.0.0` was published (= merge commit of PR #297 — see
-# `gcloud artifacts docker images list ... --include-tags` for the
-# v1.0.0 tag → SHA mapping). Bump these tags on each subsequent prod
-# release tag cut.
+# Pin all four backend images to the prod Artifact Registry with an
+# immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
+# + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
+# v1.0.0) backed by AR's `dockerConfig.immutableTags: true` policy, which
+# rejects tag-overwrite attempts at the registry API. Combined, this gives
+# at-a-glance version visibility AND digest-equivalent immutability. The
+# inline comment after each `newTag:` records the source commit SHA so
+# incident-response trace from manifest → exact commit does not require
+# an Artifact Registry round-trip.
+#
+# Policy: see docs/runbooks/prod-image-tag-pinning.md
 #
 # Note on the `name:` field: each backend sub-base (`base/server/`,
 # `base/consumer/`, `base/cronjob/*/`) already has its own `images:`
 # transformer that rewrites the bare container `image: server` →
 # `asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server:latest`
 # (env-specific config in base is pre-existing tech debt; out of scope
-# for this change). By the time this overlay's `images:` block runs,
-# the rendered image is already the dev-AR form, so we match against
-# THAT name. Kustomize's last-write-wins semantics then rewrites to
-# the prod AR FQDN + commit-SHA tag.
+# here). By the time this overlay's `images:` block runs, the rendered
+# image is already the dev-AR form, so we match against THAT name.
+# Kustomize's last-write-wins semantics then rewrites to the prod AR FQDN
+# + semver tag.
 #
-# Dev overlay omits an `images:` block: ArgoCD Image Updater resolves
-# the dev-AR `:latest` reference dynamically. Prod uses explicit
-# pinning (no `:latest` allowed per spec).
+# Dev overlay omits an `images:` block: ArgoCD Image Updater resolves the
+# dev-AR `:latest` reference dynamically. Prod uses explicit semver
+# pinning; dev AR repos stay mutable so Image Updater can rewrite tags.
+#
+# Bumping on release: cut a new GH Release (e.g., v1.0.1) on backend.
+# GHA pushes both `:v1.0.1` and `:<new-sha>` to prod AR. Open a PR here
+# updating `newTag:` + comment for all four entries to the new values.
 images:
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
-  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
+  newTag: v1.0.0  # commit 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
+  newTag: v1.0.0  # commit 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
+  newTag: v1.0.0  # commit 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-  newTag: 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3
+  newTag: v1.0.0  # commit 3bc2dada3c4cd06c218235eb7fe21ad638e29bf3

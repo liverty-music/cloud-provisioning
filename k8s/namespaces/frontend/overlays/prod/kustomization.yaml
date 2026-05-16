@@ -10,6 +10,23 @@ resources:
 
 namespace: frontend
 
+# Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
+# rendered resource. Value SHALL be the bare semver without the leading `v`
+# (per Kubernetes Recommended Labels convention: `1.0.0`, not `v1.0.0`). Bump
+# this in lock-step with the `images:` block `newTag:` below — they SHALL refer
+# to the same release.
+#
+# - `includeSelectors: false` keeps the label out of `selector.matchLabels`
+#   and Service selectors; modifying selectors mid-rollout would orphan running
+#   Pods. The label is metadata-only.
+# - `includeTemplates: true` propagates the label to `spec.template.metadata.labels`
+#   on the Deployment so Pods carry it for Prometheus / OTel scraping.
+labels:
+- pairs:
+    app.kubernetes.io/version: "1.0.0"
+  includeSelectors: false
+  includeTemplates: true
+
 patches:
 - path: spot-vm_patch.yaml
   target:
@@ -45,26 +62,35 @@ patches:
       path: /spec/hostnames
       value: ["liverty-music.app"]
 
-# Pin the web-app image to prod Artifact Registry. Per OpenSpec
-# `prepare-prod-service-in` §9 + the `prod-image-pipeline` spec, prod
-# must pull from `liverty-music-prod/frontend/*` and never from dev AR.
-# The `<sha>` tag is the commit SHA of liverty-music/frontend `main` HEAD
-# at the time `v1.0.0` was published (= merge commit of PR #356). Bump
-# this tag on each subsequent prod release tag cut.
+# Pin the web-app image to prod Artifact Registry with an immutable
+# semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags` +
+# the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
+# v1.0.0) backed by AR's `dockerConfig.immutableTags: true` policy,
+# which rejects tag-overwrite attempts at the registry API. Combined,
+# this gives at-a-glance version visibility AND digest-equivalent
+# immutability. The inline comment after the `newTag:` records the
+# source commit SHA so incident-response trace from manifest → exact
+# commit does not require an Artifact Registry round-trip.
+#
+# Policy: see docs/runbooks/prod-image-tag-pinning.md
 #
 # Note on the `name:` field: `base/web/kustomization.yaml` already has
 # its own `images:` transformer that rewrites the bare container
 # `image: web-app` → `asia-northeast2-docker.pkg.dev/liverty-music-dev/
 # frontend/web-app:latest` (env-specific config in base is pre-existing
-# tech debt; out of scope for this change). By the time this overlay's
-# `images:` block runs, the rendered image is already the dev-AR form,
-# so we match against THAT name. Kustomize's last-write-wins semantics
-# then rewrites to the prod AR FQDN + commit-SHA tag.
+# tech debt; out of scope here). By the time this overlay's `images:`
+# block runs, the rendered image is already the dev-AR form, so we
+# match against THAT name. Kustomize's last-write-wins semantics then
+# rewrites to the prod AR FQDN + semver tag.
 #
 # Dev overlay omits an `images:` block: ArgoCD Image Updater resolves
-# the dev-AR `:latest` reference dynamically. Prod uses explicit
-# pinning (no `:latest` allowed per spec).
+# the dev-AR `:latest` reference dynamically. Prod uses explicit semver
+# pinning; dev AR repos stay mutable so Image Updater can rewrite tags.
+#
+# Bumping on release: cut a new GH Release (e.g., v1.0.1) on frontend.
+# GHA pushes both `:v1.0.1` and `:<new-sha>` to prod AR. Open a PR here
+# updating `newTag:` + comment to the new values.
 images:
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
-  newTag: 51f5bce376d4eda670f83b4a654cf1f924c2f4f1
+  newTag: v1.0.0  # commit 51f5bce376d4eda670f83b4a654cf1f924c2f4f1
