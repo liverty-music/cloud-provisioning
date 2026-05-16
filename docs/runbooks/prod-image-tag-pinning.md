@@ -45,11 +45,18 @@ See `openspec/changes/archive/<date>-enable-prod-ar-immutable-tags/design.md` de
 1. Open a PR on `cloud-provisioning` updating both:
    - `k8s/namespaces/backend/overlays/prod/kustomization.yaml` — bump `newTag: v1.0.0` → `newTag: v1.0.1` for all four backend images, AND bump the corresponding inline comment SHA. Also bump the `labels:` block's `app.kubernetes.io/version: "1.0.1"`.
    - `k8s/namespaces/frontend/overlays/prod/kustomization.yaml` — bump `newTag:` + comment + `app.kubernetes.io/version` for `web-app` if frontend was part of the release.
+
+   ⚠️ **`v`-prefix gotcha**: `newTag:` SHALL use the `v` prefix (`v1.0.1`) because that's the AR-side tag convention. `app.kubernetes.io/version:` SHALL be the bare semver (`"1.0.1"`, no `v`) because that's the Kubernetes Recommended Labels convention. Two different conventions in two adjacent fields of the same overlay — common bump-time mistake. The verification step below catches it.
+
 2. Run locally before pushing:
    ```bash
-   kubectl kustomize k8s/namespaces/backend/overlays/prod | grep -E '(image:|app.kubernetes.io/version:)'
+   # Check every rendered image carries the new semver tag
+   kubectl kustomize k8s/namespaces/backend/overlays/prod | grep -E 'image:.*:v[0-9]+\.[0-9]+\.[0-9]+'
+
+   # Check every label has a bare-semver value (no `v` prefix slip)
+   kubectl kustomize k8s/namespaces/backend/overlays/prod | grep -E 'app\.kubernetes\.io/version: "?v' && echo "FAIL: v-prefix in label value" || echo "OK: label values are bare semver"
    ```
-   Confirm every rendered image carries `:v1.0.1` and every Deployment / CronJob carries `app.kubernetes.io/version: "1.0.1"`.
+   Confirm every rendered image carries `:v1.0.1` and every label is `app.kubernetes.io/version: "1.0.1"` (no `"v1.0.1"`).
 3. Open PR, get review, merge.
 
 ### 3. ArgoCD reconciles
