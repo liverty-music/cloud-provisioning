@@ -3,10 +3,13 @@ kind: Kustomization
 
 # Prod frontend overlay. Env-divergent fields per design D2 / spec Requirement 3:
 #   - HTTPRoute hostname: liverty-music.app (apex) vs dev's dev.liverty-music.app
+#   - Runtime config (web-app-runtime-config ConfigMap) — prod hostnames,
+#     prod OIDC client/org IDs, prod VAPID key, `info` log level.
 # Resource sizing matches dev exactly; spot label matches.
 
 resources:
 - ../../base
+- configmap.yaml
 
 namespace: frontend
 

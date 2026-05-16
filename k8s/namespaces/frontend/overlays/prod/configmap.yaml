@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-app-runtime-config
+data:
+  config.json: |
+    {
+      "environment": "prod",
+      "apiBaseUrl": "https://api.liverty-music.app",
+      "zitadelIssuer": "https://auth.liverty-music.app",
+      "zitadelClientId": "373015520582107291",
+      "zitadelOrgId": "373015514391249051",
+      "vapidPublicKey": "BH-m9-6-0-y70MdQG7Lz-htDaz4T_NuYdmcgK5wBEElzXo22AyGs30gvHAtHbWtQBQa4XxySD6ZEaiM9Crwl6Pc",
+      "circuitBaseUrl": "/circuits/ticketcheck-v1",
+      "previewArtistIds": [
+        "019c8655-7a05-71ef-82b4-a4ac2494e29f",
+        "019c8655-7a05-721d-b0a8-4c11724d5c90",
+        "019c8655-7a05-71e9-9af5-e1cd4fbfd367",
+        "019c899e-baff-7ecd-8af2-e8dc819e29e4",
+        "019c8655-7a05-71f5-acd4-46157dcb0bec",
+        "019c8655-7a05-722a-bdae-a89596378f90",
+        "019c8655-7a05-72ff-8654-4e09e64043da",
+        "019c8655-7a05-723e-bef1-2d2433cd53f5",
+        "019c8655-7a05-7217-8f63-7a261ebcfceb",
+        "019c8655-7a05-72e7-a9c3-44a27d2bf07e",
+        "019c8655-7a05-71fc-bc48-92705b9ddb68"
+      ],
+      "previewArtistNames": [
+        "Mrs. GREEN APPLE",
+        "YOASOBI",
+        "Vaundy",
+        "SUPER BEAVER",
+        "King Gnu",
+        "Official髭男dism",
+        "Creepy Nuts",
+        "Ado",
+        "back number",
+        "ONE OK ROCK",
+        "RADWIMPS"
+      ],
+      "logLevel": "info"
+    }
