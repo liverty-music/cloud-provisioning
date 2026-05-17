@@ -36,6 +36,11 @@ export interface GcpArgs {
 	 *  Stored in Secret Manager and mounted into the zitadel-login pod via
 	 *  ExternalSecret as a file referenced by `ZITADEL_SERVICE_USER_TOKEN_FILE`. */
 	zitadelLoginPat?: pulumi.Output<string>
+	/** Gate for the workload tier (GKE / Cloud SQL / monitoring / GSM
+	 *  Zitadel bootstrap secrets). When false (dev shutdown mode), these
+	 *  resources are not provisioned. See
+	 *  docs/runbooks/dev-shutdown-restart.md. */
+	workloadEnabled: boolean
 }
 
 export const NetworkConfig = {
@@ -65,12 +70,16 @@ export class Gcp {
 	public readonly region: string = Regions.Osaka
 	public readonly githubActionsSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
-	/** Backend application GCP SA email — exposed so callers can grant per-secret bindings. */
-	public readonly backendAppServiceAccountEmail: pulumi.Output<string>
-	/** Self-hosted Zitadel GCP SA email — exposed so Zitadel-scoped secrets can bind. */
-	public readonly zitadelServiceAccountEmail: pulumi.Output<string>
-	/** External Secrets Operator GCP SA email — exposed for ESO per-secret bindings. */
-	public readonly esoServiceAccountEmail: pulumi.Output<string>
+	/** Backend application GCP SA email — undefined when workloadEnabled=false. */
+	public readonly backendAppServiceAccountEmail:
+		| pulumi.Output<string>
+		| undefined
+	/** Self-hosted Zitadel GCP SA email — undefined when workloadEnabled=false. */
+	public readonly zitadelServiceAccountEmail:
+		| pulumi.Output<string>
+		| undefined
+	/** External Secrets Operator GCP SA email — undefined when workloadEnabled=false. */
+	public readonly esoServiceAccountEmail: pulumi.Output<string> | undefined
 
 	constructor(args: GcpArgs) {
 		const {
@@ -85,6 +94,7 @@ export class Gcp {
 			postmarkConfig,
 			zitadelMachineKey,
 			zitadelLoginPat,
+			workloadEnabled,
 		} = args
 
 		const cloudSqlUsers = gcpConfig.cloudSqlUsers ?? []
@@ -161,143 +171,157 @@ export class Gcp {
 				: undefined
 
 		// 5. GKE Autopilot Cluster
-		const osakaConfig = NetworkConfig.Osaka
-		const kubernetes = new KubernetesComponent('kubernetes-cluster', {
-			project: this.project,
-			environment,
-			region: Regions.Osaka,
-			regionName: RegionNames.Osaka,
-			networkId: network.network.id,
-			subnetCidr: osakaConfig.subnetCidr,
-			podsCidr: osakaConfig.podsCidr,
-			servicesCidr: osakaConfig.servicesCidr,
-			masterCidr: osakaConfig.masterCidr,
-			etcdCmekKeyName: kms?.keyName,
-			artifactRegistries: [
-				backendArtifactRegistry,
-				frontendArtifactRegistry,
-			],
-			secrets: [
-				...(lastFmApiKey
-					? [
-							{
-								name: 'lastfm-api-key',
-								value: lastFmApiKey,
-							},
-						]
-					: []),
-				...(blockchainConfig?.deployerPrivateKey
-					? [
-							{
-								name: 'blockchain-deployer-private-key',
-								value: pulumi.secret(
-									blockchainConfig.deployerPrivateKey,
-								),
-							},
-						]
-					: []),
-				...(blockchainConfig?.rpcUrl
-					? [
-							{
-								name: 'blockchain-rpc-url',
-								value: pulumi.secret(blockchainConfig.rpcUrl),
-							},
-						]
-					: []),
-				...(blockchainConfig?.bundlerApiKey
-					? [
-							{
-								name: 'blockchain-bundler-api-key',
-								value: pulumi.secret(
-									blockchainConfig.bundlerApiKey,
-								),
-							},
-						]
-					: []),
-				...(gcpConfig.postgresAdminPassword
-					? [
-							{
-								name: 'postgres-admin-password',
-								value: pulumi.secret(
-									gcpConfig.postgresAdminPassword,
-								),
-							},
-						]
-					: []),
-				...(gcpConfig.vapidPrivateKey
-					? [
-							{
-								name: 'vapid-private-key',
-								value: pulumi.secret(gcpConfig.vapidPrivateKey),
-							},
-						]
-					: []),
-				...(fanartTvApiKey
-					? [
-							{
-								name: 'fanarttv-api-key',
-								value: fanartTvApiKey,
-							},
-						]
-					: []),
-				...(zitadelMachineKey
-					? [
-							{
-								name: 'zitadel-machine-key-for-backend-app',
-								value: pulumi.secret(zitadelMachineKey),
-							},
-						]
-					: []),
-			],
-			esoOnlySecrets: [
-				...(gcpConfig.argocdGoogleChatWebhookUrl
-					? [
-							{
-								name: 'argocd-google-chat-webhook-url',
-								value: pulumi.secret(
-									gcpConfig.argocdGoogleChatWebhookUrl,
-								),
-							},
-						]
-					: []),
-				// PAT consumed only by the zitadel-login pod (Login V2 UI). ESO in
-				// the `zitadel` namespace mirrors this into a K8s Secret which the
-				// pod mounts as a file referenced by ZITADEL_SERVICE_USER_TOKEN_FILE.
-				// Backend-app does not need access — the backend talks to Zitadel
-				// via its own JWT-key (zitadel-machine-key-for-backend-app), not this PAT.
-				...(zitadelLoginPat
-					? [
-							{
-								name: 'zitadel-login-pat',
-								value: pulumi.secret(zitadelLoginPat),
-							},
-						]
-					: []),
-			],
-		})
-
-		this.backendAppServiceAccountEmail =
-			kubernetes.backendAppServiceAccountEmail
-		this.zitadelServiceAccountEmail = kubernetes.zitadelServiceAccountEmail
-		this.esoServiceAccountEmail = kubernetes.esoServiceAccountEmail
-
 		// 6. Cloud SQL Instance (Postgres)
-		new PostgresComponent('postgres', {
-			project: this.project,
-			region: Regions.Osaka,
-			regionName: RegionNames.Osaka,
-			environment,
-			subnetId: kubernetes.subnet.id,
-			networkId: network.network.id,
-			pscEndpointIp: osakaConfig.postgresPscIp,
-			dnsZoneName: network.sqlZone.name,
-			appServiceAccountEmail: kubernetes.backendAppServiceAccountEmail,
-			zitadelServiceAccountEmail: kubernetes.zitadelServiceAccountEmail,
-			iamDatabaseUsers: cloudSqlUsers,
-			postgresAdminPassword: gcpConfig.postgresAdminPassword
-				? pulumi.secret(gcpConfig.postgresAdminPassword)
-				: undefined,
-		})
+		// Gated by `workloadEnabled` to enable the dev shutdown flow
+		// described in docs/runbooks/dev-shutdown-restart.md. WIF (§7) and
+		// Cost Guardrails (§9) remain unguarded so GitHub Actions OIDC and
+		// billing alerts persist while the workload tier is down.
+		if (workloadEnabled) {
+			const osakaConfig = NetworkConfig.Osaka
+			const kubernetes = new KubernetesComponent('kubernetes-cluster', {
+				project: this.project,
+				environment,
+				region: Regions.Osaka,
+				regionName: RegionNames.Osaka,
+				networkId: network.network.id,
+				subnetCidr: osakaConfig.subnetCidr,
+				podsCidr: osakaConfig.podsCidr,
+				servicesCidr: osakaConfig.servicesCidr,
+				masterCidr: osakaConfig.masterCidr,
+				etcdCmekKeyName: kms?.keyName,
+				artifactRegistries: [
+					backendArtifactRegistry,
+					frontendArtifactRegistry,
+				],
+				secrets: [
+					...(lastFmApiKey
+						? [
+								{
+									name: 'lastfm-api-key',
+									value: lastFmApiKey,
+								},
+							]
+						: []),
+					...(blockchainConfig?.deployerPrivateKey
+						? [
+								{
+									name: 'blockchain-deployer-private-key',
+									value: pulumi.secret(
+										blockchainConfig.deployerPrivateKey,
+									),
+								},
+							]
+						: []),
+					...(blockchainConfig?.rpcUrl
+						? [
+								{
+									name: 'blockchain-rpc-url',
+									value: pulumi.secret(
+										blockchainConfig.rpcUrl,
+									),
+								},
+							]
+						: []),
+					...(blockchainConfig?.bundlerApiKey
+						? [
+								{
+									name: 'blockchain-bundler-api-key',
+									value: pulumi.secret(
+										blockchainConfig.bundlerApiKey,
+									),
+								},
+							]
+						: []),
+					...(gcpConfig.postgresAdminPassword
+						? [
+								{
+									name: 'postgres-admin-password',
+									value: pulumi.secret(
+										gcpConfig.postgresAdminPassword,
+									),
+								},
+							]
+						: []),
+					...(gcpConfig.vapidPrivateKey
+						? [
+								{
+									name: 'vapid-private-key',
+									value: pulumi.secret(
+										gcpConfig.vapidPrivateKey,
+									),
+								},
+							]
+						: []),
+					...(fanartTvApiKey
+						? [
+								{
+									name: 'fanarttv-api-key',
+									value: fanartTvApiKey,
+								},
+							]
+						: []),
+					...(zitadelMachineKey
+						? [
+								{
+									name: 'zitadel-machine-key-for-backend-app',
+									value: pulumi.secret(zitadelMachineKey),
+								},
+							]
+						: []),
+				],
+				esoOnlySecrets: [
+					...(gcpConfig.argocdGoogleChatWebhookUrl
+						? [
+								{
+									name: 'argocd-google-chat-webhook-url',
+									value: pulumi.secret(
+										gcpConfig.argocdGoogleChatWebhookUrl,
+									),
+								},
+							]
+						: []),
+					// PAT consumed only by the zitadel-login pod (Login V2 UI). ESO in
+					// the `zitadel` namespace mirrors this into a K8s Secret which the
+					// pod mounts as a file referenced by ZITADEL_SERVICE_USER_TOKEN_FILE.
+					// Backend-app does not need access — the backend talks to Zitadel
+					// via its own JWT-key (zitadel-machine-key-for-backend-app), not this PAT.
+					...(zitadelLoginPat
+						? [
+								{
+									name: 'zitadel-login-pat',
+									value: pulumi.secret(zitadelLoginPat),
+								},
+							]
+						: []),
+				],
+			})
+
+			this.backendAppServiceAccountEmail =
+				kubernetes.backendAppServiceAccountEmail
+			this.zitadelServiceAccountEmail =
+				kubernetes.zitadelServiceAccountEmail
+			this.esoServiceAccountEmail = kubernetes.esoServiceAccountEmail
+
+			// 6. Cloud SQL Instance (Postgres)
+			new PostgresComponent('postgres', {
+				project: this.project,
+				region: Regions.Osaka,
+				regionName: RegionNames.Osaka,
+				environment,
+				subnetId: kubernetes.subnet.id,
+				networkId: network.network.id,
+				pscEndpointIp: osakaConfig.postgresPscIp,
+				dnsZoneName: network.sqlZone.name,
+				appServiceAccountEmail:
+					kubernetes.backendAppServiceAccountEmail,
+				zitadelServiceAccountEmail:
+					kubernetes.zitadelServiceAccountEmail,
+				iamDatabaseUsers: cloudSqlUsers,
+				postgresAdminPassword: gcpConfig.postgresAdminPassword
+					? pulumi.secret(gcpConfig.postgresAdminPassword)
+					: undefined,
+			})
+		}
 
 		// 7. Workload Identity Federation
 		const wif = new WorkloadIdentityComponent({
@@ -313,8 +337,13 @@ export class Gcp {
 		// `gcpConfig.monitoring?.slackNotificationChannels` guard remains as
 		// the materialization gate — ESC seeding (Slack channel ID from the
 		// GCP Console OAuth flow) controls whether these resources exist
-		// in any given env's stack state.
-		if (gcpConfig.monitoring?.slackNotificationChannels) {
+		// in any given env's stack state. Also gated on `workloadEnabled`:
+		// alert policies reference cluster log filters that match nothing
+		// while the cluster is destroyed (dev shutdown mode).
+		if (
+			workloadEnabled &&
+			gcpConfig.monitoring?.slackNotificationChannels
+		) {
 			const { slackNotificationChannels, googleChatSpaces } =
 				gcpConfig.monitoring
 			// Cluster name + location are env-keyed so log-based alert

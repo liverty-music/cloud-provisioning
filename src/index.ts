@@ -49,6 +49,13 @@ const zitadelConfig = config.requireSecretObject<{
 
 const env = pulumi.getStack() as Environment
 
+// Workload tier gate. When false (dev shutdown mode), skip the
+// in-cluster Zitadel orchestrator, GSM bootstrap secret shells, and
+// (inside `Gcp`) GKE + Cloud SQL + Monitoring. Defaults to `true` so
+// prod and active dev need no extra config. See
+// docs/runbooks/dev-shutdown-restart.md.
+const workloadEnabled = config.getBoolean('workloadEnabled') ?? true
+
 // 1. GitHub Organization Configuration (Prod Only)
 if (env === 'prod') {
 	new GitHubOrganizationComponent({
@@ -71,30 +78,37 @@ if (env === 'prod') {
 // `zitadelMachineKey` and `zitadelLoginPat` flow through `Gcp` for all
 // envs to create the corresponding GSM Secrets in the standard
 // `KubernetesComponent.secrets` / `esoOnlySecrets` paths.
-const zitadel = new Zitadel('liverty-music', {
-	env,
-	gcpProjectId: `${brandId}-${env}`,
-	postmarkServerApiToken: postmarkConfig.serverApiToken,
-	// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
-	// `requireSecretObject` marks the entire object as secret. Derived
-	// values are therefore secret-marked Outputs in Pulumi state.
-	googleAdminIdpClientId: zitadelConfig.apply(
-		(z) => z.googleAdminIdp.clientId,
-	),
-	googleAdminIdpClientSecret: zitadelConfig.apply(
-		(z) => z.googleAdminIdp.clientSecret,
-	),
-	pannpersGoogleSub: zitadelConfig.apply((z) => z.adminGoogleSubs.pannpers),
-	// E2E test user password — only consumed when `env === 'dev'` inside
-	// the unified class; the class's `if (env === 'dev')` gate validates
-	// presence at instantiation time.
-	e2eTestUserPassword:
-		env === 'dev'
-			? zitadelConfig.apply((z) => z.e2eTestUser.password)
-			: undefined,
-})
-const zitadelMachineKey = zitadel.machineKeyDetails
-const zitadelLoginPat = zitadel.loginClientToken
+// Skipped when `workloadEnabled=false`: the Zitadel orchestrator talks
+// to the in-cluster Zitadel API which is unreachable while the cluster
+// is destroyed (dev shutdown mode).
+const zitadel = workloadEnabled
+	? new Zitadel('liverty-music', {
+			env,
+			gcpProjectId: `${brandId}-${env}`,
+			postmarkServerApiToken: postmarkConfig.serverApiToken,
+			// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
+			// `requireSecretObject` marks the entire object as secret. Derived
+			// values are therefore secret-marked Outputs in Pulumi state.
+			googleAdminIdpClientId: zitadelConfig.apply(
+				(z) => z.googleAdminIdp.clientId,
+			),
+			googleAdminIdpClientSecret: zitadelConfig.apply(
+				(z) => z.googleAdminIdp.clientSecret,
+			),
+			pannpersGoogleSub: zitadelConfig.apply(
+				(z) => z.adminGoogleSubs.pannpers,
+			),
+			// E2E test user password — only consumed when `env === 'dev'` inside
+			// the unified class; the class's `if (env === 'dev')` gate validates
+			// presence at instantiation time.
+			e2eTestUserPassword:
+				env === 'dev'
+					? zitadelConfig.apply((z) => z.e2eTestUser.password)
+					: undefined,
+		})
+	: undefined
+const zitadelMachineKey = zitadel?.machineKeyDetails
+const zitadelLoginPat = zitadel?.loginClientToken
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
@@ -109,6 +123,7 @@ const gcp = new Gcp({
 	postmarkConfig,
 	zitadelMachineKey,
 	zitadelLoginPat,
+	workloadEnabled,
 })
 
 // 5. Self-hosted Zitadel infra phase (all envs).
@@ -117,11 +132,20 @@ const gcp = new Gcp({
 // Per `refactor-unify-env-dispatch` D1, the env allowlist guard
 // (`env === 'dev' || env === 'prod'`) was removed because `Environment`
 // is now `'dev' | 'prod'` — the guard was no-op.
-new SecretsComponent('zitadel-secrets', {
-	project: gcp.project,
-	zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
-	esoServiceAccountEmail: gcp.esoServiceAccountEmail,
-})
+// Skipped when `workloadEnabled=false`: the secret values are destroyed
+// alongside the cluster so the bootstrap-uploader sidecar re-seeds on
+// the next restart cycle (Scenario 1, not the silent-idle Scenario 2).
+if (
+	workloadEnabled &&
+	gcp.zitadelServiceAccountEmail &&
+	gcp.esoServiceAccountEmail
+) {
+	new SecretsComponent('zitadel-secrets', {
+		project: gcp.project,
+		zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
+		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
+	})
+}
 
 // 3. GitHub Repository Environments (All Environments)
 const sharedVariables = {
@@ -189,5 +213,8 @@ export const githubEnv = env
 // §2.3 for the prod consumption path; the identity-management spec's
 // "Manage OIDC Application" requirement makes these per-env values
 // the contract surface the frontend build depends on.
-export const webFrontendClientId = zitadel.frontend.application.clientId
-export const productOrgId = zitadel.productOrg.id
+// Undefined while `workloadEnabled=false` (dev shutdown mode) — the
+// frontend build then falls back to the last-published values cached
+// in the dev `.env`.
+export const webFrontendClientId = zitadel?.frontend.application.clientId
+export const productOrgId = zitadel?.productOrg.id

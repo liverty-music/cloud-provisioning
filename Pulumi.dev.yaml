@@ -2,3 +2,7 @@ environment:
   - liverty-music/dev
 config:
   gcp:project: liverty-music-dev
+  # When false, skip the workload tier (GKE / Cloud SQL / monitoring /
+  # Zitadel orchestrator / GSM bootstrap secrets) to compress dev idle
+  # cost to ~¥300/mo. See docs/runbooks/dev-shutdown-restart.md.
+  liverty-music:workloadEnabled: "false"
