@@ -135,15 +135,15 @@ const gcp = new Gcp({
 // Skipped when `workloadEnabled=false`: the secret values are destroyed
 // alongside the cluster so the bootstrap-uploader sidecar re-seeds on
 // the next restart cycle (Scenario 1, not the silent-idle Scenario 2).
-if (
-	workloadEnabled &&
-	gcp.zitadelServiceAccountEmail &&
-	gcp.esoServiceAccountEmail
-) {
+//
+// `gcp.workloadSAs` is undefined iff `workloadEnabled=false`, so the
+// single null-check narrows the union and gates the component in one
+// step — no redundant truthiness chain on `pulumi.Output<T>` values.
+if (gcp.workloadSAs) {
 	new SecretsComponent('zitadel-secrets', {
 		project: gcp.project,
-		zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
-		esoServiceAccountEmail: gcp.esoServiceAccountEmail,
+		zitadelServiceAccountEmail: gcp.workloadSAs.zitadelEmail,
+		esoServiceAccountEmail: gcp.workloadSAs.esoEmail,
 	})
 }
 

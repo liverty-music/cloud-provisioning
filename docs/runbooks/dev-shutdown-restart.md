@@ -251,23 +251,58 @@ import the admin Org because the hardcoded ID in
 `src/zitadel/constants.ts` no longer exists in the freshly bootstrapped
 Zitadel database. Fix in two steps:
 
+Reuse the JWT-bearer flow from [`zitadel-break-glass.md`
+step 2](zitadel-break-glass.md) — it is the same SA key path,
+just paired with an `orgs/_search` query that filters by org name.
+Inline copy with the org-name filter:
+
 ```bash
-# 1. Read the pulumi-admin JWT seeded by bootstrap-uploader.
 gcloud secrets versions access latest \
   --secret=zitadel-machine-key-for-pulumi-admin \
-  --project=liverty-music-dev > /tmp/zitadel-pulumi-key.json
+  --project=liverty-music-dev > /tmp/zitadel-machine-key-for-pulumi-admin.json
+```
 
-# 2. Exchange for an access token and query the admin Org.
-ACCESS_TOKEN="$(go run ./scripts/zitadel-jwt-exchange.go \
-  --key=/tmp/zitadel-pulumi-key.json \
-  --issuer=https://auth.dev.liverty-music.app)"
+```python
+#!/usr/bin/env python3
+# /tmp/zitadel-admin-org-id.py — mint JWT, exchange, look up admin Org ID.
+import json, time, urllib.request
+from base64 import urlsafe_b64encode
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 
-curl -s -X POST https://auth.dev.liverty-music.app/admin/v1/orgs/_search \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"queries":[{"nameQuery":{"name":"admin","method":"TEXT_QUERY_METHOD_EQUALS"}}]}' \
-  | jq -r '.result[0].id'
-# → e.g. 372456789012345678
+ZITADEL = "https://auth.dev.liverty-music.app"
+
+def b64url(d): return urlsafe_b64encode(d).rstrip(b"=").decode()
+with open("/tmp/zitadel-machine-key-for-pulumi-admin.json") as f: key = json.load(f)
+now = int(time.time())
+header = {"alg":"RS256","typ":"JWT","kid":key["keyId"]}
+payload = {"iss":key["userId"],"sub":key["userId"],"aud":ZITADEL,"iat":now,"exp":now+300}
+h = b64url(json.dumps(header,separators=(",",":")).encode())
+p = b64url(json.dumps(payload,separators=(",",":")).encode())
+sig = serialization.load_pem_private_key(key["key"].encode(), password=None).sign(
+    f"{h}.{p}".encode(), padding.PKCS1v15(), hashes.SHA256())
+body = (
+    "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer"
+    f"&assertion={h}.{p}.{b64url(sig)}"
+    "&scope=openid urn:zitadel:iam:org:project:id:zitadel:aud"
+)
+req = urllib.request.Request(f"{ZITADEL}/oauth/v2/token", data=body.encode(),
+    headers={"Content-Type":"application/x-www-form-urlencoded"}, method="POST")
+token = json.loads(urllib.request.urlopen(req).read())["access_token"]
+
+# Find the admin org by exact name match.
+req = urllib.request.Request(f"{ZITADEL}/admin/v1/orgs/_search",
+    headers={"Authorization": f"Bearer {token}", "Content-Type":"application/json"},
+    data=json.dumps({"queries":[{"nameQuery":{
+        "name":"admin","method":"TEXT_QUERY_METHOD_EQUALS"
+    }}]}).encode(), method="POST")
+result = json.loads(urllib.request.urlopen(req).read())
+print(result["result"][0]["id"])  # → e.g. 372456789012345678
+```
+
+```bash
+python3 /tmp/zitadel-admin-org-id.py
+# → 372456789012345678   (this is the new dev admin Org ID)
 ```
 
 Then commit the new ID:

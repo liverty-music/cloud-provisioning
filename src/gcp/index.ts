@@ -70,16 +70,23 @@ export class Gcp {
 	public readonly region: string = Regions.Osaka
 	public readonly githubActionsSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
-	/** Backend application GCP SA email — undefined when workloadEnabled=false. */
-	public readonly backendAppServiceAccountEmail:
-		| pulumi.Output<string>
+	/** Workload-tier service account emails — all defined together when
+	 *  `workloadEnabled=true`, or the whole group is undefined when the
+	 *  workload tier is destroyed (dev shutdown mode). Grouping the three
+	 *  emails into one optional property lets call-sites narrow the
+	 *  invariant with a single `if (gcp.workloadSAs)` check instead of
+	 *  chaining truthiness on each `pulumi.Output<T>` (which is always
+	 *  truthy at runtime, so chaining adds TS-only noise). */
+	public readonly workloadSAs:
+		| {
+				/** Backend application GCP SA email. */
+				backendAppEmail: pulumi.Output<string>
+				/** Self-hosted Zitadel GCP SA email. */
+				zitadelEmail: pulumi.Output<string>
+				/** External Secrets Operator GCP SA email. */
+				esoEmail: pulumi.Output<string>
+		  }
 		| undefined
-	/** Self-hosted Zitadel GCP SA email — undefined when workloadEnabled=false. */
-	public readonly zitadelServiceAccountEmail:
-		| pulumi.Output<string>
-		| undefined
-	/** External Secrets Operator GCP SA email — undefined when workloadEnabled=false. */
-	public readonly esoServiceAccountEmail: pulumi.Output<string> | undefined
 
 	constructor(args: GcpArgs) {
 		const {
@@ -295,11 +302,11 @@ export class Gcp {
 				],
 			})
 
-			this.backendAppServiceAccountEmail =
-				kubernetes.backendAppServiceAccountEmail
-			this.zitadelServiceAccountEmail =
-				kubernetes.zitadelServiceAccountEmail
-			this.esoServiceAccountEmail = kubernetes.esoServiceAccountEmail
+			this.workloadSAs = {
+				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
+				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
+				esoEmail: kubernetes.esoServiceAccountEmail,
+			}
 
 			// 6. Cloud SQL Instance (Postgres)
 			new PostgresComponent('postgres', {
