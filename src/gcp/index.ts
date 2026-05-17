@@ -170,9 +170,8 @@ export class Gcp {
 					})
 				: undefined
 
-		// 5. GKE Autopilot Cluster
-		// 6. Cloud SQL Instance (Postgres)
-		// Gated by `workloadEnabled` to enable the dev shutdown flow
+		// 5+6. GKE Autopilot Cluster + Cloud SQL Instance (Postgres) —
+		// gated by `workloadEnabled` to enable the dev shutdown flow
 		// described in docs/runbooks/dev-shutdown-restart.md. WIF (§7) and
 		// Cost Guardrails (§9) remain unguarded so GitHub Actions OIDC and
 		// billing alerts persist while the workload tier is down.

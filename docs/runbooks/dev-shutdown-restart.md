@@ -138,7 +138,7 @@ environment:
   - liverty-music/dev
 config:
   gcp:project: liverty-music-dev
-  liverty-music:gcp.workloadEnabled: "false"  # ← add this line
+  liverty-music:workloadEnabled: "false"  # ← add this line
 ```
 
 Open the PR. Pulumi Cloud will post a `pulumi preview` comment with
@@ -217,7 +217,7 @@ Revert `Pulumi.dev.yaml`:
 ```yaml
 config:
   gcp:project: liverty-music-dev
-  liverty-music:gcp.workloadEnabled: "true"
+  liverty-music:workloadEnabled: "true"
 ```
 
 ### B3. Review the preview
@@ -313,12 +313,16 @@ gcloud secrets versions list zitadel-machine-key-for-pulumi-admin \
   --project=liverty-music-dev --limit=3
 ```
 
-> **If bootstrap-uploader idles without uploading** (the [Scenario 2 footgun](
-> # see /home/pannpers/.claude/projects/-home-pannpers/memory/reference_zitadel_bootstrap_uploader_scenario_2.md
-> )),
-> this means GSM already has a populated version. Cause: SecretsComponent
-> guard didn't actually delete the secret values. Fix: manually destroy
-> the secret versions and restart the Zitadel pod.
+> **If bootstrap-uploader idles without uploading**, the GSM secret
+> shells already have populated versions from before — the sidecar
+> only seeds when the shell is empty, so it goes silent and the
+> restart hangs indefinitely waiting for `zitadel-machine-key-for-pulumi-admin`.
+> Cause: the shutdown PR's `pulumi up` did not remove
+> `SecretsComponent` (e.g. `workloadEnabled` was not actually `false`
+> in state, or the secret values were imported outside the
+> SecretsComponent path). Fix: manually destroy the affected secret
+> versions and restart the Zitadel pod — the sidecar then takes the
+> normal first-boot seed path.
 
 ### B7. End-to-end smoke
 
