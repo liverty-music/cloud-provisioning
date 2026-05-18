@@ -164,6 +164,38 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
+		// 4.1. Cross-project AR reader for the prod CI service account.
+		//
+		// Per OpenSpec change `promote-prod-image-via-retag` (archive
+		// pending), the frontend prod release path stops rebuilding and
+		// instead retags the dev AR digest into prod AR. The prod
+		// `github-actions` service account needs READ on the dev project's
+		// frontend AR repo to resolve the digest. Scope is intentionally
+		// minimal: ONE repository, READ only, exactly one direction
+		// (prod CI → dev AR). The cluster-SA cross-project prohibition
+		// (see `prod-image-pipeline` spec) is untouched — CI SAs are
+		// ephemeral Workflow-run identities, structurally distinct from
+		// the persistent cluster identities the prohibition targets.
+		//
+		// Lives in the dev stack because the AR resource being granted on
+		// lives in the dev project. The prod SA email is referenced by
+		// literal because the prod stack constructs that exact email
+		// (verified against `WorkloadIdentityComponent`'s SA name +
+		// project naming).
+		if (environment === 'dev') {
+			new gcp.artifactregistry.RepositoryIamMember(
+				'prod-ci-frontend-ar-reader',
+				{
+					repository: frontendArtifactRegistry.name,
+					location: this.region,
+					project: this.project.projectId,
+					role: 'roles/artifactregistry.reader',
+					member: 'serviceAccount:github-actions@liverty-music-prod.iam.gserviceaccount.com',
+				},
+				{ parent: this.project },
+			)
+		}
+
 		// 4.5. Cloud KMS — etcd CMEK key for the prod GKE cluster.
 		// Application-layer Secrets Encryption is irreversible at cluster
 		// creation, so the key must exist before KubernetesComponent runs.
