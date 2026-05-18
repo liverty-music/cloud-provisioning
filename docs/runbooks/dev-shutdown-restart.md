@@ -94,7 +94,7 @@ Cost recovery time when re-enabling: **~20–30 min** end-to-end. Faster than th
 | **`admin` Org `protect: true`** | The bootstrap-created admin Org has `protect: true` in `src/zitadel/index.ts` to prevent accidental destroy that would lock out all admins. The shutdown preview will **fail** with "resource cannot be deleted because it is protected." | **Step A4a below.** Run `pulumi state unprotect` against the admin Org URN before opening the disable PR. |
 | **`adminOrgIdMap[dev]` stale after restart** | The dev admin Org ID is hardcoded in `src/zitadel/constants.ts` and used as `import:` to adopt the bootstrap-created org. After Cloud SQL wipe + re-bootstrap, Zitadel creates a *new* admin Org with a *new* ID; the hardcoded value no longer resolves and `pulumi up` blocks. | **Step B5a below.** After Zitadel boots in restart, query the new admin Org ID, update `adminOrgIdMap.dev`, commit, then let Pulumi proceed. |
 | **Shutdown race: Cloud SQL stop vs Zitadel destroy** | The Zitadel orchestrator destroy phase makes HTTP API calls into the in-cluster Zitadel (which writes to Cloud SQL) at the same time Pulumi is applying `activationPolicy: NEVER` to the Cloud SQL instance. Default Pulumi parallelism (10) interleaves these. If GCP completes the Cloud SQL stop before Zitadel's API calls finish, the orchestrator destroys fail mid-flight, leaving rows in a partial-delete state and Pulumi state with pending-delete entries. There is no `dependsOn` edge between Zitadel resources and the Cloud SQL instance in the current code (adding one requires the Gcp-first / Zitadel-second reorder deferred to a future PR). | **Step A5b below.** Treat the shutdown's auto `pulumi up` as best-effort. Monitor the deployment; if Zitadel resource deletes fail, recover with `pulumi state delete --target <urn>` per stuck resource (NOT `--target-dependents` — see [pulumi-state-recovery.md §13.4](pulumi-state-recovery.md)) and re-trigger the deployment. |
-| **Stale `zitadel-machine-key-for-pulumi-admin` on restart hangs Zitadel auth silently** | The Secret container persists; the version populated by the previous boot's bootstrap-uploader also persists. After restart, Zitadel re-bootstraps and generates a new admin SA key — the stored GSM version no longer matches, but the sidecar's "only seed if shell is empty" logic sees a populated shell and skips. Pulumi reads the stale value, auth-as-pulumi-admin against Zitadel fails, and `pulumi up` errors with a 401 with no obvious root cause. | **Step B6 below.** Manually `gcloud secrets versions destroy` the stale versions (admin-sa-key and login-pat) **before** bouncing the Zitadel pod, then verify with `gcloud secrets versions list ... --filter="state=ENABLED"` that the new version's `createTime` is post-restart. |
+| **Stale `zitadel-machine-key-for-pulumi-admin` on restart hangs Zitadel auth silently** | The Secret container persists in `SecretsComponent` (PRESERVED tier); the version populated by the previous boot's bootstrap-uploader also persists. After restart, Zitadel re-bootstraps and generates a new admin SA key — the stored GSM version no longer matches, but the sidecar's "only seed if shell is empty" logic sees a populated shell and skips. Pulumi reads the stale value, auth-as-pulumi-admin against Zitadel fails, and `pulumi up` errors with a 401 with no obvious root cause. **Only `zitadel-machine-key-for-pulumi-admin` is affected** — `zitadel-machine-key-for-backend-app` and `zitadel-login-pat` live in `KubernetesComponent` (GUARDED tier), so they are destroyed + recreated by Pulumi each cycle with the fresh Zitadel orchestrator's output, no manual step needed. | **Step B6 below.** Manually `gcloud secrets versions destroy` the stale `zitadel-machine-key-for-pulumi-admin` version **before** bouncing the Zitadel pod, then verify with `gcloud secrets versions list ... --filter="state=ENABLED"` that the new version's `createTime` is post-restart. |
 
 ---
 
@@ -260,11 +260,38 @@ its own pre-shutdown step:
 # state without API calls. The actual Zitadel rows will be wiped when
 # the cluster goes down anyway; we just teach Pulumi to skip the
 # destroy phase entirely.
-for urn in $(pulumi stack export | jq -r '.deployment.resources[] | select(.urn | contains("::zitadel:")) | .urn'); do
+#
+# Filter on `.type` (not `.urn`) so we don't accidentally match
+# children of Zitadel components — e.g. the `zitadel-masterkey` GSM
+# Secret created inside `SecretsComponent` has URN suffix
+# `::zitadel:liverty-music:Secrets$gcp:secretmanager/secret:Secret::zitadel-masterkey`
+# which would be hit by a substring URN filter but has type
+# `gcp:secretmanager/secret:Secret`, not `zitadel:*`. Filtering by
+# `.type` keeps the preserved GSM containers safe.
+for urn in $(pulumi stack export | jq -r '
+  .deployment.resources[]
+  | select(.type | startswith("zitadel:") or . == "pulumi:providers:zitadel")
+  | .urn
+'); do
   echo "deleting $urn"
   pulumi state delete --target "$urn" --yes
 done
 ```
+
+Sanity-check before running the loop — preview the list:
+
+```bash
+pulumi stack export | jq -r '
+  .deployment.resources[]
+  | select(.type | startswith("zitadel:") or . == "pulumi:providers:zitadel")
+  | {urn, type}
+'
+```
+
+Every entry should be either a `zitadel:index/*` resource (Zitadel API
+object), a `zitadel:liverty-music:*` component, or the
+`pulumi:providers:zitadel` provider itself. If any other type shows
+up, **stop** — the filter is too broad.
 
 This is operational overhead. A permanent fix would add `dependsOn:
 [postgresInstance]` to the Zitadel provider so Pulumi destroy walks
@@ -459,38 +486,35 @@ kubectl -n argocd get applications -w
 # Wait for all to reach Synced + Healthy. Expected: ~10–15 min.
 ```
 
-### B6. Zitadel bootstrap-uploader reseed — preserved shells, manual reseed of `zitadel-machine-key-for-pulumi-admin`
+### B6. Zitadel bootstrap-uploader reseed — manual reseed of `zitadel-machine-key-for-pulumi-admin`
 
 The `bootstrap-uploader` sidecar only writes a new version to a GSM
 secret if the existing shell is **empty**. As of PR #283 (`Path 2`
-design), the Secret containers + versions in `SecretsComponent` are
-preserved across the shutdown cycle:
+design), the four Zitadel-related GSM secrets fall into two groups:
 
-| Secret | Behavior across cycle | Sidecar action on restart |
-|---|---|---|
-| `zitadel-masterkey` | Pulumi-managed RandomString + SecretVersion both stay in state. The same random value is reused so Zitadel can decrypt any pre-existing rows. | Sidecar sees a populated shell, **skips** — correct. |
-| `zitadel-machine-key-for-pulumi-admin` | Secret container persists; the **version** populated by the previous boot's sidecar also persists. But the Zitadel orchestrator destroy in the shutdown cycle deleted the corresponding `pulumi-admin` MachineUser + MachineKey rows from the Cloud SQL Zitadel DB. On restart, Zitadel re-bootstraps and generates a **new** admin SA key whose JSON doesn't match the stored version. | Sidecar sees a populated shell, **skips** — but the stored key is stale. **Manual step required: destroy the stale version so the sidecar reseeds with the new key.** |
-| `zitadel-login-pat` | Same shape as `zitadel-machine-key-for-pulumi-admin`. | Same manual reseed step. |
+| Secret | Created in | Behavior across cycle | Sidecar action on restart |
+|---|---|---|---|
+| `zitadel-masterkey` | `SecretsComponent` (PRESERVED tier) | Pulumi-managed RandomString + SecretVersion both stay in state. The same value is reused so Zitadel can decrypt any pre-existing rows. | Sees a populated shell, **skips** — correct, the stored value is the right one. |
+| `zitadel-machine-key-for-pulumi-admin` | `SecretsComponent` (PRESERVED tier) | Secret container persists; the **version** populated by the previous boot's sidecar also persists. But the Zitadel orchestrator destroy in the shutdown cycle deleted the corresponding `pulumi-admin` MachineUser + MachineKey rows from the Cloud SQL Zitadel DB. On restart, Zitadel re-bootstraps and generates a **new** admin SA key whose JSON doesn't match the stored version. | Sees a populated shell, **skips** — but the stored key is stale. **Manual step required: destroy the stale version so the sidecar reseeds with the new key.** |
+| `zitadel-machine-key-for-backend-app` | `KubernetesComponent.secrets[]` (GUARDED tier) | Destroyed with the cluster, re-created on restart by Pulumi using the *new* `zitadel.machineKeyDetails` output of the freshly-bootstrapped Zitadel orchestrator. The GSM Secret + Version are both Pulumi-managed; no sidecar involvement. | Not applicable — value is correct from creation. |
+| `zitadel-login-pat` | `KubernetesComponent.esoOnlySecrets[]` (GUARDED tier) | Same shape as `zitadel-machine-key-for-backend-app` — Pulumi destroys and recreates from `zitadel.loginClientToken`. | Not applicable — value is correct from creation. |
+
+Only the **first row's `zitadel-machine-key-for-pulumi-admin`** needs
+the manual destroy-and-reseed; the other three sort themselves out
+through their respective normal paths.
 
 ```bash
-# Disable the stale versions so the sidecar re-seeds on next pod boot.
+# Disable the stale version so the sidecar re-seeds on next pod boot.
 gcloud secrets versions list zitadel-machine-key-for-pulumi-admin \
   --project=liverty-music-dev --limit=3
 gcloud secrets versions destroy <VERSION> \
   --secret=zitadel-machine-key-for-pulumi-admin \
   --project=liverty-music-dev --quiet
 
-gcloud secrets versions list zitadel-login-pat \
-  --project=liverty-music-dev --limit=3
-gcloud secrets versions destroy <VERSION> \
-  --secret=zitadel-login-pat \
-  --project=liverty-music-dev --quiet
-
 # Bounce the first-instance Zitadel pod so the sidecar re-runs.
 kubectl -n zitadel rollout restart deployment zitadel-api
 kubectl -n zitadel logs -l app=zitadel-api -c bootstrap-uploader --tail=50
 # → expect: "uploaded zitadel-machine-key-for-pulumi-admin"
-# → expect: "uploaded zitadel-login-pat"
 ```
 
 **Validation gate — verify the new version's `createTime` is
@@ -502,14 +526,9 @@ gcloud secrets versions list zitadel-machine-key-for-pulumi-admin \
   --project=liverty-music-dev \
   --filter="state=ENABLED" \
   --format="table(name,createTime,state)"
-
-gcloud secrets versions list zitadel-login-pat \
-  --project=liverty-music-dev \
-  --filter="state=ENABLED" \
-  --format="table(name,createTime,state)"
 ```
 
-If the enabled version's `createTime` predates the cluster restart,
+If the ENABLED version's `createTime` predates the cluster restart,
 the sidecar skipped the reseed (it still sees a populated shell). Go
 back to the `gcloud secrets versions destroy` step above, ensure no
 ENABLED version remains, and bounce the pod again.
