@@ -6,7 +6,11 @@
 > combined) should be torn down to compress idle cost to ~¥300/mo.
 >
 > This runbook covers the **two-way switch** between active and
-> shutdown states for the dev stack only. Prod is unaffected.
+> shutdown states for the dev stack only. Prod is unaffected — the
+> `workloadEnabled` flag is **dev-only** and `src/index.ts` aborts
+> immediately if `prod` ever evaluates the program with the flag set
+> to `false`, so a config-drift mishap cannot turn the cost switch
+> into a prod-destruction button.
 
 ## Cost target
 

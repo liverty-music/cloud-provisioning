@@ -54,7 +54,25 @@ const env = pulumi.getStack() as Environment
 // (inside `Gcp`) GKE + Cloud SQL + Monitoring. Defaults to `true` so
 // prod and active dev need no extra config. See
 // docs/runbooks/dev-shutdown-restart.md.
-const workloadEnabled = config.getBoolean('workloadEnabled') ?? true
+//
+// The flag is **dev-only** — a `workloadEnabled: "false"` accidentally
+// committed to `Pulumi.prod.yaml`, leaked via ESC, or introduced by
+// PR drift would otherwise turn this cost-shutdown switch into a prod
+// destruction button. Fail loudly at the program-construct phase so
+// the misconfiguration is impossible to apply silently (the
+// `pulumi up` job will abort before computing any resource diff).
+// Disabling prod requires a deliberate code change, not a config flip.
+const workloadEnabledRaw = config.getBoolean('workloadEnabled') ?? true
+if (env === 'prod' && !workloadEnabledRaw) {
+	throw new Error(
+		"workloadEnabled=false is forbidden in the 'prod' stack. " +
+			'This flag is a dev-only cost-shutdown switch — see ' +
+			'docs/runbooks/dev-shutdown-restart.md. To disable the prod ' +
+			'workload tier, make a deliberate code change rather than ' +
+			'flipping this flag.',
+	)
+}
+const workloadEnabled = workloadEnabledRaw
 
 // 1. GitHub Organization Configuration (Prod Only)
 if (env === 'prod') {
