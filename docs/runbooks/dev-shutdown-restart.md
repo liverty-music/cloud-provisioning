@@ -76,6 +76,18 @@ gcloud sql export sql postgres-osaka gs://<bucket>/dev-snapshot-$(date +%Y%m%d).
   --project=liverty-music-dev --database=<db>
 ```
 
+> **Sanity-check Cloud SQL tier before shutting down.** Once dev
+> Cloud SQL is destroyed, the restart will recreate it from the
+> `tier` value in `src/gcp/components/postgres.ts` (currently
+> `db-f1-micro`). GCP has been progressively deprecating
+> `db-f1-micro` for fresh instances. Confirm the tier is still
+> accepted by running a no-op preview:
+> `pulumi preview --stack dev` (the create-plan check happens at
+> validate time). If GCP returns a tier-deprecation error,
+> hot-fix `postgres.ts` to a current tier (e.g.
+> `db-perf-optimized-N-1`) in a separate PR *before* the
+> shutdown PR, so the restart side won't be blocked.
+
 ### A2. Delete the k8s Gateway and wait for GCLB cleanup
 
 The Gateway controller runs in-cluster, so this MUST complete before the cluster is destroyed.
@@ -217,6 +229,19 @@ drops to ~¥10–15/day (≈¥300/mo).
 ---
 
 ## Procedure B — Restart (Shutdown → `workloadEnabled: true`)
+
+> **Restart is a two-PR sequence by design, not a single merge.**
+> The first PR flips the flag → auto `pulumi up` rebuilds GKE +
+> Cloud SQL + boots a fresh Zitadel instance → **`pulumi up` then
+> fails at the admin Org import** because the hardcoded
+> `adminOrgIdMap[dev]` in `src/zitadel/constants.ts` no longer
+> matches the freshly bootstrapped Org ID (Cloud SQL wipe creates
+> a new ID). A second PR updates that constant; auto-deploy runs
+> again and completes the restart. Plan for ~30–45 min of
+> half-up state between the two merges. See step B4a for the ID
+> lookup script. (Future improvement tracked in a follow-up
+> issue: lift `adminOrgId` to ESC so the restart self-heals
+> without the second PR.)
 
 ### B1. Pre-flight
 

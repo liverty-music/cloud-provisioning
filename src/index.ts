@@ -253,12 +253,17 @@ export const githubEnv = env
 // fall back to cached `.env.dev` or skip the build"). Frontend CI
 // must check for this exact string before treating the value as a
 // usable OIDC client id.
-// Not exported as a Pulumi stack output — every top-level
-// `export const` becomes a permanent output key on every stack,
-// including prod, polluting the output registry with a dev-only
-// constant. Frontend CI consumers compare against the literal
-// string documented in the runbook gotcha table.
-const DEV_SHUTDOWN_SENTINEL = 'DEV_SHUTDOWN_workloadEnabled=false'
+// Exported so frontend CI consumers can import the canonical
+// value (`import { DEV_SHUTDOWN_SENTINEL } from '...'` or read it
+// via `pulumi stack output DEV_SHUTDOWN_SENTINEL`) rather than
+// hardcoding the literal string. The trade-off is that the
+// constant lands as a stack output on every stack including prod,
+// where it has no purpose — accepted because consumer-side type
+// safety > one redundant prod output key. The name's `DEV_` prefix
+// makes the intent obvious to anyone introspecting prod outputs.
+// See docs/runbooks/dev-shutdown-restart.md gotcha table for the
+// consumer contract.
+export const DEV_SHUTDOWN_SENTINEL = 'DEV_SHUTDOWN_workloadEnabled=false'
 export const webFrontendClientId: string | pulumi.Output<string> =
 	zitadel?.frontend.application.clientId ?? DEV_SHUTDOWN_SENTINEL
 export const productOrgId: string | pulumi.Output<string> =
