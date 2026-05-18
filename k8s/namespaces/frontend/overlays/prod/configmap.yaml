@@ -13,17 +13,17 @@ data:
       "vapidPublicKey": "BH-m9-6-0-y70MdQG7Lz-htDaz4T_NuYdmcgK5wBEElzXo22AyGs30gvHAtHbWtQBQa4XxySD6ZEaiM9Crwl6Pc",
       "circuitBaseUrl": "/circuits/ticketcheck-v1",
       "previewArtistIds": [
-        "019c8655-7a05-71ef-82b4-a4ac2494e29f",
-        "019c8655-7a05-721d-b0a8-4c11724d5c90",
-        "019c8655-7a05-71e9-9af5-e1cd4fbfd367",
-        "019c899e-baff-7ecd-8af2-e8dc819e29e4",
-        "019c8655-7a05-71f5-acd4-46157dcb0bec",
-        "019c8655-7a05-722a-bdae-a89596378f90",
-        "019c8655-7a05-72ff-8654-4e09e64043da",
-        "019c8655-7a05-723e-bef1-2d2433cd53f5",
-        "019c8655-7a05-7217-8f63-7a261ebcfceb",
-        "019c8655-7a05-72e7-a9c3-44a27d2bf07e",
-        "019c8655-7a05-71fc-bc48-92705b9ddb68"
+        "019e3029-8044-75fc-a662-2ddfce51178e",
+        "019e3029-8044-7603-b047-c713d5183f2c",
+        "019e3029-8044-75f7-ad29-c1748b5a46a6",
+        "019e302a-3ea8-7a7e-b077-8cf6068fdb4b",
+        "019e3029-8044-7600-997d-7d3e09fda531",
+        "019e3029-8044-7615-82a7-6b213a265b3f",
+        "019e3029-8044-763e-81d3-7b73868f10f7",
+        "019e3029-8044-761c-80f7-03302b865e72",
+        "019e3029-8044-75fe-9b06-d3595786cf2e",
+        "019e3029-8044-7638-909e-35a3fc09fe01",
+        "019e3029-f15b-77bc-b0fc-a45df1176f0d"
       ],
       "previewArtistNames": [
         "Mrs. GREEN APPLE",
@@ -36,7 +36,7 @@ data:
         "Ado",
         "back number",
         "ONE OK ROCK",
-        "RADWIMPS"
+        "緑黄色社会"
       ],
       "logLevel": "info"
     }
