@@ -138,7 +138,7 @@ The escape hatch SHALL NOT be used for routine ops (failed rebuilds, typos, "wan
 
 ## Retag failure recovery (frontend, post-`promote-prod-image-via-retag`)
 
-After the `promote-prod-image-via-retag` change lands, the frontend release path no longer runs `docker build` — it resolves the dev AR digest for `github.sha` and copies it to prod AR via `gcloud artifacts docker tags add`. This section covers the three failure modes specific to the retag flow.
+After the `promote-prod-image-via-retag` change lands (live as of 2026-05-18), the frontend release path no longer runs `docker build` — it resolves the dev AR digest for `github.sha` and copies it to prod AR via `crane copy` (from `google/go-containerregistry`, installed by `imjasonh/setup-crane`). The proposal's original choice of `gcloud artifacts docker tags add` was inverted during implementation: the gcloud command only renames tags **within a single repository** despite its argument shape, so cross-project copy fails with `Image <src-FQDN> does not match image <dst-FQDN>`. See `openspec/changes/promote-prod-image-via-retag/design.md` D1 (post-archive: `openspec/specs/prod-image-pipeline/spec.md`) for the full post-mortem. This section covers the three failure modes specific to the retag flow.
 
 ### Failure: dev AR `:<sha>` does not exist
 
@@ -161,7 +161,7 @@ Either the dev build for this commit failed, or the release was cut on a non-mai
 
 ### Failure: cross-project IAM grant revoked accidentally
 
-**Symptom**: the "Resolve dev AR digest" workflow step fails immediately with a `PERMISSION_DENIED` from `gcloud artifacts docker images describe`, or the `gcloud artifacts docker tags add` step fails with a 403.
+**Symptom**: the "Resolve dev AR digest" workflow step fails immediately with a `PERMISSION_DENIED` from `gcloud artifacts docker images describe`, or a "Promote dev AR digest to prod AR" step fails with a 403 from `crane copy` (typically surfaced as `DENIED: Permission "artifactregistry.repositories.uploadArtifacts" denied`).
 
 **Cause**: the `prod-ci-frontend-ar-reader` resource (`gcp.artifactregistry.RepositoryIamMember`) was removed from dev project IAM. Most likely a manual `gcloud artifacts repositories remove-iam-policy-binding` invocation, or a `pulumi destroy` that targeted the resource.
 
@@ -172,10 +172,10 @@ Either the dev build for this commit failed, or the release was cut on a non-mai
 
 ### Failure: immutable-tag re-publish rejected (HTTP 409)
 
-**Symptom**: the `gcloud artifacts docker tags add ... :vX.Y.Z` step fails with `tags.add: ALREADY_EXISTS` / HTTP 409 / "tag already exists".
+**Symptom**: a "Promote dev AR digest to prod AR" step fails with HTTP 409 from `crane copy`, surfaced as `ALREADY_EXISTS: name 'projects/liverty-music-prod/.../tags/vX.Y.Z' already exists` (or equivalent AR error).
 
 **Cause**: this is the `prod-image-tag-immutability` capability working as designed. The `:vX.Y.Z` tag was already published in a previous release event and points at a different digest; AR refuses to re-point it. Most likely the operator:
-- Deleted the GitHub Release for `vX.Y.Z`, made a code change, and re-cut the release with the same tag name (the dev rebuild produced a new SHA → new digest → conflict on tag-add).
+- Deleted the GitHub Release for `vX.Y.Z`, made a code change, and re-cut the release with the same tag name (the new dev SHA → new digest → conflict on `crane copy`).
 - Or, less commonly, the same commit was rebuilt non-deterministically and now has two distinct dev AR digests.
 
 **Recovery**:
