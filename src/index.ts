@@ -49,6 +49,34 @@ const zitadelConfig = config.requireSecretObject<{
 
 const env = pulumi.getStack() as Environment
 
+// Workload tier gate. When false (dev shutdown mode), skip the
+// in-cluster Zitadel orchestrator, GSM bootstrap secret shells, and
+// (inside `Gcp`) GKE + Cloud SQL + Monitoring. Defaults to `true` so
+// prod and active dev need no extra config. See
+// docs/runbooks/dev-shutdown-restart.md.
+//
+// The flag is **dev-only** — a `workloadEnabled: "false"` accidentally
+// committed to `Pulumi.prod.yaml`, leaked via ESC, or introduced by
+// PR drift would otherwise turn this cost-shutdown switch into a prod
+// destruction button. Fail loudly at the program-construct phase so
+// the misconfiguration is impossible to apply silently (the
+// `pulumi up` job will abort before computing any resource diff).
+// Disabling prod requires a deliberate code change, not a config flip.
+const workloadEnabled = config.getBoolean('workloadEnabled') ?? true
+// Allow-list rather than block-list: any stack other than `dev`
+// (today `prod`; tomorrow `staging` if added to `Environment`) is
+// implicitly off-limits to the shutdown switch. Adding a new
+// shut-down-capable env requires deliberately listing it here.
+if (env !== 'dev' && !workloadEnabled) {
+	throw new Error(
+		`workloadEnabled=false is forbidden in the '${env}' stack. ` +
+			'This flag is a dev-only cost-shutdown switch — see ' +
+			'docs/runbooks/dev-shutdown-restart.md. To disable a non-dev ' +
+			'workload tier, make a deliberate code change rather than ' +
+			'flipping this flag.',
+	)
+}
+
 // 1. GitHub Organization Configuration (Prod Only)
 if (env === 'prod') {
 	new GitHubOrganizationComponent({
@@ -71,30 +99,37 @@ if (env === 'prod') {
 // `zitadelMachineKey` and `zitadelLoginPat` flow through `Gcp` for all
 // envs to create the corresponding GSM Secrets in the standard
 // `KubernetesComponent.secrets` / `esoOnlySecrets` paths.
-const zitadel = new Zitadel('liverty-music', {
-	env,
-	gcpProjectId: `${brandId}-${env}`,
-	postmarkServerApiToken: postmarkConfig.serverApiToken,
-	// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
-	// `requireSecretObject` marks the entire object as secret. Derived
-	// values are therefore secret-marked Outputs in Pulumi state.
-	googleAdminIdpClientId: zitadelConfig.apply(
-		(z) => z.googleAdminIdp.clientId,
-	),
-	googleAdminIdpClientSecret: zitadelConfig.apply(
-		(z) => z.googleAdminIdp.clientSecret,
-	),
-	pannpersGoogleSub: zitadelConfig.apply((z) => z.adminGoogleSubs.pannpers),
-	// E2E test user password — only consumed when `env === 'dev'` inside
-	// the unified class; the class's `if (env === 'dev')` gate validates
-	// presence at instantiation time.
-	e2eTestUserPassword:
-		env === 'dev'
-			? zitadelConfig.apply((z) => z.e2eTestUser.password)
-			: undefined,
-})
-const zitadelMachineKey = zitadel.machineKeyDetails
-const zitadelLoginPat = zitadel.loginClientToken
+// Skipped when `workloadEnabled=false`: the Zitadel orchestrator talks
+// to the in-cluster Zitadel API which is unreachable while the cluster
+// is destroyed (dev shutdown mode).
+const zitadel = workloadEnabled
+	? new Zitadel('liverty-music', {
+			env,
+			gcpProjectId: `${brandId}-${env}`,
+			postmarkServerApiToken: postmarkConfig.serverApiToken,
+			// `zitadelConfig` is `pulumi.Output<{ googleAdminIdp: ... }>` because
+			// `requireSecretObject` marks the entire object as secret. Derived
+			// values are therefore secret-marked Outputs in Pulumi state.
+			googleAdminIdpClientId: zitadelConfig.apply(
+				(z) => z.googleAdminIdp.clientId,
+			),
+			googleAdminIdpClientSecret: zitadelConfig.apply(
+				(z) => z.googleAdminIdp.clientSecret,
+			),
+			pannpersGoogleSub: zitadelConfig.apply(
+				(z) => z.adminGoogleSubs.pannpers,
+			),
+			// E2E test user password — only consumed when `env === 'dev'` inside
+			// the unified class; the class's `if (env === 'dev')` gate validates
+			// presence at instantiation time.
+			e2eTestUserPassword:
+				env === 'dev'
+					? zitadelConfig.apply((z) => z.e2eTestUser.password)
+					: undefined,
+		})
+	: undefined
+const zitadelMachineKey = zitadel?.machineKeyDetails
+const zitadelLoginPat = zitadel?.loginClientToken
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
@@ -109,6 +144,7 @@ const gcp = new Gcp({
 	postmarkConfig,
 	zitadelMachineKey,
 	zitadelLoginPat,
+	workloadEnabled,
 })
 
 // 5. Self-hosted Zitadel infra phase (all envs).
@@ -117,11 +153,20 @@ const gcp = new Gcp({
 // Per `refactor-unify-env-dispatch` D1, the env allowlist guard
 // (`env === 'dev' || env === 'prod'`) was removed because `Environment`
 // is now `'dev' | 'prod'` — the guard was no-op.
-new SecretsComponent('zitadel-secrets', {
-	project: gcp.project,
-	zitadelServiceAccountEmail: gcp.zitadelServiceAccountEmail,
-	esoServiceAccountEmail: gcp.esoServiceAccountEmail,
-})
+// Skipped when `workloadEnabled=false`: the secret values are destroyed
+// alongside the cluster so the bootstrap-uploader sidecar re-seeds on
+// the next restart cycle (Scenario 1, not the silent-idle Scenario 2).
+//
+// `gcp.workloadSAs` is undefined iff `workloadEnabled=false`, so the
+// single null-check narrows the union and gates the component in one
+// step — no redundant truthiness chain on `pulumi.Output<T>` values.
+if (gcp.workloadSAs) {
+	new SecretsComponent('zitadel-secrets', {
+		project: gcp.project,
+		zitadelServiceAccountEmail: gcp.workloadSAs.zitadelEmail,
+		esoServiceAccountEmail: gcp.workloadSAs.esoEmail,
+	})
+}
 
 // 3. GitHub Repository Environments (All Environments)
 const sharedVariables = {
@@ -189,5 +234,37 @@ export const githubEnv = env
 // §2.3 for the prod consumption path; the identity-management spec's
 // "Manage OIDC Application" requirement makes these per-env values
 // the contract surface the frontend build depends on.
-export const webFrontendClientId = zitadel.frontend.application.clientId
-export const productOrgId = zitadel.productOrg.id
+//
+// Emit the `DEV_SHUTDOWN_SENTINEL` placeholder instead of `undefined`
+// while `workloadEnabled=false` (dev shutdown mode). Two Pulumi
+// behaviors interact here and both bite the naive `?.` chain:
+//
+//   1. `undefined` exports are omitted from the stack output
+//      registry entirely — `pulumi stack output webFrontendClientId`
+//      hard-fails with "Output not found" rather than returning a
+//      falsy value, breaking frontend CI steps that don't `--json`-
+//      guard the call.
+//   2. Empty-string exports are *also* treated as absent by Pulumi's
+//      preview/diff display (and by some `pulumi stack output`
+//      paths), so a `?? ''` fallback would not solve (1) reliably.
+//
+// A non-empty, recognizable sentinel keeps the output key present
+// in every state and signals intent to the consumer ("dev is down,
+// fall back to cached `.env.dev` or skip the build"). Frontend CI
+// must check for this exact string before treating the value as a
+// usable OIDC client id.
+// Exported so frontend CI consumers can import the canonical
+// value (`import { DEV_SHUTDOWN_SENTINEL } from '...'` or read it
+// via `pulumi stack output DEV_SHUTDOWN_SENTINEL`) rather than
+// hardcoding the literal string. The trade-off is that the
+// constant lands as a stack output on every stack including prod,
+// where it has no purpose — accepted because consumer-side type
+// safety > one redundant prod output key. The name's `DEV_` prefix
+// makes the intent obvious to anyone introspecting prod outputs.
+// See docs/runbooks/dev-shutdown-restart.md gotcha table for the
+// consumer contract.
+export const DEV_SHUTDOWN_SENTINEL = 'DEV_SHUTDOWN_workloadEnabled=false'
+export const webFrontendClientId: string | pulumi.Output<string> =
+	zitadel?.frontend.application.clientId ?? DEV_SHUTDOWN_SENTINEL
+export const productOrgId: string | pulumi.Output<string> =
+	zitadel?.productOrg.id ?? DEV_SHUTDOWN_SENTINEL
