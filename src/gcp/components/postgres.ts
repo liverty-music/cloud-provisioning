@@ -101,7 +101,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			postgresAdminPassword,
 		} = args
 
-		const apiService = new ApiService(project)
+		const apiService = new ApiService(project, environment)
 		const enabledApis = apiService.enableApis([
 			'sqladmin.googleapis.com', // Required for Cloud SQL
 			'servicenetworking.googleapis.com', // Required for PSC
@@ -116,6 +116,15 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		// to be reversible, not destructive, so accidentally calling
 		// `pulumi destroy` on this instance should error rather than wipe
 		// data.
+		//
+		// TODO(#287): the activationPolicy flip races with the Zitadel
+		// orchestrator destroy (Zitadel destroys make HTTP API calls into
+		// the in-cluster pod that writes to this instance; if GCP completes
+		// the STOP first, those calls fail). Fix is to expose this
+		// `instance` from `Gcp`, reorder `src/index.ts` to construct `Gcp`
+		// before `Zitadel`, and add `dependsOn: [instance]` to the Zitadel
+		// provider. Tracked separately; runbook §A5b documents the
+		// operator-side mitigation until the reorder lands.
 		//
 		// To genuinely delete the instance (long-term decommission), apply
 		// the two protection flags in this order across separate

@@ -480,9 +480,12 @@ export class Gcp {
 				{
 					project: this.projectId,
 					service: 'billingbudgets.googleapis.com',
-					// See ApiService — API enablement is free; keep on
-					// across destroy/recreate cycles.
-					disableOnDestroy: false,
+					// Mirrors `ApiService` — dev gets `false` to avoid
+					// re-enable latency on shutdown/restart cycles; prod
+					// gets `true` so a clean `pulumi destroy` flips the
+					// API off and `gcloud projects delete` can finish
+					// without a manual `gcloud services disable` pass.
+					disableOnDestroy: environment !== 'dev',
 				},
 				{ parent: this.project },
 			)

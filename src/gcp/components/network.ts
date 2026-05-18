@@ -48,7 +48,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			postmarkConfig,
 		} = args
 
-		const apiService = new ApiService(project)
+		const apiService = new ApiService(project, environment)
 		const enabledApis = apiService.enableApis(['dns.googleapis.com'], this)
 
 		// 1. VPC Network (Custom Mode)

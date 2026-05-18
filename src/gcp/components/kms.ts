@@ -40,7 +40,13 @@ export class KmsComponent extends pulumi.ComponentResource {
 
 		const { project, region } = args
 
-		const apiService = new ApiService(project)
+		// `KmsComponent` is currently only instantiated when
+		// `environment === 'prod'`. The literal `'prod'` here drives
+		// `ApiService.disableOnDestroy = true` so the cloudkms API is
+		// flipped off on a clean prod teardown. If KMS is ever brought
+		// into dev (e.g. for CMEK parity testing), add `environment` to
+		// `KmsComponentArgs` and forward it here.
+		const apiService = new ApiService(project, 'prod')
 		const enabledApis = apiService.enableApis(
 			['cloudkms.googleapis.com'],
 			this,

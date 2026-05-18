@@ -96,7 +96,7 @@ export class ProjectComponent extends pulumi.ComponentResource {
 		)
 
 		// Enable APIs.
-		const apiService = new ApiService(this.project)
+		const apiService = new ApiService(this.project, environment)
 		apiService.enableApis([
 			'cloudresourcemanager.googleapis.com', // Required for folder creation.
 			'serviceusage.googleapis.com', // Required for API enablement.
