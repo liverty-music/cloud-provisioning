@@ -155,6 +155,13 @@ the destroy diff is exactly the 142-resource Guarded set and
 nothing else. Pulumi Cloud will post a `pulumi preview` comment
 with the planned destroy set.
 
+> **Auto-deploy trigger:** the dev stack's Pulumi Cloud Deployment
+> trigger paths include both `src/**` and `Pulumi.dev.yaml`, so the
+> single-line YAML change in this PR is sufficient to fire `pulumi
+> up` on merge. Verify with `pulumi deployment settings pull` if
+> ever in doubt — the `gitHub.paths` list must contain
+> `Pulumi.dev.yaml` for this runbook to function.
+
 ### A5. Review the preview — the critical gate
 
 The preview comment must show **only** resources from the **Guarded**
