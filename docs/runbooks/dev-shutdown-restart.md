@@ -93,6 +93,8 @@ Cost recovery time when re-enabling: **~20–30 min** end-to-end. Faster than th
 | **Stack outputs become a sentinel string** | `webFrontendClientId` and `productOrgId` resolve to `"DEV_SHUTDOWN_workloadEnabled=false"` (the `DEV_SHUTDOWN_SENTINEL` const in `src/index.ts`) while `workloadEnabled=false`. Pulumi omits `undefined` outputs entirely and the `pulumi stack output <name>` call would hard-fail, so the sentinel keeps the key present. | Frontend CI / build pipelines that read these via `pulumi stack output webFrontendClientId` MUST compare against `DEV_SHUTDOWN_SENTINEL` and either fall back to the cached `.env.dev` value or skip the dev-targeted build step. Treating the sentinel as a real client id will produce non-functional OIDC redirects. |
 | **`admin` Org `protect: true`** | The bootstrap-created admin Org has `protect: true` in `src/zitadel/index.ts` to prevent accidental destroy that would lock out all admins. The shutdown preview will **fail** with "resource cannot be deleted because it is protected." | **Step A4a below.** Run `pulumi state unprotect` against the admin Org URN before opening the disable PR. |
 | **`adminOrgIdMap[dev]` stale after restart** | The dev admin Org ID is hardcoded in `src/zitadel/constants.ts` and used as `import:` to adopt the bootstrap-created org. After Cloud SQL wipe + re-bootstrap, Zitadel creates a *new* admin Org with a *new* ID; the hardcoded value no longer resolves and `pulumi up` blocks. | **Step B5a below.** After Zitadel boots in restart, query the new admin Org ID, update `adminOrgIdMap.dev`, commit, then let Pulumi proceed. |
+| **Shutdown race: Cloud SQL stop vs Zitadel destroy** | The Zitadel orchestrator destroy phase makes HTTP API calls into the in-cluster Zitadel (which writes to Cloud SQL) at the same time Pulumi is applying `activationPolicy: NEVER` to the Cloud SQL instance. Default Pulumi parallelism (10) interleaves these. If GCP completes the Cloud SQL stop before Zitadel's API calls finish, the orchestrator destroys fail mid-flight, leaving rows in a partial-delete state and Pulumi state with pending-delete entries. There is no `dependsOn` edge between Zitadel resources and the Cloud SQL instance in the current code (adding one requires the Gcp-first / Zitadel-second reorder deferred to a future PR). | **Step A5b below.** Treat the shutdown's auto `pulumi up` as best-effort. Monitor the deployment; if Zitadel resource deletes fail, recover with `pulumi state delete --target <urn>` per stuck resource (NOT `--target-dependents` — see [pulumi-state-recovery.md §13.4](pulumi-state-recovery.md)) and re-trigger the deployment. |
+| **Stale `zitadel-machine-key-for-pulumi-admin` on restart hangs Zitadel auth silently** | The Secret container persists; the version populated by the previous boot's bootstrap-uploader also persists. After restart, Zitadel re-bootstraps and generates a new admin SA key — the stored GSM version no longer matches, but the sidecar's "only seed if shell is empty" logic sees a populated shell and skips. Pulumi reads the stale value, auth-as-pulumi-admin against Zitadel fails, and `pulumi up` errors with a 401 with no obvious root cause. | **Step B6 below.** Manually `gcloud secrets versions destroy` the stale versions (admin-sa-key and login-pat) **before** bouncing the Zitadel pod, then verify with `gcloud secrets versions list ... --filter="state=ENABLED"` that the new version's `createTime` is post-restart. |
 
 ---
 
@@ -221,6 +223,55 @@ set above. Verify:
 If anything from the **Preserved** set is in the destroy plan, **stop
 and investigate** — this is the [§13.4 cascade signal](pulumi-state-recovery.md).
 
+### A5b. Race-condition mitigation plan (Zitadel destroy ↔ Cloud SQL stop)
+
+Pulumi Cloud Deployments cannot be invoked with `--parallel 1`, so the
+default parallelism (10) lets Pulumi start `activationPolicy: NEVER`
+on Cloud SQL concurrently with the Zitadel orchestrator destroys.
+Zitadel's destroy phase makes HTTP API calls into the in-cluster
+Zitadel pod, which writes to the same Cloud SQL instance — if Cloud
+SQL becomes unreachable mid-flight, the API calls fail and Pulumi
+leaves the failed resources in a pending-delete state.
+
+**Before merging the shutdown PR**, open a second terminal pointed at
+the deployment monitor and have this recovery command ready:
+
+```bash
+# Recovery: for each Zitadel resource still in state after a failed
+# pulumi up, remove it without an API call. NEVER pass
+# `--target-dependents` here (see §13.4 in pulumi-state-recovery.md).
+pulumi state delete --target 'urn:pulumi:dev::liverty-music::zitadel:index/org:Org::<name>' --yes
+```
+
+Recovery sequence if the auto-deploy fails:
+1. Read the deployment failure log; identify each Zitadel resource left
+   in `failed` state.
+2. `pulumi state delete --target <urn>` for each (no cascade flag).
+3. Re-trigger the deployment via the Pulumi Cloud UI ("Retry"). With
+   Zitadel state pointers gone, the remaining destroys complete
+   cleanly.
+
+**Pre-emptive option (slower but race-free)** — destroy Zitadel in
+its own pre-shutdown step:
+
+```bash
+# Run this BEFORE merging the shutdown PR, while the cluster is up.
+# `pulumi state delete` per-resource (no cascade) clears Zitadel from
+# state without API calls. The actual Zitadel rows will be wiped when
+# the cluster goes down anyway; we just teach Pulumi to skip the
+# destroy phase entirely.
+for urn in $(pulumi stack export | jq -r '.deployment.resources[] | select(.urn | contains("::zitadel:")) | .urn'); do
+  echo "deleting $urn"
+  pulumi state delete --target "$urn" --yes
+done
+```
+
+This is operational overhead. A permanent fix would add `dependsOn:
+[postgresInstance]` to the Zitadel provider so Pulumi destroy walks
+Zitadel → cluster → Cloud SQL stop in dependency order — but that
+requires the Gcp-first / Zitadel-second construction reorder and is
+out of scope for this runbook.
+
 ### A6. Merge → auto pulumi up
 
 Once the preview is verified and approved, merge to `main`. The
@@ -232,6 +283,8 @@ open https://app.pulumi.com/pannpers/liverty-music/dev/deployments
 ```
 
 Expected duration: **~5–10 min** (destroys are faster than creates).
+If the deployment fails on Zitadel resources, apply the
+A5b recovery sequence.
 
 ### A7. Post-shutdown verification
 
@@ -440,6 +493,27 @@ kubectl -n zitadel logs -l app=zitadel-api -c bootstrap-uploader --tail=50
 # → expect: "uploaded zitadel-login-pat"
 ```
 
+**Validation gate — verify the new version's `createTime` is
+post-restart** (catches the silent skip case where the sidecar saw a
+populated shell and didn't reseed):
+
+```bash
+gcloud secrets versions list zitadel-machine-key-for-pulumi-admin \
+  --project=liverty-music-dev \
+  --filter="state=ENABLED" \
+  --format="table(name,createTime,state)"
+
+gcloud secrets versions list zitadel-login-pat \
+  --project=liverty-music-dev \
+  --filter="state=ENABLED" \
+  --format="table(name,createTime,state)"
+```
+
+If the enabled version's `createTime` predates the cluster restart,
+the sidecar skipped the reseed (it still sees a populated shell). Go
+back to the `gcloud secrets versions destroy` step above, ensure no
+ENABLED version remains, and bounce the pod again.
+
 > **Why not destroy these in the Pulumi shutdown PR directly?** The
 > SecretVersions are written by the in-cluster sidecar via the GCP API,
 > not by Pulumi — they're not in Pulumi state. They have to be cleared
@@ -465,6 +539,26 @@ cd frontend && npm run e2e:auth-capture
 ```
 
 ---
+
+## Notes
+
+### Cloud SQL `liverty-music` / `zitadel` databases are not deletion-protected
+
+Only the Cloud SQL **instance** has the two-layer guard (`deletionProtection: true`
+Pulumi-side + `deletionProtectionEnabled: true` Cloud SQL-side). The individual
+databases (`liverty-music` and `zitadel`) inside the instance have no
+protection flag — they can be dropped with `gcloud sql databases delete
+zitadel --instance=postgres-osaka` or `pulumi state delete <db-urn>`. Low
+risk in practice (requires a deliberate action against a specific resource),
+but worth knowing during incident response.
+
+### Prod decommission requires a manual API-disable pass
+
+The `disableOnDestroy: false` setting on all `gcp.projects.Service`
+resources (changed in PR #283) is correct for the dev shutdown cycle. The
+trade-off: when the prod project is eventually decommissioned, a manual
+`gcloud services disable` pass is required before the GCP project itself
+can be deleted cleanly — Pulumi destroy will not flip these APIs off.
 
 ## Troubleshooting
 
