@@ -62,8 +62,8 @@ const env = pulumi.getStack() as Environment
 // the misconfiguration is impossible to apply silently (the
 // `pulumi up` job will abort before computing any resource diff).
 // Disabling prod requires a deliberate code change, not a config flip.
-const workloadEnabledRaw = config.getBoolean('workloadEnabled') ?? true
-if (env === 'prod' && !workloadEnabledRaw) {
+const workloadEnabled = config.getBoolean('workloadEnabled') ?? true
+if (env === 'prod' && !workloadEnabled) {
 	throw new Error(
 		"workloadEnabled=false is forbidden in the 'prod' stack. " +
 			'This flag is a dev-only cost-shutdown switch — see ' +
@@ -72,7 +72,6 @@ if (env === 'prod' && !workloadEnabledRaw) {
 			'flipping this flag.',
 	)
 }
-const workloadEnabled = workloadEnabledRaw
 
 // 1. GitHub Organization Configuration (Prod Only)
 if (env === 'prod') {
@@ -231,8 +230,27 @@ export const githubEnv = env
 // §2.3 for the prod consumption path; the identity-management spec's
 // "Manage OIDC Application" requirement makes these per-env values
 // the contract surface the frontend build depends on.
-// Undefined while `workloadEnabled=false` (dev shutdown mode) — the
-// frontend build then falls back to the last-published values cached
-// in the dev `.env`.
-export const webFrontendClientId = zitadel?.frontend.application.clientId
-export const productOrgId = zitadel?.productOrg.id
+//
+// Emit the `DEV_SHUTDOWN_SENTINEL` placeholder instead of `undefined`
+// while `workloadEnabled=false` (dev shutdown mode). Two Pulumi
+// behaviors interact here and both bite the naive `?.` chain:
+//
+//   1. `undefined` exports are omitted from the stack output
+//      registry entirely — `pulumi stack output webFrontendClientId`
+//      hard-fails with "Output not found" rather than returning a
+//      falsy value, breaking frontend CI steps that don't `--json`-
+//      guard the call.
+//   2. Empty-string exports are *also* treated as absent by Pulumi's
+//      preview/diff display (and by some `pulumi stack output`
+//      paths), so a `?? ''` fallback would not solve (1) reliably.
+//
+// A non-empty, recognizable sentinel keeps the output key present
+// in every state and signals intent to the consumer ("dev is down,
+// fall back to cached `.env.dev` or skip the build"). Frontend CI
+// must check for this exact string before treating the value as a
+// usable OIDC client id.
+export const DEV_SHUTDOWN_SENTINEL = 'DEV_SHUTDOWN_workloadEnabled=false'
+export const webFrontendClientId: string | pulumi.Output<string> =
+	zitadel?.frontend.application.clientId ?? DEV_SHUTDOWN_SENTINEL
+export const productOrgId: string | pulumi.Output<string> =
+	zitadel?.productOrg.id ?? DEV_SHUTDOWN_SENTINEL
