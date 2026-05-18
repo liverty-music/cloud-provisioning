@@ -45,7 +45,11 @@ export class ApiService {
 				{
 					project: this.project.projectId,
 					service: api,
-					disableOnDestroy: true,
+					// API enablement is free; disabling on destroy adds
+					// re-enable latency on restart with no cost benefit, and
+					// can break out-of-band tooling that depends on the API
+					// during the destroy/recreate window.
+					disableOnDestroy: false,
 				},
 				{ parent },
 			)
