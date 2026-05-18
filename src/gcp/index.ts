@@ -164,6 +164,55 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
+		// 4.1. Cross-project AR reader for the prod CI service account.
+		//
+		// Per OpenSpec change `promote-prod-image-via-retag` (archive
+		// pending), the frontend prod release path stops rebuilding and
+		// instead retags the dev AR digest into prod AR. The prod
+		// `github-actions` service account needs READ on the dev project's
+		// frontend AR repo to resolve the digest. Scope is intentionally
+		// minimal: ONE repository, READ only, exactly one direction
+		// (prod CI → dev AR). The cluster-SA cross-project prohibition
+		// (see `prod-image-pipeline` spec) is untouched — CI SAs are
+		// ephemeral Workflow-run identities, structurally distinct from
+		// the persistent cluster identities the prohibition targets.
+		//
+		// Lives in the dev stack because the AR resource being granted on
+		// lives in the dev project. The prod SA email is constructed by
+		// mirroring `WorkloadIdentityComponent`'s naming convention:
+		// SA short name `github-actions` (literal in workload-identity.ts)
+		// + project ID `${brandId}-prod` (the codebase-wide
+		// `${brandId}-${environment}` pattern; see project.ts). If the
+		// SA short name OR the project-ID pattern ever changes, the
+		// derivation here MUST be updated in lock-step.
+		//
+		// A pulumi.StackReference to the prod stack's exported
+		// githubActionsSAEmail would decouple this, but is heavier
+		// machinery (cross-stack dependency, additional output to maintain)
+		// for what is functionally a single static value derivable from
+		// `brandId` already in scope.
+		if (environment === 'dev') {
+			const PROD_PROJECT_ID = `${brandId}-prod`
+			const PROD_CI_SA_EMAIL = `serviceAccount:github-actions@${PROD_PROJECT_ID}.iam.gserviceaccount.com`
+
+			new gcp.artifactregistry.RepositoryIamMember(
+				'prod-ci-frontend-ar-reader',
+				{
+					repository: frontendArtifactRegistry.name,
+					location: this.region,
+					project: this.project.projectId,
+					role: 'roles/artifactregistry.reader',
+					member: PROD_CI_SA_EMAIL,
+				},
+				// protect: true — the grant is on the prod CI critical
+				// path. A `pulumi destroy --target` or operator slip
+				// silently breaks every subsequent release. Removal
+				// requires deliberate `pulumi state unprotect` first,
+				// which is the blast-radius-proportional barrier we want.
+				{ parent: this.project, protect: true },
+			)
+		}
+
 		// 4.5. Cloud KMS — etcd CMEK key for the prod GKE cluster.
 		// Application-layer Secrets Encryption is irreversible at cluster
 		// creation, so the key must exist before KubernetesComponent runs.

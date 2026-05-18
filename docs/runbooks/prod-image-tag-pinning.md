@@ -136,6 +136,53 @@ The escape hatch:
 
 The escape hatch SHALL NOT be used for routine ops (failed rebuilds, typos, "want to fix the release notes"). Cut a new patch version for all of those.
 
+## Retag failure recovery (frontend, post-`promote-prod-image-via-retag`)
+
+After the `promote-prod-image-via-retag` change lands, the frontend release path no longer runs `docker build` — it resolves the dev AR digest for `github.sha` and copies it to prod AR via `gcloud artifacts docker tags add`. This section covers the three failure modes specific to the retag flow.
+
+### Failure: dev AR `:<sha>` does not exist
+
+**Symptom**: the "Resolve dev AR digest" workflow step retries 6 times (initial + 5 retries × 60 s) and fails with:
+
+```
+::error::dev AR tag :<sha> not found after 6 attempts (~5 min total wait).
+Either the dev build for this commit failed, or the release was cut on a non-main commit.
+```
+
+**Causes**:
+- **Most likely**: the release was cut on a commit whose dev build failed or was filtered out (e.g., a doc-only commit that didn't trigger the `Deploy Frontend` workflow's `paths:` filter — see `frontend/.github/workflows/push-image.yaml`).
+- **Less likely**: the release was cut seconds after the merge-to-main and the dev push was still in-flight when the 5-minute retry budget expired. Almost always: the dev build is slower than expected; the retry budget already absorbs the typical 60–180 s ArgoCD Image Updater poll.
+- **Edge case**: the release `target_commitish` is a non-main SHA. The workflow's "Verify release commit is on main" step should catch this earlier — if you reach the digest-resolve step with a non-main SHA, something else broke.
+
+**Recovery**:
+1. Check the dev `Deploy Frontend` run for the same commit SHA: `gh run list --repo liverty-music/frontend --branch main --workflow push-image.yaml --limit 10`. If the dev build failed, fix the failure and push to `main`. Then either re-run the existing release (`gh release delete vX.Y.Z` then `gh release create vX.Y.Z --target <new-sha>`) or cut a new patch.
+2. If the dev build was skipped entirely (paths filter), make a trivial commit that DOES match the filter (e.g., bump `package.json`'s patch version), push, wait for the dev image to land in dev AR, then re-cut the release on the new SHA.
+3. If the dev build IS in AR and the digest-resolve step still failed, the IAM grant likely regressed — see "Cross-project IAM grant revoked" below.
+
+### Failure: cross-project IAM grant revoked accidentally
+
+**Symptom**: the "Resolve dev AR digest" workflow step fails immediately with a `PERMISSION_DENIED` from `gcloud artifacts docker images describe`, or the `gcloud artifacts docker tags add` step fails with a 403.
+
+**Cause**: the `prod-ci-frontend-ar-reader` resource (`gcp.artifactregistry.RepositoryIamMember`) was removed from dev project IAM. Most likely a manual `gcloud artifacts repositories remove-iam-policy-binding` invocation, or a `pulumi destroy` that targeted the resource.
+
+**Recovery**:
+1. Verify the binding's absence: `gcloud artifacts repositories get-iam-policy frontend --project=liverty-music-dev --location=asia-northeast2 --format=json | jq '.bindings[] | select(.members[] | contains("github-actions@liverty-music-prod"))'`. Empty output confirms the missing grant.
+2. Re-apply via Pulumi Cloud Deployments — the dev stack auto-applies `src/**` changes on merge to `main` via the automated job, so the cleanest re-trigger is to either (a) wait for the next legitimate PR to land or (b) push an empty no-op commit and merge it, OR (c) trigger the dev stack run manually from the [Pulumi Cloud console](https://app.pulumi.com/pannpers/liverty-music/dev/deployments). Any of those recreates `prod-ci-frontend-ar-reader` from `src/gcp/index.ts`. **Do not run `pulumi up --stack dev` locally** — it conflicts with the automated job (see `cloud-provisioning/CLAUDE.md`).
+3. The next release will succeed once the binding is restored (no `gcloud` cache to invalidate; `gcloud artifacts` queries are live).
+
+### Failure: immutable-tag re-publish rejected (HTTP 409)
+
+**Symptom**: the `gcloud artifacts docker tags add ... :vX.Y.Z` step fails with `tags.add: ALREADY_EXISTS` / HTTP 409 / "tag already exists".
+
+**Cause**: this is the `prod-image-tag-immutability` capability working as designed. The `:vX.Y.Z` tag was already published in a previous release event and points at a different digest; AR refuses to re-point it. Most likely the operator:
+- Deleted the GitHub Release for `vX.Y.Z`, made a code change, and re-cut the release with the same tag name (the dev rebuild produced a new SHA → new digest → conflict on tag-add).
+- Or, less commonly, the same commit was rebuilt non-deterministically and now has two distinct dev AR digests.
+
+**Recovery**:
+- **Always** cut a new patch version (`v1.0.2` becomes `v1.0.3`). Do NOT delete the published tag in prod AR; the immutability is the whole point. Re-publishing the same name is an explicit anti-pattern.
+- If you genuinely need to roll back, update the kustomize prod overlay's `newTag:` to the older version's tag — the older immutable tag still resolves to its original digest.
+- For a true emergency tag re-point (compromised upstream dep), use the "Genuine emergency requiring tag re-point" escape hatch above. The retag flow's recovery is identical to the rebuild flow's recovery for this failure mode.
+
 ## Related
 
 - Spec: `openspec/specs/prod-image-tag-immutability/spec.md` (post-archive) or the in-flight change at `openspec/changes/enable-prod-ar-immutable-tags/`.
