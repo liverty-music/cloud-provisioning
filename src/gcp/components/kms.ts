@@ -1,10 +1,18 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import type { Environment } from '../../config.js'
 import { ApiService } from '../services/api.js'
 
 export interface KmsComponentArgs {
 	project: gcp.organizations.Project
 	region: pulumi.Input<string>
+	/** Caller's environment — forwarded to `ApiService` so the
+	 *  `cloudkms.googleapis.com` enable resource picks the correct
+	 *  `disableOnDestroy` policy (`false` for dev, `true` for prod and
+	 *  future envs). Today this component is only instantiated for prod,
+	 *  but accepting the arg explicitly removes a latent footgun if KMS
+	 *  is ever extended to other envs. */
+	environment: Environment
 }
 
 /**
@@ -38,9 +46,9 @@ export class KmsComponent extends pulumi.ComponentResource {
 	) {
 		super('gcp:liverty-music:KmsComponent', name, args, opts)
 
-		const { project, region } = args
+		const { project, region, environment } = args
 
-		const apiService = new ApiService(project)
+		const apiService = new ApiService(project, environment)
 		const enabledApis = apiService.enableApis(
 			['cloudkms.googleapis.com'],
 			this,

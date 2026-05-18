@@ -98,7 +98,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			esoOnlySecrets = [],
 		} = args
 
-		const apiService = new ApiService(project)
+		const apiService = new ApiService(project, environment)
 		// API enablement on a GCP project is free at the enable step (per-call
 		// pricing kicks in only when the API is invoked). `places.googleapis.com`
 		// is currently used by the dev venue-enrichment feature; prod does not

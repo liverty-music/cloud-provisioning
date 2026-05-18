@@ -1,10 +1,12 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import type { Environment } from '../../config.js'
 import { ApiService } from '../services/api.js'
 
 export interface ConcertDataStoreArgs {
 	project: gcp.organizations.Project
 	region: pulumi.Input<string>
+	environment: Environment
 }
 
 export class ConcertDataStore extends pulumi.ComponentResource {
@@ -19,9 +21,9 @@ export class ConcertDataStore extends pulumi.ComponentResource {
 			opts,
 		)
 
-		const { project } = args
+		const { project, environment } = args
 
-		const apiService = new ApiService(project)
+		const apiService = new ApiService(project, environment)
 		const enabledApis = apiService.enableApis([
 			'discoveryengine.googleapis.com', // Required for Discovery Engine
 			'aiplatform.googleapis.com', // Required for AI Platform

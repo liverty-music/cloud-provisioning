@@ -70,13 +70,13 @@ export class Gcp {
 	public readonly region: string = Regions.Osaka
 	public readonly githubActionsSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
-	/** Workload-tier service account emails — all defined together when
+	/** Workload-tier resources — all defined together when
 	 *  `workloadEnabled=true`, or the whole group is undefined when the
-	 *  workload tier is destroyed (dev shutdown mode). Grouping the three
-	 *  emails into one optional property lets call-sites narrow the
-	 *  invariant with a single `if (gcp.workloadSAs)` check instead of
-	 *  chaining truthiness on each `pulumi.Output<T>` (which is always
-	 *  truthy at runtime, so chaining adds TS-only noise). */
+	 *  workload tier is destroyed (dev shutdown mode). Grouping the
+	 *  cluster-tied outputs into one optional property lets call-sites
+	 *  narrow the invariant with a single `if (gcp.workloadSAs)` check
+	 *  instead of chaining truthiness on each `pulumi.Output<T>` (which
+	 *  is always truthy at runtime, so chaining adds TS-only noise). */
 	public readonly workloadSAs:
 		| {
 				/** Backend application GCP SA email. */
@@ -85,6 +85,9 @@ export class Gcp {
 				zitadelEmail: pulumi.Output<string>
 				/** External Secrets Operator GCP SA email. */
 				esoEmail: pulumi.Output<string>
+				/** Cluster subnet ID — required for the PSC consumer
+				 *  endpoint that lives inside this subnet. */
+				subnetId: pulumi.Output<string>
 		  }
 		| undefined
 
@@ -223,16 +226,20 @@ export class Gcp {
 				? new KmsComponent('gke-cluster-kms', {
 						project: this.project,
 						region: Regions.Osaka,
+						environment,
 					})
 				: undefined
 
-		// 5+6. GKE Autopilot Cluster + Cloud SQL Instance (Postgres) —
-		// gated by `workloadEnabled` to enable the dev shutdown flow
-		// described in docs/runbooks/dev-shutdown-restart.md. WIF (§7) and
-		// Cost Guardrails (§9) remain unguarded so GitHub Actions OIDC and
-		// billing alerts persist while the workload tier is down.
+		const osakaConfig = NetworkConfig.Osaka
+
+		// 5. GKE Autopilot Cluster — gated by `workloadEnabled` to enable
+		// the dev shutdown flow described in
+		// docs/runbooks/dev-shutdown-restart.md. The Cloud SQL instance
+		// (§6) is hoisted out of this guard so it can be `STOPped` rather
+		// than destroyed (data preservation). WIF (§7) and Cost Guardrails
+		// (§9) remain unguarded so GitHub Actions OIDC and billing alerts
+		// persist while the workload tier is down.
 		if (workloadEnabled) {
-			const osakaConfig = NetworkConfig.Osaka
 			const kubernetes = new KubernetesComponent('kubernetes-cluster', {
 				project: this.project,
 				environment,
@@ -355,28 +362,36 @@ export class Gcp {
 				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
 				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
 				esoEmail: kubernetes.esoServiceAccountEmail,
-			}
-
-			// 6. Cloud SQL Instance (Postgres)
-			new PostgresComponent('postgres', {
-				project: this.project,
-				region: Regions.Osaka,
-				regionName: RegionNames.Osaka,
-				environment,
 				subnetId: kubernetes.subnet.id,
-				networkId: network.network.id,
-				pscEndpointIp: osakaConfig.postgresPscIp,
-				dnsZoneName: network.sqlZone.name,
-				appServiceAccountEmail:
-					kubernetes.backendAppServiceAccountEmail,
-				zitadelServiceAccountEmail:
-					kubernetes.zitadelServiceAccountEmail,
-				iamDatabaseUsers: cloudSqlUsers,
-				postgresAdminPassword: gcpConfig.postgresAdminPassword
-					? pulumi.secret(gcpConfig.postgresAdminPassword)
-					: undefined,
-			})
+			}
 		}
+
+		// 6. Cloud SQL Instance (Postgres).
+		// Always provisioned regardless of `workloadEnabled`. When the
+		// workload tier is down, the instance is set to
+		// `activationPolicy: NEVER` (stopped — CPU/RAM billing halts, disk
+		// + PITR backup retention continues) so dev data survives the
+		// shutdown window. The PSC consumer endpoint + cluster-SA IAM SQL
+		// users are still gated on `workloadEnabled` inside the component
+		// because they bind to cluster-only resources (subnet + Workload
+		// Identity SAs).
+		new PostgresComponent('postgres', {
+			project: this.project,
+			region: Regions.Osaka,
+			regionName: RegionNames.Osaka,
+			environment,
+			workloadEnabled,
+			subnetId: this.workloadSAs?.subnetId,
+			networkId: network.network.id,
+			pscEndpointIp: osakaConfig.postgresPscIp,
+			dnsZoneName: network.sqlZone.name,
+			appServiceAccountEmail: this.workloadSAs?.backendAppEmail,
+			zitadelServiceAccountEmail: this.workloadSAs?.zitadelEmail,
+			iamDatabaseUsers: cloudSqlUsers,
+			postgresAdminPassword: gcpConfig.postgresAdminPassword
+				? pulumi.secret(gcpConfig.postgresAdminPassword)
+				: undefined,
+		})
 
 		// 7. Workload Identity Federation
 		const wif = new WorkloadIdentityComponent({
@@ -466,7 +481,12 @@ export class Gcp {
 				{
 					project: this.projectId,
 					service: 'billingbudgets.googleapis.com',
-					disableOnDestroy: true,
+					// Mirrors `ApiService` — dev gets `false` to avoid
+					// re-enable latency on shutdown/restart cycles; prod
+					// gets `true` so a clean `pulumi destroy` flips the
+					// API off and `gcloud projects delete` can finish
+					// without a manual `gcloud services disable` pass.
+					disableOnDestroy: environment !== 'dev',
 				},
 				{ parent: this.project },
 			)

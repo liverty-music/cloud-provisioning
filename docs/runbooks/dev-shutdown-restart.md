@@ -19,7 +19,7 @@
 | Active (`workloadEnabled: true`)   | ~¥7,000/mo | full dev stack |
 | Shutdown (`workloadEnabled: false`) | **~¥300/mo** | Project / VPC / DNS / Artifact Registry / WIF / Cost budget |
 
-Cost recovery time when re-enabling: **~30–45 min** end-to-end (GKE create + Cloud SQL create + ArgoCD app-of-apps re-sync).
+Cost recovery time when re-enabling: **~20–30 min** end-to-end. Faster than the v1 design (~30–45 min) because Cloud SQL is STARTed (≈3 min) rather than re-provisioned (≈8–12 min) — the instance, disk, databases, and admin user are all preserved through the shutdown window.
 
 ## Mental model — what gets torn down vs preserved
 
@@ -27,39 +27,74 @@ Cost recovery time when re-enabling: **~30–45 min** end-to-end (GKE create + C
 ┌─ Pulumi.dev.yaml: workloadEnabled flag ───────────────────────────────┐
 │                                                                        │
 │   PRESERVED (always-on, ~¥300/mo)                                      │
-│   ├─ ProjectComponent       project, folder, GSM secret shells*        │
+│   ├─ ProjectComponent       project, folder                            │
 │   ├─ NetworkComponent       VPC, DNS zones, certMap, static IP         │
 │   ├─ Artifact Registry      backend + frontend Docker images           │
 │   ├─ WorkloadIdentity       GitHub Actions OIDC                        │
 │   ├─ GitHub repo bindings   env vars, status check policy              │
-│   └─ Cost budget + billing alert (DORMANT — no billingAlertEmail seed) │
+│   ├─ Cost budget + billing alert (DORMANT — no billingAlertEmail seed) │
+│   ├─ PostgresComponent      Cloud SQL *infrastructure*: instance,     │
+│   │                          databases, postgres admin user, DNS A     │
+│   │                          record. STOPped on shutdown               │
+│   │                          (activationPolicy=NEVER) — CPU/RAM        │
+│   │                          billing halts, disk + PITR backup remain. │
+│   └─ SecretsComponent       Zitadel GSM containers + masterkey         │
+│                              RandomString stay in state so the         │
+│                              preserved Cloud SQL rows remain           │
+│                              decryptable on restart.                   │
 │                                                                        │
 │   GUARDED (destroyed when flag=false)                                  │
-│   ├─ KubernetesComponent    cluster, node pool, cluster-subnet         │
-│   ├─ PostgresComponent      Cloud SQL instance, PSC endpoint, IAM      │
+│   ├─ KubernetesComponent    cluster, node pool, cluster-subnet,        │
+│   │                          workload SAs + IAM bindings, K8s GSM      │
+│   │                          secrets bound to those SAs                │
+│   ├─ PSC consumer endpoint  forwarding rule + 10.10.10.10 address      │
+│   │                          (created inside PostgresComponent under   │
+│   │                          if (workloadEnabled), bound to            │
+│   │                          cluster-subnet)                           │
+│   ├─ Cloud SQL IAM users    backend-app + zitadel IAM SQL users        │
+│   │                          (cluster SAs only; postgres admin user    │
+│   │                          and human IAM users persist)              │
 │   ├─ MonitoringComponent    log-based alert policies                   │
 │   ├─ ZitadelMonitoringComponent  Zitadel SLO/latency alerts            │
-│   ├─ Zitadel (orchestrator) cluster-dependent Zitadel infra            │
-│   └─ SecretsComponent*      zitadel GSM bootstrap secret shells        │
-│                                                                        │
-│   * GSM secret *values* (the previously-populated masterkey,           │
-│     admin-sa-key, login-pat) get destroyed with SecretsComponent so    │
-│     the in-cluster bootstrap-uploader sidecar reseeds on restart.      │
+│   ├─ Zitadel (orchestrator) Zitadel-provider resources — destroyed     │
+│   │                          via API call to the in-cluster Zitadel,   │
+│   │                          which deletes the Org/Project/Apps rows   │
+│   │                          from the Cloud SQL Zitadel database       │
+│   │                          even though the SQL instance survives.    │
+│   └─ Secret IAM bindings    ESO + Zitadel SA reads on masterkey /      │
+│                              admin-sa-key (the Secret containers       │
+│                              themselves stay in PRESERVED).            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+> **Important nuance on data preservation:** "Cloud SQL preserved" means
+> the **instance, disk, and backups** are not destroyed — the next
+> restart skips the 8–12 min Cloud SQL provisioning step and the dev
+> data has a physical home to come back to. But the **Zitadel
+> orchestrator's destroy still calls the Zitadel API** (while the
+> cluster is still alive in the destroy window) to delete each
+> `Org` / `Project` / `ApplicationOidc` / etc. row. So the *Zitadel
+> application data* inside Cloud SQL is wiped, even though the Cloud
+> SQL infrastructure is preserved. The preserved `zitadel-masterkey`
+> still matters because the freshly re-bootstrapped Zitadel on
+> restart writes new rows encrypted with the **same** masterkey, so
+> any out-of-band data (e.g. raw SQL exports kept across cycles)
+> remains decryptable.
 
 ## STOP — gotchas to know before shutdown
 
 | Gotcha | Why it matters | Mitigation |
 |---|---|---|
 | **k8s Gateway → orphan GCLB resources** | `Gateway` is k8s-managed (ArgoCD) and the GCLB forwarding rule + target proxy are *derived* by the GKE Gateway controller. If the cluster is destroyed before the Gateway resource is cleaned up, the controller never runs the cleanup, and the GCP forwarding rule is orphaned outside Pulumi state — costing money silently. | **Pre-shutdown step 1 below.** Delete the k8s `Gateway` resource via `kubectl` *first* and wait for the controller to remove the GCLB forwarding rule before triggering Pulumi destroy. |
-| **Subnet co-owned with cluster** | `cluster-subnet-osaka` is created inside `KubernetesComponent` (not `NetworkComponent`). When the cluster is destroyed, the subnet goes with it, dragging the PSC endpoint that lives in the same subnet. | Intentional — Postgres is in the guarded set anyway. Note: this couples the two on restart (one cannot exist without the other). |
+| **Subnet co-owned with cluster** | `cluster-subnet-osaka` is created inside `KubernetesComponent` (not `NetworkComponent`). When the cluster is destroyed, the subnet goes with it, dragging the PSC consumer endpoint that lives in the same subnet. The Cloud SQL instance itself is unaffected (it's a separate, preserved resource); only the PSC access route is recreated on restart. | Intentional — PSC endpoint is structurally cluster-scoped. Restart recreates the same `10.10.10.10` forwarding rule pointing to the same provider-side service attachment. |
 | **Auto-pulumi-up on merge** | dev stack triggers `pulumi up` automatically on `src/**` merges. Once the PR is merged, the destroy is irreversible without `pulumi up` of the inverse change. | **`pulumi preview` is the only gate.** Review the preview output line-by-line *before* approving the PR — verify the destroy set matches the **Guarded** section exactly. |
 | **State cascade footgun** | A misconfigured if-guard could cascade-remove unrelated resources via shared dependency edges (see [pulumi-state-recovery.md §13.4](pulumi-state-recovery.md) — 9 intended → 87 actual). | Preview shows the actual scope. If unexpected resources appear in the destroy set, **do not merge** — investigate dependency chain. |
-| **Zitadel state loss** | dev Cloud SQL is destroyed → all Zitadel users / orgs / OAuth grants are gone. Pulumi-managed objects (admin org, OIDC clients, e2e test user) recreate on restart from `e2eTestUser.password` ESC value. Manual edits made via Zitadel Console *will not survive*. | Dev is treated as throwaway. If manual config matters, export before shutdown. |
+| **Zitadel application data loss (DB infra survives)** | Cloud SQL infrastructure is preserved (instance + disk + backups), but the Zitadel orchestrator destroy phase calls the Zitadel API while the cluster is still alive to delete each Org / Project / ApplicationOidc / etc. row. The Zitadel-side data in Cloud SQL is wiped even though Cloud SQL itself is not destroyed. Pulumi-managed objects (admin org, OIDC clients, e2e test user) recreate on restart from `e2eTestUser.password` and the rest of ESC. Manual edits made via Zitadel Console *will not survive*. | Dev is treated as throwaway for application data; infra preservation just saves the Cloud SQL provisioning time on restart. If manual Zitadel config matters, export before shutdown. |
 | **Stack outputs become a sentinel string** | `webFrontendClientId` and `productOrgId` resolve to `"DEV_SHUTDOWN_workloadEnabled=false"` (the `DEV_SHUTDOWN_SENTINEL` const in `src/index.ts`) while `workloadEnabled=false`. Pulumi omits `undefined` outputs entirely and the `pulumi stack output <name>` call would hard-fail, so the sentinel keeps the key present. | Frontend CI / build pipelines that read these via `pulumi stack output webFrontendClientId` MUST compare against `DEV_SHUTDOWN_SENTINEL` and either fall back to the cached `.env.dev` value or skip the dev-targeted build step. Treating the sentinel as a real client id will produce non-functional OIDC redirects. |
 | **`admin` Org `protect: true`** | The bootstrap-created admin Org has `protect: true` in `src/zitadel/index.ts` to prevent accidental destroy that would lock out all admins. The shutdown preview will **fail** with "resource cannot be deleted because it is protected." | **Step A4a below.** Run `pulumi state unprotect` against the admin Org URN before opening the disable PR. |
 | **`adminOrgIdMap[dev]` stale after restart** | The dev admin Org ID is hardcoded in `src/zitadel/constants.ts` and used as `import:` to adopt the bootstrap-created org. After Cloud SQL wipe + re-bootstrap, Zitadel creates a *new* admin Org with a *new* ID; the hardcoded value no longer resolves and `pulumi up` blocks. | **Step B5a below.** After Zitadel boots in restart, query the new admin Org ID, update `adminOrgIdMap.dev`, commit, then let Pulumi proceed. |
+| **Shutdown race: Cloud SQL stop vs Zitadel destroy** | The Zitadel orchestrator destroy phase makes HTTP API calls into the in-cluster Zitadel (which writes to Cloud SQL) at the same time Pulumi is applying `activationPolicy: NEVER` to the Cloud SQL instance. Default Pulumi parallelism (10) interleaves these. If GCP completes the Cloud SQL stop before Zitadel's API calls finish, the orchestrator destroys fail mid-flight, leaving rows in a partial-delete state and Pulumi state with pending-delete entries. The permanent code-side fix (`dependsOn: [postgresInstance]` on the Zitadel provider) is tracked in [#287](https://github.com/liverty-music/cloud-provisioning/issues/287). | **Step A5b below.** Until #287 lands, treat the shutdown's auto `pulumi up` as best-effort. Monitor the deployment; if Zitadel resource deletes fail, recover with `pulumi state delete --target <urn>` per stuck resource (NOT `--target-dependents` — see [pulumi-state-recovery.md §13.4](pulumi-state-recovery.md)) and re-trigger the deployment. |
+| **Stale `zitadel-machine-key-for-pulumi-admin` on restart hangs Zitadel auth silently** | The Secret container persists in `SecretsComponent` (PRESERVED tier); the version populated by the previous boot's bootstrap-uploader also persists. After restart, Zitadel re-bootstraps and generates a new admin SA key — the stored GSM version no longer matches, but the sidecar's "only seed if shell is empty" logic sees a populated shell and skips. Pulumi reads the stale value, auth-as-pulumi-admin against Zitadel fails, and `pulumi up` errors with a 401 with no obvious root cause. **Only `zitadel-machine-key-for-pulumi-admin` is affected** — `zitadel-machine-key-for-backend-app` and `zitadel-login-pat` live in `KubernetesComponent` (GUARDED tier), so they are destroyed + recreated by Pulumi each cycle with the fresh Zitadel orchestrator's output, no manual step needed. | **Step B6 below.** Manually `gcloud secrets versions destroy` the stale `zitadel-machine-key-for-pulumi-admin` version **before** bouncing the Zitadel pod, then verify with `gcloud secrets versions list ... --filter="state=ENABLED"` that the new version's `createTime` is post-restart. |
 
 ---
 
@@ -76,17 +111,14 @@ gcloud sql export sql postgres-osaka gs://<bucket>/dev-snapshot-$(date +%Y%m%d).
   --project=liverty-music-dev --database=<db>
 ```
 
-> **Sanity-check Cloud SQL tier before shutting down.** Once dev
-> Cloud SQL is destroyed, the restart will recreate it from the
-> `tier` value in `src/gcp/components/postgres.ts` (currently
-> `db-f1-micro`). GCP has been progressively deprecating
-> `db-f1-micro` for fresh instances. Confirm the tier is still
-> accepted by running a no-op preview:
-> `pulumi preview --stack dev` (the create-plan check happens at
-> validate time). If GCP returns a tier-deprecation error,
-> hot-fix `postgres.ts` to a current tier (e.g.
-> `db-perf-optimized-N-1`) in a separate PR *before* the
-> shutdown PR, so the restart side won't be blocked.
+> **Cloud SQL tier check is no longer restart-critical.** As of PR #283,
+> the Cloud SQL instance is STOPped (`activationPolicy: NEVER`), not
+> destroyed, so restart does not recreate it and the existing
+> `db-f1-micro` tier is reactivated rather than re-provisioned. The
+> tier-deprecation footgun from the previous design (fresh instances
+> getting `db-f1-micro` rejected) does not apply. If `db-f1-micro` is
+> ever forcibly retired by GCP for *running* instances, that becomes a
+> separate hot-fix issue independent of this runbook.
 
 ### A2. Delete the k8s Gateway and wait for GCLB cleanup
 
@@ -180,13 +212,94 @@ The preview comment must show **only** resources from the **Guarded**
 set above. Verify:
 
 - ✅ GKE cluster, node pool, cluster-subnet listed for destroy
-- ✅ Cloud SQL `postgres-osaka` and its PSC endpoint listed for destroy
+- ✅ PSC consumer endpoint (forwarding rule + 10.10.10.10 address) listed for destroy
+- ✅ Cluster-SA Cloud SQL IAM users (`backend-app`, `zitadel`) listed for destroy
 - ✅ Monitoring + ZitadelMonitoring alert policies listed for destroy
-- ✅ Zitadel orchestrator resources + zitadel GSM secret shells listed for destroy
-- ❌ **NOT** in the destroy set: GCP project, VPC, DNS zones, Artifact Registry, WIF, certMap, static IP, GitHub repo bindings, cost budget
+- ✅ Zitadel orchestrator resources listed for destroy (API delete clears the Cloud SQL Zitadel rows while the cluster is still up)
+- ✅ Secret IAM bindings on `zitadel-masterkey` + `zitadel-machine-key-for-pulumi-admin` listed for destroy
+- ✅ `gcp:sql:DatabaseInstance postgres-osaka` listed as **update** (not destroy) with `~settings.activationPolicy: ALWAYS → NEVER`
+- ❌ **NOT** in the destroy set: GCP project, VPC, DNS zones, Artifact Registry, WIF, certMap, static IP, GitHub repo bindings, cost budget, Cloud SQL instance, Cloud SQL databases (`liverty-music`, `zitadel`), postgres admin user, `zitadel-masterkey` Secret + Version, `zitadel-machine-key-for-pulumi-admin` Secret
 
 If anything from the **Preserved** set is in the destroy plan, **stop
 and investigate** — this is the [§13.4 cascade signal](pulumi-state-recovery.md).
+
+### A5b. Race-condition mitigation plan (Zitadel destroy ↔ Cloud SQL stop)
+
+Pulumi Cloud Deployments cannot be invoked with `--parallel 1`, so the
+default parallelism (10) lets Pulumi start `activationPolicy: NEVER`
+on Cloud SQL concurrently with the Zitadel orchestrator destroys.
+Zitadel's destroy phase makes HTTP API calls into the in-cluster
+Zitadel pod, which writes to the same Cloud SQL instance — if Cloud
+SQL becomes unreachable mid-flight, the API calls fail and Pulumi
+leaves the failed resources in a pending-delete state.
+
+**Before merging the shutdown PR**, open a second terminal pointed at
+the deployment monitor and have this recovery command ready:
+
+```bash
+# Recovery: for each Zitadel resource still in state after a failed
+# pulumi up, remove it without an API call. NEVER pass
+# `--target-dependents` here (see §13.4 in pulumi-state-recovery.md).
+pulumi state delete --target 'urn:pulumi:dev::liverty-music::zitadel:index/org:Org::<name>' --yes
+```
+
+Recovery sequence if the auto-deploy fails:
+1. Read the deployment failure log; identify each Zitadel resource left
+   in `failed` state.
+2. `pulumi state delete --target <urn>` for each (no cascade flag).
+3. Re-trigger the deployment via the Pulumi Cloud UI ("Retry"). With
+   Zitadel state pointers gone, the remaining destroys complete
+   cleanly.
+
+**Pre-emptive option (slower but race-free)** — destroy Zitadel in
+its own pre-shutdown step:
+
+```bash
+# Run this BEFORE merging the shutdown PR, while the cluster is up.
+# `pulumi state delete` per-resource (no cascade) clears Zitadel from
+# state without API calls. The actual Zitadel rows will be wiped when
+# the cluster goes down anyway; we just teach Pulumi to skip the
+# destroy phase entirely.
+#
+# Filter on `.type` (not `.urn`) so we don't accidentally match
+# children of Zitadel components — e.g. the `zitadel-masterkey` GSM
+# Secret created inside `SecretsComponent` has URN suffix
+# `::zitadel:liverty-music:Secrets$gcp:secretmanager/secret:Secret::zitadel-masterkey`
+# which would be hit by a substring URN filter but has type
+# `gcp:secretmanager/secret:Secret`, not `zitadel:*`. Filtering by
+# `.type` keeps the preserved GSM containers safe.
+for urn in $(pulumi stack export | jq -r '
+  .deployment.resources[]
+  | select(.type | startswith("zitadel:") or . == "pulumi:providers:zitadel")
+  | .urn
+'); do
+  echo "deleting $urn"
+  pulumi state delete --target "$urn" --yes
+done
+```
+
+Sanity-check before running the loop — preview the list:
+
+```bash
+pulumi stack export | jq -r '
+  .deployment.resources[]
+  | select(.type | startswith("zitadel:") or . == "pulumi:providers:zitadel")
+  | {urn, type}
+'
+```
+
+Every entry should be either a `zitadel:index/*` resource (Zitadel API
+object), a `zitadel:liverty-music:*` component, or the
+`pulumi:providers:zitadel` provider itself. If any other type shows
+up, **stop** — the filter is too broad.
+
+This is operational overhead. The permanent fix — adding
+`dependsOn: [postgresInstance]` to the Zitadel provider so Pulumi
+destroy walks Zitadel → cluster → Cloud SQL stop in dependency
+order — requires a Gcp-first / Zitadel-second construction reorder
+and is tracked separately as
+[issue #287](https://github.com/liverty-music/cloud-provisioning/issues/287).
+This runbook step is the interim mitigation until that lands.
 
 ### A6. Merge → auto pulumi up
 
@@ -199,6 +312,8 @@ open https://app.pulumi.com/pannpers/liverty-music/dev/deployments
 ```
 
 Expected duration: **~5–10 min** (destroys are faster than creates).
+If the deployment fails on Zitadel resources, apply the
+A5b recovery sequence.
 
 ### A7. Post-shutdown verification
 
@@ -373,34 +488,59 @@ kubectl -n argocd get applications -w
 # Wait for all to reach Synced + Healthy. Expected: ~10–15 min.
 ```
 
-### B6. Zitadel bootstrap-uploader reseed
+### B6. Zitadel bootstrap-uploader reseed — manual reseed of `zitadel-machine-key-for-pulumi-admin`
 
-The `bootstrap-uploader` sidecar on the first-instance Zitadel pod
-detects empty GSM secret shells and populates them:
+The `bootstrap-uploader` sidecar only writes a new version to a GSM
+secret if the existing shell is **empty**. As of PR #283 (`Path 2`
+design), the four Zitadel-related GSM secrets fall into two groups:
 
-- `zitadel-masterkey` (re-generated)
-- `zitadel-machine-key-for-pulumi-admin` (admin SA JWT key)
-- `zitadel-login-pat` (Login V2 PAT)
+| Secret | Created in | Behavior across cycle | Sidecar action on restart |
+|---|---|---|---|
+| `zitadel-masterkey` | `SecretsComponent` (PRESERVED tier) | Pulumi-managed RandomString + SecretVersion both stay in state. The same value is reused so Zitadel can decrypt any pre-existing rows. | Sees a populated shell, **skips** — correct, the stored value is the right one. |
+| `zitadel-machine-key-for-pulumi-admin` | `SecretsComponent` (PRESERVED tier) | Secret container persists; the **version** populated by the previous boot's sidecar also persists. But the Zitadel orchestrator destroy in the shutdown cycle deleted the corresponding `pulumi-admin` MachineUser + MachineKey rows from the Cloud SQL Zitadel DB. On restart, Zitadel re-bootstraps and generates a **new** admin SA key whose JSON doesn't match the stored version. | Sees a populated shell, **skips** — but the stored key is stale. **Manual step required: destroy the stale version so the sidecar reseeds with the new key.** |
+| `zitadel-machine-key-for-backend-app` | `KubernetesComponent.secrets[]` (GUARDED tier) | Destroyed with the cluster, re-created on restart by Pulumi using the *new* `zitadel.machineKeyDetails` output of the freshly-bootstrapped Zitadel orchestrator. The GSM Secret + Version are both Pulumi-managed; no sidecar involvement. | Not applicable — value is correct from creation. |
+| `zitadel-login-pat` | `KubernetesComponent.esoOnlySecrets[]` (GUARDED tier) | Same shape as `zitadel-machine-key-for-backend-app` — Pulumi destroys and recreates from `zitadel.loginClientToken`. | Not applicable — value is correct from creation. |
+
+Only the **first row's `zitadel-machine-key-for-pulumi-admin`** needs
+the manual destroy-and-reseed; the other three sort themselves out
+through their respective normal paths.
 
 ```bash
-kubectl -n zitadel logs <pod> -c bootstrap-uploader
-# → expect: lines like "uploaded zitadel-machine-key-for-pulumi-admin"
-
-# Confirm GSM secrets repopulated.
+# Disable the stale version so the sidecar re-seeds on next pod boot.
 gcloud secrets versions list zitadel-machine-key-for-pulumi-admin \
   --project=liverty-music-dev --limit=3
+gcloud secrets versions destroy <VERSION> \
+  --secret=zitadel-machine-key-for-pulumi-admin \
+  --project=liverty-music-dev --quiet
+
+# Bounce the first-instance Zitadel pod so the sidecar re-runs.
+kubectl -n zitadel rollout restart deployment zitadel-api
+kubectl -n zitadel logs -l app=zitadel-api -c bootstrap-uploader --tail=50
+# → expect: "uploaded zitadel-machine-key-for-pulumi-admin"
 ```
 
-> **If bootstrap-uploader idles without uploading**, the GSM secret
-> shells already have populated versions from before — the sidecar
-> only seeds when the shell is empty, so it goes silent and the
-> restart hangs indefinitely waiting for `zitadel-machine-key-for-pulumi-admin`.
-> Cause: the shutdown PR's `pulumi up` did not remove
-> `SecretsComponent` (e.g. `workloadEnabled` was not actually `false`
-> in state, or the secret values were imported outside the
-> SecretsComponent path). Fix: manually destroy the affected secret
-> versions and restart the Zitadel pod — the sidecar then takes the
-> normal first-boot seed path.
+**Validation gate — verify the new version's `createTime` is
+post-restart** (catches the silent skip case where the sidecar saw a
+populated shell and didn't reseed):
+
+```bash
+gcloud secrets versions list zitadel-machine-key-for-pulumi-admin \
+  --project=liverty-music-dev \
+  --filter="state=ENABLED" \
+  --format="table(name,createTime,state)"
+```
+
+If the ENABLED version's `createTime` predates the cluster restart,
+the sidecar skipped the reseed (it still sees a populated shell). Go
+back to the `gcloud secrets versions destroy` step above, ensure no
+ENABLED version remains, and bounce the pod again.
+
+> **Why not destroy these in the Pulumi shutdown PR directly?** The
+> SecretVersions are written by the in-cluster sidecar via the GCP API,
+> not by Pulumi — they're not in Pulumi state. They have to be cleared
+> via `gcloud secrets versions destroy` on the operator side. A future
+> improvement could be a Pulumi `Command` resource that runs this on
+> shutdown automatically, but that's out of scope for now.
 
 ### B7. End-to-end smoke
 
@@ -420,6 +560,26 @@ cd frontend && npm run e2e:auth-capture
 ```
 
 ---
+
+## Notes
+
+### Cloud SQL `liverty-music` / `zitadel` databases are not deletion-protected
+
+Only the Cloud SQL **instance** has the two-layer guard (`deletionProtection: true`
+Pulumi-side + `deletionProtectionEnabled: true` Cloud SQL-side). The individual
+databases (`liverty-music` and `zitadel`) inside the instance have no
+protection flag — they can be dropped with `gcloud sql databases delete
+zitadel --instance=postgres-osaka` or `pulumi state delete <db-urn>`. Low
+risk in practice (requires a deliberate action against a specific resource),
+but worth knowing during incident response.
+
+### Prod decommission requires a manual API-disable pass
+
+The `disableOnDestroy: false` setting on all `gcp.projects.Service`
+resources (changed in PR #283) is correct for the dev shutdown cycle. The
+trade-off: when the prod project is eventually decommissioned, a manual
+`gcloud services disable` pass is required before the GCP project itself
+can be deleted cleanly — Pulumi destroy will not flip these APIs off.
 
 ## Troubleshooting
 

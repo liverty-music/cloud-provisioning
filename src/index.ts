@@ -147,26 +147,23 @@ const gcp = new Gcp({
 	workloadEnabled,
 })
 
-// 5. Self-hosted Zitadel infra phase (all envs).
-// Provisions GSM secret shells (masterkey, empty admin-sa-key) that the
-// in-cluster Zitadel pod's bootstrap sidecar populates on first boot.
-// Per `refactor-unify-env-dispatch` D1, the env allowlist guard
-// (`env === 'dev' || env === 'prod'`) was removed because `Environment`
-// is now `'dev' | 'prod'` — the guard was no-op.
-// Skipped when `workloadEnabled=false`: the secret values are destroyed
-// alongside the cluster so the bootstrap-uploader sidecar re-seeds on
-// the next restart cycle (Scenario 1, not the silent-idle Scenario 2).
+// 5. Self-hosted Zitadel GSM secret shells (all envs, always).
+// Provisions the `zitadel-masterkey` + `zitadel-machine-key-for-pulumi-admin`
+// Secret containers that the in-cluster Zitadel pod's bootstrap sidecar
+// populates on first boot. The containers are unconditional so the
+// masterkey RandomString (which encrypts Cloud SQL Zitadel data) and any
+// bootstrap-uploaded admin SA key version survive a
+// `workloadEnabled=false` cycle — destroying them and regenerating on
+// restart would corrupt the preserved Cloud SQL data (the new masterkey
+// can't decrypt rows written under the old one).
 //
-// `gcp.workloadSAs` is undefined iff `workloadEnabled=false`, so the
-// single null-check narrows the union and gates the component in one
-// step — no redundant truthiness chain on `pulumi.Output<T>` values.
-if (gcp.workloadSAs) {
-	new SecretsComponent('zitadel-secrets', {
-		project: gcp.project,
-		zitadelServiceAccountEmail: gcp.workloadSAs.zitadelEmail,
-		esoServiceAccountEmail: gcp.workloadSAs.esoEmail,
-	})
-}
+// `gcp.workloadSAs` (cluster Workload Identity SAs) is optional and gates
+// only the IAM bindings inside `SecretsComponent`; the Secret + Version
+// resources are created regardless.
+new SecretsComponent('zitadel-secrets', {
+	project: gcp.project,
+	workloadSAs: gcp.workloadSAs,
+})
 
 // 3. GitHub Repository Environments (All Environments)
 const sharedVariables = {
