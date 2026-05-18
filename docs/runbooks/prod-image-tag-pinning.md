@@ -161,7 +161,7 @@ Either the dev build for this commit failed, or the release was cut on a non-mai
 
 ### Failure: cross-project IAM grant revoked accidentally
 
-**Symptom**: the "Resolve dev AR digest" workflow step fails immediately with a `PERMISSION_DENIED` from `gcloud artifacts docker images describe`, or a "Promote dev AR digest to prod AR" step fails with a 403 from `crane copy` (typically surfaced as `DENIED: Permission "artifactregistry.repositories.uploadArtifacts" denied`).
+**Symptom**: the "Resolve dev AR digest" workflow step fails immediately with a `PERMISSION_DENIED` from `gcloud artifacts docker images describe`, or a "Promote dev AR digest to prod AR" step fails with a 403 from `crane copy` while reading the dev AR source image (typically surfaced as `DENIED: Permission "artifactregistry.repositories.downloadArtifacts" denied on resource "projects/liverty-music-dev/…"`). Note: this is a **read-side** failure against dev AR — the binding `prod-ci-frontend-ar-reader` grants `roles/artifactregistry.reader` on the dev `frontend` AR repo. An `uploadArtifacts` denial on prod AR would indicate a different, separate failure (prod CI SA missing writer on prod AR) outside the scope of this binding.
 
 **Cause**: the `prod-ci-frontend-ar-reader` resource (`gcp.artifactregistry.RepositoryIamMember`) was removed from dev project IAM. Most likely a manual `gcloud artifacts repositories remove-iam-policy-binding` invocation, or a `pulumi destroy` that targeted the resource.
 
