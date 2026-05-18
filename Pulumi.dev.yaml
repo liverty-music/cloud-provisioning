@@ -2,9 +2,11 @@ environment:
   - liverty-music/dev
 config:
   gcp:project: liverty-music-dev
-  # To shut the dev workload tier down (~¥7,000/mo → ~¥300/mo), set
-  # `liverty-music:workloadEnabled: "false"` here in a separate PR
-  # AFTER completing the pre-merge gates documented in
-  # docs/runbooks/dev-shutdown-restart.md (k8s Gateway delete + admin
-  # Org unprotect). The feature code stays committed to main; only
-  # the flag flip triggers the destroy via auto `pulumi up`.
+  # Dev workload tier shut down to reduce idle cost from ~¥7,000/mo
+  # to ~¥300/mo. Pre-merge gates were completed before this PR:
+  # k8s Gateway + HTTPRoutes deleted (orphan GCLB resources verified
+  # cleaned up) and admin Zitadel Org unprotected. To restart, flip
+  # back to `true` and follow procedure B in
+  # docs/runbooks/dev-shutdown-restart.md (expect a two-PR sequence
+  # for `adminOrgIdMap[dev]` refresh).
+  liverty-music:workloadEnabled: "false"
