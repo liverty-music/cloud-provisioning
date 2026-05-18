@@ -115,8 +115,18 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		// (Cloud SQL side) are hard-coded to `true` — dev shutdown is meant
 		// to be reversible, not destructive, so accidentally calling
 		// `pulumi destroy` on this instance should error rather than wipe
-		// data. To genuinely delete the instance (e.g., long-term
-		// decommission), edit both flags to `false` in a deliberate PR.
+		// data.
+		//
+		// To genuinely delete the instance (long-term decommission), apply
+		// the two protection flags in this order across separate
+		// `pulumi up` runs to avoid a half-protected state:
+		//   1. `deletionProtectionEnabled: false`  → `pulumi up`
+		//      (Cloud SQL API-side lock released)
+		//   2. `deletionProtection: false`         → `pulumi up`
+		//      (Pulumi resource-side guard released)
+		//   3. `pulumi destroy --target <urn>`     (now safe)
+		// Reversing 1↔2 leaves Pulumi willing to call delete but the API
+		// rejects with HTTP 400 because the instance is still locked.
 		const postgresDbName = `postgres-${regionName}`
 		const instance = new gcp.sql.DatabaseInstance(
 			postgresDbName,
