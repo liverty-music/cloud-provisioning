@@ -226,6 +226,7 @@ export class Gcp {
 				? new KmsComponent('gke-cluster-kms', {
 						project: this.project,
 						region: Regions.Osaka,
+						environment,
 					})
 				: undefined
 
