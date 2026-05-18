@@ -167,7 +167,7 @@ Either the dev build for this commit failed, or the release was cut on a non-mai
 
 **Recovery**:
 1. Verify the binding's absence: `gcloud artifacts repositories get-iam-policy frontend --project=liverty-music-dev --location=asia-northeast2 --format=json | jq '.bindings[] | select(.members[] | contains("github-actions@liverty-music-prod"))'`. Empty output confirms the missing grant.
-2. Re-apply by running `pulumi up --stack dev` on a clean cloud-provisioning checkout. The Pulumi state will recreate `prod-ci-frontend-ar-reader` from `src/gcp/index.ts`. Dev stack auto-applies on merge to main; if the manual revoke was off-cycle, an empty no-op PR followed by a manual Pulumi Cloud Deployments run is the cleanest re-trigger.
+2. Re-apply via Pulumi Cloud Deployments — the dev stack auto-applies `src/**` changes on merge to `main` via the automated job, so the cleanest re-trigger is to either (a) wait for the next legitimate PR to land or (b) push an empty no-op commit and merge it, OR (c) trigger the dev stack run manually from the [Pulumi Cloud console](https://app.pulumi.com/pannpers/liverty-music/dev/deployments). Any of those recreates `prod-ci-frontend-ar-reader` from `src/gcp/index.ts`. **Do not run `pulumi up --stack dev` locally** — it conflicts with the automated job (see `cloud-provisioning/CLAUDE.md`).
 3. The next release will succeed once the binding is restored (no `gcloud` cache to invalidate; `gcloud artifacts` queries are live).
 
 ### Failure: immutable-tag re-publish rejected (HTTP 409)

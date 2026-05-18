@@ -181,19 +181,18 @@ export class Gcp {
 		// lives in the dev project. The prod SA email is constructed by
 		// mirroring `WorkloadIdentityComponent`'s naming convention:
 		// SA short name `github-actions` (literal in workload-identity.ts)
-		// + project ID `${brandId}-prod` (= `liverty-music-prod`). If
-		// either changes, this derivation MUST be updated in lock-step;
-		// otherwise the prod CI loses its dev-AR read grant and every
-		// release hits "Cross-project IAM grant revoked" recovery.
+		// + project ID `${brandId}-prod` (the codebase-wide
+		// `${brandId}-${environment}` pattern; see project.ts). If the
+		// SA short name OR the project-ID pattern ever changes, the
+		// derivation here MUST be updated in lock-step.
 		//
 		// A pulumi.StackReference to the prod stack's exported
 		// githubActionsSAEmail would decouple this, but is heavier
 		// machinery (cross-stack dependency, additional output to maintain)
-		// for what is functionally a single static value. The named
-		// constant + co-located coupling note is the minimum-noise
-		// alternative.
+		// for what is functionally a single static value derivable from
+		// `brandId` already in scope.
 		if (environment === 'dev') {
-			const PROD_PROJECT_ID = 'liverty-music-prod'
+			const PROD_PROJECT_ID = `${brandId}-prod`
 			const PROD_CI_SA_EMAIL = `serviceAccount:github-actions@${PROD_PROJECT_ID}.iam.gserviceaccount.com`
 
 			new gcp.artifactregistry.RepositoryIamMember(
