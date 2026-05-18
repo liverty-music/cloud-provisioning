@@ -63,11 +63,15 @@ const env = pulumi.getStack() as Environment
 // `pulumi up` job will abort before computing any resource diff).
 // Disabling prod requires a deliberate code change, not a config flip.
 const workloadEnabled = config.getBoolean('workloadEnabled') ?? true
-if (env === 'prod' && !workloadEnabled) {
+// Allow-list rather than block-list: any stack other than `dev`
+// (today `prod`; tomorrow `staging` if added to `Environment`) is
+// implicitly off-limits to the shutdown switch. Adding a new
+// shut-down-capable env requires deliberately listing it here.
+if (env !== 'dev' && !workloadEnabled) {
 	throw new Error(
-		"workloadEnabled=false is forbidden in the 'prod' stack. " +
+		`workloadEnabled=false is forbidden in the '${env}' stack. ` +
 			'This flag is a dev-only cost-shutdown switch — see ' +
-			'docs/runbooks/dev-shutdown-restart.md. To disable the prod ' +
+			'docs/runbooks/dev-shutdown-restart.md. To disable a non-dev ' +
 			'workload tier, make a deliberate code change rather than ' +
 			'flipping this flag.',
 	)
@@ -249,7 +253,12 @@ export const githubEnv = env
 // fall back to cached `.env.dev` or skip the build"). Frontend CI
 // must check for this exact string before treating the value as a
 // usable OIDC client id.
-export const DEV_SHUTDOWN_SENTINEL = 'DEV_SHUTDOWN_workloadEnabled=false'
+// Not exported as a Pulumi stack output — every top-level
+// `export const` becomes a permanent output key on every stack,
+// including prod, polluting the output registry with a dev-only
+// constant. Frontend CI consumers compare against the literal
+// string documented in the runbook gotcha table.
+const DEV_SHUTDOWN_SENTINEL = 'DEV_SHUTDOWN_workloadEnabled=false'
 export const webFrontendClientId: string | pulumi.Output<string> =
 	zitadel?.frontend.application.clientId ?? DEV_SHUTDOWN_SENTINEL
 export const productOrgId: string | pulumi.Output<string> =

@@ -135,7 +135,11 @@ pulumi state unprotect \
 
 ### A4. Open the shutdown PR
 
-On a feature branch in `cloud-provisioning`:
+The feature code (the `workloadEnabled` flag itself and the
+component if-guards) lands separately from this flip — see PR #278
+in `cloud-provisioning`. The merge-triggers-destroy step is gated
+behind a **single-line config change** so the operator owns the
+decision and timing:
 
 ```yaml
 # Pulumi.dev.yaml
@@ -146,8 +150,10 @@ config:
   liverty-music:workloadEnabled: "false"  # ← add this line
 ```
 
-Open the PR. Pulumi Cloud will post a `pulumi preview` comment with
-the planned destroy set.
+Open the PR with **only** this YAML change (no `src/**` edits) so
+the destroy diff is exactly the 142-resource Guarded set and
+nothing else. Pulumi Cloud will post a `pulumi preview` comment
+with the planned destroy set.
 
 ### A5. Review the preview — the critical gate
 
