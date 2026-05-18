@@ -178,11 +178,24 @@ export class Gcp {
 		// the persistent cluster identities the prohibition targets.
 		//
 		// Lives in the dev stack because the AR resource being granted on
-		// lives in the dev project. The prod SA email is referenced by
-		// literal because the prod stack constructs that exact email
-		// (verified against `WorkloadIdentityComponent`'s SA name +
-		// project naming).
+		// lives in the dev project. The prod SA email is constructed by
+		// mirroring `WorkloadIdentityComponent`'s naming convention:
+		// SA short name `github-actions` (literal in workload-identity.ts)
+		// + project ID `${brandId}-prod` (= `liverty-music-prod`). If
+		// either changes, this derivation MUST be updated in lock-step;
+		// otherwise the prod CI loses its dev-AR read grant and every
+		// release hits "Cross-project IAM grant revoked" recovery.
+		//
+		// A pulumi.StackReference to the prod stack's exported
+		// githubActionsSAEmail would decouple this, but is heavier
+		// machinery (cross-stack dependency, additional output to maintain)
+		// for what is functionally a single static value. The named
+		// constant + co-located coupling note is the minimum-noise
+		// alternative.
 		if (environment === 'dev') {
+			const PROD_PROJECT_ID = 'liverty-music-prod'
+			const PROD_CI_SA_EMAIL = `serviceAccount:github-actions@${PROD_PROJECT_ID}.iam.gserviceaccount.com`
+
 			new gcp.artifactregistry.RepositoryIamMember(
 				'prod-ci-frontend-ar-reader',
 				{
@@ -190,9 +203,14 @@ export class Gcp {
 					location: this.region,
 					project: this.project.projectId,
 					role: 'roles/artifactregistry.reader',
-					member: 'serviceAccount:github-actions@liverty-music-prod.iam.gserviceaccount.com',
+					member: PROD_CI_SA_EMAIL,
 				},
-				{ parent: this.project },
+				// protect: true — the grant is on the prod CI critical
+				// path. A `pulumi destroy --target` or operator slip
+				// silently breaks every subsequent release. Removal
+				// requires deliberate `pulumi state unprotect` first,
+				// which is the blast-radius-proportional barrier we want.
+				{ parent: this.project, protect: true },
 			)
 		}
 
