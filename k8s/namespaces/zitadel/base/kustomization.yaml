@@ -15,6 +15,7 @@ resources:
 - pdb.yaml
 - external-secret.yaml
 - external-secret-postgres-admin.yaml
+- external-secret-system-api-pub.yaml
 - external-secret-web-pat.yaml
 # NOTE: `job-grant-db.yaml` lives in `overlays/dev/` because the Job hardcodes
 # the dev Cloud SQL instance + dev IAM SA usernames. Prod will need its own
