@@ -169,19 +169,20 @@ export class Gcp {
 
 		// 4.1. Cross-project AR reader for the prod CI service account.
 		//
-		// Per OpenSpec change `promote-prod-image-via-retag` (archive
-		// pending), the frontend prod release path stops rebuilding and
-		// instead retags the dev AR digest into prod AR. The prod
-		// `github-actions` service account needs READ on the dev project's
-		// frontend AR repo to resolve the digest. Scope is intentionally
-		// minimal: ONE repository, READ only, exactly one direction
+		// Per OpenSpec changes `promote-prod-image-via-retag` (frontend,
+		// archived) and `backend-symmetric-retag` (backend), the prod
+		// release path stops rebuilding and instead retags the dev AR
+		// digest into prod AR. The prod `github-actions` service account
+		// needs READ on the dev project's `frontend` and `backend` AR
+		// repos to resolve the digest. Scope is intentionally minimal:
+		// per-repository READ only, exactly one direction
 		// (prod CI → dev AR). The cluster-SA cross-project prohibition
 		// (see `prod-image-pipeline` spec) is untouched — CI SAs are
 		// ephemeral Workflow-run identities, structurally distinct from
 		// the persistent cluster identities the prohibition targets.
 		//
-		// Lives in the dev stack because the AR resource being granted on
-		// lives in the dev project. The prod SA email is constructed by
+		// Lives in the dev stack because the AR resources being granted on
+		// live in the dev project. The prod SA email is constructed by
 		// mirroring `WorkloadIdentityComponent`'s naming convention:
 		// SA short name `github-actions` (literal in workload-identity.ts)
 		// + project ID `${brandId}-prod` (the codebase-wide
@@ -194,6 +195,12 @@ export class Gcp {
 		// machinery (cross-stack dependency, additional output to maintain)
 		// for what is functionally a single static value derivable from
 		// `brandId` already in scope.
+		//
+		// The frontend and backend grants are declared side-by-side
+		// (rather than collapsed into a loop) because Pulumi's
+		// `RepositoryIamMember` is one-resource-per-binding and the
+		// two AR repos are distinct named resources; pairing the
+		// declarations keeps code review and Pulumi state human-readable.
 		if (environment === 'dev') {
 			const PROD_PROJECT_ID = `${brandId}-prod`
 			const PROD_CI_SA_EMAIL = `serviceAccount:github-actions@${PROD_PROJECT_ID}.iam.gserviceaccount.com`
@@ -212,6 +219,22 @@ export class Gcp {
 				// silently breaks every subsequent release. Removal
 				// requires deliberate `pulumi state unprotect` first,
 				// which is the blast-radius-proportional barrier we want.
+				{ parent: this.project, protect: true },
+			)
+
+			new gcp.artifactregistry.RepositoryIamMember(
+				'prod-ci-backend-ar-reader',
+				{
+					repository: backendArtifactRegistry.name,
+					location: this.region,
+					project: this.project.projectId,
+					role: 'roles/artifactregistry.reader',
+					member: PROD_CI_SA_EMAIL,
+				},
+				// protect: true — same critical-path rationale as the
+				// frontend grant; the backend matrix has 4 images and
+				// loss of this binding breaks every subsequent backend
+				// release at the digest-resolve step.
 				{ parent: this.project, protect: true },
 			)
 		}
