@@ -10,7 +10,15 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
-import { SecretsComponent, Zitadel } from './zitadel/index.js'
+import { ZitadelInstanceCustomDomain } from './zitadel/dynamic/index.js'
+import {
+	instanceIdMap,
+	SecretsComponent,
+	SYSTEM_API_USER_NAME,
+	ZITADEL_API_INTERNAL_HOST,
+	Zitadel,
+	zitadelDomainMap,
+} from './zitadel/index.js'
 
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'
@@ -160,27 +168,55 @@ const gcp = new Gcp({
 // `gcp.workloadSAs` (cluster Workload Identity SAs) is optional and gates
 // only the IAM bindings inside `SecretsComponent`; the Secret + Version
 // resources are created regardless.
-// Phase 1 of `route-login-v2-via-internal-zitadel-api`: the
-// `SecretsComponent` now also creates `zitadel-system-api-key`
-// (private, PreservedTier) and `zitadel-system-api-pub` (public, for ESO),
-// the RSA-2048 key pair backing the `pulumi-system` Zitadel System API
-// user. The API container's `ZITADEL_SYSTEMAPIUSERS` env (set in
-// `k8s/namespaces/zitadel/base/deployment-api.yaml`) references the
-// public half via an ESO-projected file mount.
-//
-// Phase 2 will capture this component's `systemApiPrivateKeyPem` /
-// `systemApiPrivateSecretVersion` outputs by re-binding the constructor
-// result, and feed them to a `ZitadelInstanceCustomDomain` Dynamic
-// Resource that registers `zitadel-api.zitadel.svc.cluster.local` as the
-// instance's `Host` target so the Login UI Pod's outbound API calls can
-// avoid the public LB hairpin entirely. That step is deferred so the
-// API Pod has time to roll with the new env before Pulumi signs its
-// first System User JWT — Pulumi cannot track Pod rollout (ArgoCD's
-// plane), so the two-PR sequencing is the operational gate.
-new SecretsComponent('zitadel-secrets', {
+const zitadelSecrets = new SecretsComponent('zitadel-secrets', {
 	project: gcp.project,
 	workloadSAs: gcp.workloadSAs,
 })
+
+// Register the cluster-internal hostname as an InstanceCustomDomain so
+// Login V2 UI's outbound Connect-RPC calls can target the in-cluster
+// Service URL (`http://zitadel-api.zitadel.svc.cluster.local`) instead
+// of the public LB hairpin — the public-URL path 30s-timed-out on
+// Node's HTTP client through GCP HTTPS LB (see OpenSpec change
+// `route-login-v2-via-internal-zitadel-api`).
+//
+// The Dynamic Resource signs a System User JWT directly using Node
+// `crypto` and POSTs to `instance.v2.InstanceService/AddCustomDomain`
+// because `@pulumiverse/zitadel@0.2.0` exposes neither the resource
+// nor a `system_api` provider auth block. The System User
+// (`pulumi-system`) is declared via `ZITADEL_SYSTEMAPIUSERS` on the
+// `zitadel-api` Pod, provisioned by Phase 1.
+//
+// Skipped when `workloadEnabled=false`: the `zitadel-api` Pod is
+// destroyed in dev shutdown mode so there is no API to talk to. The
+// Dynamic Resource will recreate the registration on next `pulumi up`
+// once workloads are back up; idempotent via 409 AlreadyExists handling
+// inside the resource.
+//
+// `dependsOn` the System User private key SecretVersion to guarantee
+// the SecretVersion is materialised in GSM before the Dynamic
+// Resource's `create` callback reads it.
+const zitadelInstanceInternalDomain =
+	workloadEnabled && zitadel !== undefined
+		? new ZitadelInstanceCustomDomain(
+				'zitadel-api-internal',
+				{
+					domain: zitadelDomainMap[env],
+					systemUserName: SYSTEM_API_USER_NAME,
+					privateKeyPem: zitadelSecrets.systemApiPrivateKeyPem,
+					instanceId: instanceIdMap[env],
+					customDomain: ZITADEL_API_INTERNAL_HOST,
+				},
+				{
+					dependsOn: [zitadelSecrets.systemApiPrivateSecretVersion],
+				},
+			)
+		: undefined
+
+// Surfaced as a Pulumi export so the stack-level state record holds
+// the composite id (`<instanceId>/<customDomain>`) for ops debugging.
+export const zitadelApiInternalDomainId =
+	zitadelInstanceInternalDomain?.registeredId
 
 // 3. GitHub Repository Environments (All Environments)
 const sharedVariables = {
