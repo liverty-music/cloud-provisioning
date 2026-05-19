@@ -209,6 +209,21 @@ const zitadelInstanceInternalDomain =
 				},
 				{
 					dependsOn: [zitadelSecrets.systemApiPrivateSecretVersion],
+					// `protect: true` because a `pulumi destroy` on this
+					// resource calls `RemoveCustomDomain` against the
+					// Zitadel instance — which immediately breaks every
+					// Login UI Pod's outbound API call (the cluster-internal
+					// hostname no longer matches any InstanceCustomDomain
+					// → HTTP 404 instance-not-found). The `workloadEnabled
+					// && zitadel !== undefined` guard prevents accidental
+					// teardown via a config flip, but a future refactor
+					// that removes this `new ZitadelInstanceCustomDomain`
+					// block in src/ would still slip past that guard.
+					// `protect: true` makes the destroy intent explicit:
+					// the operator must remove `protect` (or call
+					// `pulumi state delete`) before Pulumi will tear it
+					// down.
+					protect: true,
 				},
 			)
 		: undefined
