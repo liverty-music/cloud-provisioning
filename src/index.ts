@@ -160,6 +160,23 @@ const gcp = new Gcp({
 // `gcp.workloadSAs` (cluster Workload Identity SAs) is optional and gates
 // only the IAM bindings inside `SecretsComponent`; the Secret + Version
 // resources are created regardless.
+// Phase 1 of `route-login-v2-via-internal-zitadel-api`: the
+// `SecretsComponent` now also creates `zitadel-system-api-key`
+// (private, PreservedTier) and `zitadel-system-api-pub` (public, for ESO),
+// the RSA-2048 key pair backing the `pulumi-system` Zitadel System API
+// user. The API container's `ZITADEL_SYSTEMAPIUSERS` env (set in
+// `k8s/namespaces/zitadel/base/deployment-api.yaml`) references the
+// public half via an ESO-projected file mount.
+//
+// Phase 2 will capture this component's `systemApiPrivateKeyPem` /
+// `systemApiPrivateSecretVersion` outputs by re-binding the constructor
+// result, and feed them to a `ZitadelInstanceCustomDomain` Dynamic
+// Resource that registers `zitadel-api.zitadel.svc.cluster.local` as the
+// instance's `Host` target so the Login UI Pod's outbound API calls can
+// avoid the public LB hairpin entirely. That step is deferred so the
+// API Pod has time to roll with the new env before Pulumi signs its
+// first System User JWT — Pulumi cannot track Pod rollout (ArgoCD's
+// plane), so the two-PR sequencing is the operational gate.
 new SecretsComponent('zitadel-secrets', {
 	project: gcp.project,
 	workloadSAs: gcp.workloadSAs,

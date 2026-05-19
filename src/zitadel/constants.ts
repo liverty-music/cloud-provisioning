@@ -82,3 +82,65 @@ export const adminOrgIdMap: Record<Environment, string> = {
 	dev: '371280364565496672',
 	prod: '372892288692584603',
 }
+
+/**
+ * Bootstrap-created Instance IDs per environment.
+ *
+ * Each id is the random snowflake assigned by Zitadel when `start-from-init`
+ * provisions the first instance on an empty database. Unlike `adminOrgIdMap`
+ * which is queried via Management API, instance ids are exposed via the
+ * System API (`instance.v2.ListInstances`) and require a `SYSTEM_OWNER` JWT
+ * to read.
+ *
+ * Consumed by `ZitadelInstanceCustomDomain` (the Pulumi Dynamic Resource that
+ * registers `zitadel-api.zitadel.svc.cluster.local` so the Login UI's
+ * cluster-internal `Host` header is accepted by the API). Without a valid
+ * instance id, `AddCustomDomain` returns `invalid_argument`.
+ *
+ * **Discovery procedure** (one-time, after the corresponding env is first
+ * bootstrapped, and only after the `pulumi-system` System User is in place
+ * via `ZITADEL_SYSTEMAPIUSERS`):
+ *
+ *   1. Have Pulumi read the private key from GSM `zitadel-system-api-key`
+ *      and sign a short-lived JWT (or run an ad-hoc Node script that
+ *      reproduces `buildSystemAssertion` from
+ *      `src/zitadel/dynamic/api-client.ts`).
+ *   2. `curl -X POST https://auth.<env>.liverty-music.app/zitadel.instance.v2.InstanceService/ListInstances \
+ *        -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" -d '{}'`
+ *   3. Pick the (single, self-hosted) instance's `id`. Update the entry
+ *      below and commit.
+ *
+ * If a Zitadel database is wiped and re-bootstrapped (e.g. dev shutdown +
+ * Cloud SQL restore), the new instance id MUST be captured and committed
+ * here before the corresponding `pulumi up` runs — otherwise the Dynamic
+ * Resource will fail to register the domain.
+ *
+ * **Placeholder** values below indicate the env's instance id has not yet
+ * been captured. `ZitadelInstanceCustomDomain` will fail-fast at apply
+ * time if it sees `__UNSET__`, surfacing the missing-bootstrap-capture
+ * step rather than emitting a confusing "invalid_argument" from Zitadel.
+ *
+ * Introduced by OpenSpec change `route-login-v2-via-internal-zitadel-api`.
+ */
+export const instanceIdMap: Record<Environment, string> = {
+	dev: '__UNSET__',
+	prod: '__UNSET__',
+}
+
+/**
+ * The System API user name declared via the Zitadel API container's
+ * `ZITADEL_SYSTEMAPIUSERS` env. Must match the JSON key in that env value
+ * AND the file basename of the projected public key. Single source of
+ * truth — referenced by both Pulumi (for JWT `iss`/`sub` claims) and the
+ * k8s manifest comment block in `deployment-api.yaml`.
+ */
+export const SYSTEM_API_USER_NAME = 'pulumi-system'
+
+/**
+ * The cluster-internal hostname registered as an InstanceCustomDomain so
+ * the Login UI's outbound Connect-RPC calls (with `Host:
+ * zitadel-api.zitadel.svc.cluster.local`) reach the API without
+ * traversing the public Gateway hairpin. Must match the K8s Service
+ * `zitadel-api` in the `zitadel` namespace.
+ */
+export const ZITADEL_API_INTERNAL_HOST = 'zitadel-api.zitadel.svc.cluster.local'

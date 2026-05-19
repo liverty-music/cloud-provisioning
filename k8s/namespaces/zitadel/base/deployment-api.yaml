@@ -55,6 +55,19 @@ spec:
       volumes:
       - name: bootstrap
         emptyDir: {}
+      # System API user RSA public key, projected as a file the Zitadel API
+      # process reads via the `ZITADEL_SYSTEMAPIUSERS` env (`Path` field).
+      # Provisioned by ESO from GSM Secret `zitadel-system-api-pub` (see
+      # `external-secret-system-api-pub.yaml`). The private half stays in
+      # GSM and is only read by Pulumi to sign JWTs in the
+      # `ZitadelInstanceCustomDomain` Dynamic Resource — never enters the
+      # cluster.
+      - name: system-api-pub
+        secret:
+          secretName: zitadel-system-api-pub
+          items:
+          - key: pulumi-system.pem
+            path: pulumi-system.pem
       containers:
       # Main Zitadel API container. `start-from-init` is idempotent — on an
       # empty database it runs init + setup; on an initialized database it
@@ -70,6 +83,20 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        env:
+        # Declare the Pulumi-managed System User so Pulumi can call
+        # `instance.v2.AddCustomDomain` with a SYSTEM_OWNER JWT. The user
+        # name in this JSON key (`pulumi-system`) MUST match the `iss`/`sub`
+        # claims emitted by `buildSystemAssertion` in
+        # `src/zitadel/dynamic/api-client.ts`; if these drift the JWT
+        # verifies against the wrong key and every Dynamic Resource call
+        # fails with 401. The `Path` field points at the file projected by
+        # the `system-api-pub` Secret volume below. `Memberships` is
+        # omitted — Zitadel defaults to `MemberType: System, Role:
+        # SYSTEM_OWNER` which is exactly what `system.domain.write`
+        # requires.
+        - name: ZITADEL_SYSTEMAPIUSERS
+          value: '{"pulumi-system":{"Path":"/var/run/zitadel/system-api/pulumi-system.pem"}}'
         envFrom:
         - configMapRef:
             name: zitadel-config
@@ -78,6 +105,9 @@ spec:
         volumeMounts:
         - name: bootstrap
           mountPath: /var/zitadel/bootstrap
+        - name: system-api-pub
+          mountPath: /var/run/zitadel/system-api
+          readOnly: true
         readinessProbe:
           httpGet:
             path: /debug/ready
