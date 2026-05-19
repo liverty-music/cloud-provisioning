@@ -226,7 +226,7 @@ export class Gcp {
 				'prod-ci-backend-ar-reader',
 				{
 					repository: backendArtifactRegistry.name,
-					location: Regions.Osaka,
+					location: this.region,
 					project: this.project.projectId,
 					role: 'roles/artifactregistry.reader',
 					member: PROD_CI_SA_EMAIL,
