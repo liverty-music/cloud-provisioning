@@ -59,6 +59,19 @@ export const instanceCustomDomainProvider: pulumi.dynamic.ResourceProvider = {
 	async create(
 		inputs: InstanceCustomDomainInputs,
 	): Promise<pulumi.dynamic.CreateResult<InstanceCustomDomainOutputs>> {
+		// Fail-fast on the `__UNSET__` sentinel from
+		// `constants.ts:instanceIdMap`. Without this guard, Zitadel would
+		// return a confusing `invalid_argument: instance_id` error and the
+		// operator would have to dig through the Pulumi log to realise the
+		// real problem is a missing post-bootstrap discovery step.
+		if (inputs.instanceId === '__UNSET__') {
+			throw new Error(
+				'ZitadelInstanceCustomDomain: instanceId is the __UNSET__ sentinel. ' +
+					'Run `node scripts/discover-zitadel-instance-id.mjs --env=<env>` after the ' +
+					'Phase 1 deploy has rolled the zitadel-api Pod, then commit the captured id ' +
+					'into instanceIdMap in src/zitadel/constants.ts.',
+			)
+		}
 		const profile: SystemUserProfile = {
 			userName: inputs.systemUserName,
 			privateKeyPem: inputs.privateKeyPem,

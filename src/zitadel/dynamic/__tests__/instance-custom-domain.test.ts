@@ -164,6 +164,13 @@ describe('instanceCustomDomainProvider.create', () => {
 			/AddCustomDomain failed \(500\)/,
 		)
 	})
+
+	it('fails fast on the __UNSET__ instanceId sentinel', async () => {
+		await expect(
+			provider.create({ ...baseInputs, instanceId: '__UNSET__' }),
+		).rejects.toThrow(/discover-zitadel-instance-id\.mjs/)
+		expect(mockedCall).not.toHaveBeenCalled()
+	})
 })
 
 describe('instanceCustomDomainProvider.read', () => {
