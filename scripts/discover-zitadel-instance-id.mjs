@@ -77,10 +77,16 @@ if (!privateKeyPem.includes('-----BEGIN')) {
 	process.exit(1)
 }
 
-// Sign a 60s JWT (mirrors `buildSystemAssertion` in
-// `src/zitadel/dynamic/api-client.ts`; kept here as a small standalone
-// duplication to avoid pulling the whole Pulumi program into a shell
-// script).
+// Sign a 60s JWT.
+// IMPORTANT: this block is a deliberate **duplicate** of
+// `buildSystemAssertion` in `src/zitadel/dynamic/api-client.ts`. The
+// canonical implementation lives in the Pulumi dynamic-provider source
+// where it must use an inline `require('node:crypto')` for closure
+// serialization; this .mjs script cannot pull that in without a build
+// step, so we replay the logic. Any change to JWT header / payload /
+// lifetime there MUST be mirrored here. See the corresponding JSDoc
+// comment in api-client.ts (`buildSystemAssertion`) for the refactor
+// note.
 const now = Math.floor(Date.now() / 1000)
 const b64url = (buf) =>
 	buf

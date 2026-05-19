@@ -194,6 +194,15 @@ export interface SystemUserProfile {
  * emitted: Zitadel resolves the verification key by the `iss` claim
  * (matching a `SystemAPIUsers` config entry) rather than by `kid`.
  * The `aud` claim is the issuer URL (e.g. `https://auth.dev.liverty-music.app`).
+ *
+ * **JWT-shape coupling:** `scripts/discover-zitadel-instance-id.mjs`
+ * carries a stand-alone copy of this signing logic because Pulumi
+ * compiles to ESM but the dynamic-provider sandbox forces the inline
+ * `require('node:crypto')` here, which the .mjs operator script
+ * cannot pull in without a build step. Any change to header / payload /
+ * lifetime here MUST be mirrored in the script. A future refactor
+ * could extract a `.cjs` helper consumable by both surfaces; deferred
+ * until the operator script needs additional capabilities.
  */
 export function buildSystemAssertion(
 	profile: SystemUserProfile,

@@ -134,13 +134,21 @@ export class SecretsComponent extends pulumi.ComponentResource {
 		// because Pulumi state persists the generated key, making re-applies
 		// idempotent — `crypto.generateKeyPairSync` is non-deterministic and
 		// would churn the SecretVersion on every `pulumi up`.
+		// `protect: true` defends the `tls.PrivateKey` resource itself
+		// against a `pulumi destroy` cascade. Losing the key pair forces
+		// the InstanceCustomDomain to be re-registered against a freshly
+		// minted public key — recoverable but operationally painful, and
+		// the only way to recover currently goes through Zitadel Console
+		// (the System API needs a valid System User to authenticate at
+		// all). See `docs/runbooks/pulumi-state-recovery.md` §13.4 for
+		// prior incident context.
 		this.systemApiKeyPair = new tls.PrivateKey(
 			'zitadel-system-api-key',
 			{
 				algorithm: 'RSA',
 				rsaBits: 2048,
 			},
-			{ parent: this },
+			{ parent: this, protect: true },
 		)
 		// `tls.PrivateKey.privateKeyPem` is already marked secret by the
 		// provider; `pulumi.secret(...)` here is belt-and-suspenders so the
@@ -155,6 +163,14 @@ export class SecretsComponent extends pulumi.ComponentResource {
 		// `workloadEnabled=false` shutdown cycle so the same key continues
 		// to validate against any already-registered InstanceCustomDomain
 		// after restart.
+		// `protect: true` on every System-API secret resource (container
+		// + version, private + public). If GSM loses either secret the
+		// recovery path is severely degraded: the private key cannot be
+		// regenerated to match Zitadel's previously-loaded public key,
+		// and a stale public-key K8s Secret (from ESO holding a cached
+		// version after the GSM source is deleted) is invisible until
+		// the next refresh. Both errors put the System User into a state
+		// only recoverable by Zitadel Console reconfiguration.
 		this.systemApiPrivateSecret = new gcp.secretmanager.Secret(
 			'zitadel-system-api-key',
 			{
@@ -162,7 +178,7 @@ export class SecretsComponent extends pulumi.ComponentResource {
 				project: project.projectId,
 				replication: { auto: {} },
 			},
-			{ parent: this },
+			{ parent: this, protect: true },
 		)
 
 		this.systemApiPrivateSecretVersion =
@@ -172,7 +188,7 @@ export class SecretsComponent extends pulumi.ComponentResource {
 					secret: this.systemApiPrivateSecret.id,
 					secretData: this.systemApiPrivateKeyPem,
 				},
-				{ parent: this },
+				{ parent: this, protect: true },
 			)
 
 		// Public key has its own GSM Secret so ESO can sync it into the
@@ -187,7 +203,7 @@ export class SecretsComponent extends pulumi.ComponentResource {
 				project: project.projectId,
 				replication: { auto: {} },
 			},
-			{ parent: this },
+			{ parent: this, protect: true },
 		)
 
 		new gcp.secretmanager.SecretVersion(
@@ -196,7 +212,7 @@ export class SecretsComponent extends pulumi.ComponentResource {
 				secret: this.systemApiPublicSecret.id,
 				secretData: this.systemApiPublicKeyPem,
 			},
-			{ parent: this },
+			{ parent: this, protect: true },
 		)
 
 		// IAM bindings are workload-tier-scoped: the cluster Service
