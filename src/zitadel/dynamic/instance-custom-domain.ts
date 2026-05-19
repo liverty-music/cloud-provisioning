@@ -232,6 +232,29 @@ export const instanceCustomDomainProvider: pulumi.dynamic.ResourceProvider = {
 }
 
 /**
+ * Bake `privateKeyPem` into `additionalSecretOutputs` so the secret-output
+ * contract cannot regress at any call site. `pulumi.secret(...)` inputs do
+ * NOT auto-propagate across the dynamic-resource boundary: without this,
+ * `outs: { ...inputs, registeredId }` in `create()` would land the private
+ * key as plaintext in the Pulumi state checkpoint. Merge with caller-supplied
+ * additions rather than overwrite. Mirrors the pattern from
+ * `permanent-password.ts:mergeSecretOutputs`; the name is suffixed to avoid
+ * a `dynamic/index.ts` barrel collision with that module's same-named helper.
+ * Exported for unit-test coverage.
+ */
+export function mergeIcdSecretOutputs(
+	opts?: pulumi.CustomResourceOptions,
+): pulumi.CustomResourceOptions {
+	return {
+		...opts,
+		additionalSecretOutputs: [
+			'privateKeyPem',
+			...(opts?.additionalSecretOutputs ?? []),
+		],
+	}
+}
+
+/**
  * `ZitadelInstanceCustomDomain` registers a hostname as an
  * `InstanceCustomDomain` on a Zitadel instance, making it a valid
  * `Host` header target for routing requests to that instance.
@@ -265,7 +288,7 @@ export class ZitadelInstanceCustomDomain extends pulumi.dynamic.Resource {
 				...args,
 				registeredId: undefined,
 			},
-			opts,
+			mergeIcdSecretOutputs(opts),
 		)
 	}
 }

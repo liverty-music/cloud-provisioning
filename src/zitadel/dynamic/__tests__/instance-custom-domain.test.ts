@@ -9,7 +9,7 @@ vi.mock('../api-client.js', async (importOriginal) => {
 })
 
 const apiClient = await import('../api-client.js')
-const { instanceCustomDomainProvider } = await import(
+const { instanceCustomDomainProvider, mergeIcdSecretOutputs } = await import(
 	'../instance-custom-domain.js'
 )
 const { buildSystemAssertion } = apiClient
@@ -103,6 +103,29 @@ describe('buildSystemAssertion', () => {
 		expect(verify(matchingPublicKey)).toBe(true)
 		// And does NOT verify with an unrelated public key.
 		expect(verify(unrelatedPublicKey)).toBe(false)
+	})
+})
+
+describe('mergeIcdSecretOutputs', () => {
+	it('always includes privateKeyPem', () => {
+		const merged = mergeIcdSecretOutputs()
+		expect(merged.additionalSecretOutputs).toContain('privateKeyPem')
+	})
+
+	it('preserves caller-supplied additions', () => {
+		const merged = mergeIcdSecretOutputs({
+			additionalSecretOutputs: ['callerSecret'],
+		})
+		expect(merged.additionalSecretOutputs).toContain('privateKeyPem')
+		expect(merged.additionalSecretOutputs).toContain('callerSecret')
+	})
+
+	it('preserves other CustomResourceOptions fields', () => {
+		const merged = mergeIcdSecretOutputs({
+			protect: true,
+			additionalSecretOutputs: ['x'],
+		})
+		expect(merged.protect).toBe(true)
 	})
 })
 
