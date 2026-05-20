@@ -542,6 +542,19 @@ ENABLED version remains, and bounce the pod again.
 > improvement could be a Pulumi `Command` resource that runs this on
 > shutdown automatically, but that's out of scope for now.
 
+> **Catastrophic restore-from-scratch path:** if Cloud SQL was wiped and
+> the Zitadel database is entirely fresh (not just the pods being
+> restarted), follow the
+> [`docs/runbooks/zitadel-helm-chart.md` "Catastrophic restore-from-scratch
+> path"](zitadel-helm-chart.md#catastrophic-restore-from-scratch-path)
+> BEFORE running §B7 — that runbook covers flipping
+> `zitadel.configmapConfig.FirstInstance.Skip: false` temporarily,
+> capturing the new admin org ID for `adminOrgIdMap[env]`, and calling
+> `SetInstanceFeatures(loginV2.baseUri="/ui/v2")` against the freshly-
+> bootstrapped instance. Skipping these means the new instance will
+> redirect to `/ui/v2/login/login` (the chart default) instead of the
+> intended `/ui/v2/login`.
+
 ### B7. End-to-end smoke
 
 ```bash

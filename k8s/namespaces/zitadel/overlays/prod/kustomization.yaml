@@ -21,9 +21,15 @@ resources:
 # Prod DB grant Job — idempotent ALTER DATABASE OWNER + GRANT scoped to the
 # prod Cloud SQL `zitadel` DB.
 - job-grant-db.yaml
-# Per design D5 + spec Requirement 6: opt-in PodMonitoring CRD for prod-only
-# GMP scrape of zitadel-api `/debug/metrics`.
-- podmonitoring.yaml
+# NOTE: PodMonitoring CRD (previously `podmonitoring.yaml`) was deleted as
+# part of the Helm chart migration. Zitadel v4 has no `/debug/metrics`
+# HTTP scrape endpoint — the path returns 404 on v4.14.0. Observability
+# is now driven by the OpenTelemetry SDK autoexport via the OTEL_* env
+# vars in `base/values.yaml` (top-level `env:`), which push metrics +
+# traces to the in-cluster OTLP collector. The collector's `metrics`
+# pipeline forwards to Cloud Monitoring; the prior GMP scrape path is
+# entirely replaced by this push model.
+#
 # NOTE: `cronjob-restart-zitadel.yaml` is intentionally NOT imported here.
 
 patches:

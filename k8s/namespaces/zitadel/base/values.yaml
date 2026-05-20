@@ -299,6 +299,22 @@ postgresql:
 metrics:
   enabled: false
 
+# Shared `bootstrap` emptyDir mounted by the `bootstrap-uploader` native
+# sidecar declared in each overlay's `zitadel.initContainers`. When
+# `FirstInstance.Skip: false` (catastrophic restore) Zitadel writes
+# the admin machine key to `FIRSTINSTANCE_MACHINEKEYPATH=/var/zitadel/bootstrap/admin-sa.json`
+# and the sidecar uploads it to GSM. Under normal operation
+# (`Skip: true`) the volume is empty and the sidecar idles waiting
+# for the file that never appears.
+#
+# Top-level `extraVolumes` is the chart's value path; the chart applies
+# it to the API Deployment AND the init/setup Job Pods so the
+# initContainer's `volumeMounts: - name: bootstrap` always resolves
+# (without this, the Pod would fail to start with "volume not found").
+extraVolumes:
+- name: bootstrap
+  emptyDir: {}
+
 # wait-for-zitadel initContainer (on the Login UI Deployment) defaults
 # to no resource requests/limits, which fails kube-linter. Small
 # footprint matches the short-lived wait4x process.
