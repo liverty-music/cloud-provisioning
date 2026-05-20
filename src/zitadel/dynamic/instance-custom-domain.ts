@@ -148,7 +148,13 @@ export const instanceCustomDomainProvider: pulumi.dynamic.ResourceProvider = {
 				state.customDomain.toLowerCase(),
 		)
 		if (!found) {
-			return { id }
+			// Pulumi dynamic-resource Read semantics: omitting both `id` and
+			// `props` signals "resource gone, schedule recreation". Returning
+			// `{ id }` (with id but no props) is ambiguous — Pulumi may treat
+			// it as "still exists, no changes". So when the domain is absent
+			// from ListCustomDomains (deleted out-of-band via Console / API),
+			// return `{}` to trigger drift detection + re-create on next up.
+			return {}
 		}
 		return { id, props: state }
 	},
