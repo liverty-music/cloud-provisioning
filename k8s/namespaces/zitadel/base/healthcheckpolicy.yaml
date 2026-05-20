@@ -45,10 +45,11 @@ spec:
       type: HTTP
       httpHealthCheck:
         port: 3000
-        # Login UI's dedicated liveness endpoint after the base path
-        # collapse (`NEXT_PUBLIC_BASE_PATH=/ui/v2`). Matches the Pod-level
-        # livenessProbe in `overlays/<env>/login-probe-patch.yaml`.
-        requestPath: /ui/v2/healthy
+        # Login UI's healthy endpoint at the chart-default base path
+        # `/ui/v2/login`. The image's base path is baked at build time
+        # (NEXT_PUBLIC_BASE_PATH inlined), so the probe path is fixed
+        # to whatever the chart was built with.
+        requestPath: /ui/v2/login/healthy
   targetRef:
     group: ""
     kind: Service

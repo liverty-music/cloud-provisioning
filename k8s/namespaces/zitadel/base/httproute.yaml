@@ -12,24 +12,20 @@ spec:
   # traffic without a hostname filter, breaking backend and frontend routing.
   rules:
   # Login UI path — route BEFORE the catch-all rule so the more specific
-  # prefix match wins. With `NEXT_PUBLIC_BASE_PATH=/ui/v2` (set in overlay
-  # values.yaml) the Login UI now serves all routes under `/ui/v2/*`
-  # (`/ui/v2/login`, `/ui/v2/register`, `/ui/v2/passkey`, etc.) — collapsing
-  # the historical `/ui/v2/login/login` redundancy into `/ui/v2/login`.
+  # prefix match wins. The Login UI Next.js app serves at base path
+  # `/ui/v2/login` (baked into the upstream `zitadel-login` image at
+  # build time — NEXT_PUBLIC_BASE_PATH is inlined, not runtime-tunable),
+  # so the path-prefix here matches that.
   #
   # Service name `zitadel-api-login` is chart-natural: `zitadel-charts`
   # hard-codes the login Deployment / Service to `<zitadel.fullname>-login`,
   # ignoring `login.fullnameOverride`. `fullnameOverride: zitadel-api` for
   # the API preserves the earlier rename that avoids `ZITADEL_PORT` env-var
   # Viper collision, so the login subchart resolves to `zitadel-api-login`.
-  #
-  # The `/ui/v2` prefix does NOT collide with the API's `/ui/console`
-  # (Admin Console SPA) — they share the `/ui` root but diverge on the
-  # second segment.
   - matches:
     - path:
         type: PathPrefix
-        value: /ui/v2
+        value: /ui/v2/login
     backendRefs:
     - name: zitadel-api-login
       port: 80

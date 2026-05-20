@@ -1,4 +1,6 @@
-# See `../dev/login-probe-patch.yaml` for full rationale.
+# See ../dev/login-probe-patch.yaml for the full rationale. Same
+# timings + chart-default paths apply to prod (also Spot nodes,
+# same resource envelope).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,10 +10,9 @@ spec:
     spec:
       containers:
       - name: zitadel-login
-        # See ../dev/login-probe-patch.yaml for the timing rationale.
         readinessProbe:
           httpGet:
-            path: /ui/v2/ready
+            path: /ui/v2/login/ready
             port: http-server
             scheme: HTTP
           initialDelaySeconds: 5
@@ -20,7 +21,7 @@ spec:
           failureThreshold: 3
         livenessProbe:
           httpGet:
-            path: /ui/v2/healthy
+            path: /ui/v2/login/healthy
             port: http-server
             scheme: HTTP
           initialDelaySeconds: 15

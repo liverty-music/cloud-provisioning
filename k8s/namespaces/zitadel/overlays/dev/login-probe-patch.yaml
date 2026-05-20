@@ -1,13 +1,19 @@
-# Re-inject readiness + liveness probes on the chart-rendered Login UI
-# Deployment. The chart's template helpers `login.livenessProbePath` /
-# `login.readinessProbePath` hard-code `/ui/v2/login/{healthy,ready}` —
-# stale under `NEXT_PUBLIC_BASE_PATH=/ui/v2`. Disabling chart probes in
-# values.yaml (login.readinessProbe.enabled: false, livenessProbe: false)
-# leaves the container with no Pod-level probes; this strategic-merge
-# patch puts them back with paths aligned to the new base path.
+# Override the chart's probe TIMINGS (not paths) on the rendered Login
+# UI Deployment. The chart's hard-coded paths (/ui/v2/login/{healthy,ready})
+# match the Login UI image's baked-in routes — those we keep. But the
+# chart's default timings (initialDelaySeconds=0, periodSeconds=5,
+# timeoutSeconds=1-implicit, failureThreshold=3) CrashLoop Next.js
+# cold starts on Spot nodes at our resource envelope (50m CPU,
+# 128Mi mem) within ~10s — the previous hand-rolled deployment-web.yaml
+# used the conservative timings restored below.
 #
-# The Gateway-level HealthCheckPolicy (separate concern, defined in
-# `base/healthcheckpolicy.yaml`) is updated alongside.
+# Tuning:
+# - readiness: 5s delay, 10s period, 5s timeout, 3 failures → ~30s grace
+# - liveness:  15s delay, 30s period, 5s timeout, 3 failures → ~90s grace
+#
+# Disabling chart probes via login.{readiness,liveness}Probe.enabled=false
+# in base/values.yaml leaves the container with no Pod-level probes;
+# this strategic-merge patch puts them back.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,19 +23,9 @@ spec:
     spec:
       containers:
       - name: zitadel-login
-        # Tuned to the prior hand-rolled deployment-web.yaml values
-        # (readiness initialDelay=5/period=10/timeout=5/failureThreshold=3;
-        # liveness initialDelay=15/period=30/timeout=5/failureThreshold=3).
-        # The chart's `login.readinessProbe.*` values are NOT used because
-        # they're disabled at base/values.yaml (chart hard-codes the
-        # probe PATH itself in `login.{liveness,readiness}ProbePath`
-        # template helpers, not configurable). The chart-default timings
-        # alone (initialDelay=0, period=5, timeout=1-implicit, failureThreshold=3)
-        # crash-loop Next.js cold starts on Spot nodes at this resource
-        # envelope (50m CPU, 128Mi mem) within ~10s.
         readinessProbe:
           httpGet:
-            path: /ui/v2/ready
+            path: /ui/v2/login/ready
             port: http-server
             scheme: HTTP
           initialDelaySeconds: 5
@@ -38,7 +34,7 @@ spec:
           failureThreshold: 3
         livenessProbe:
           httpGet:
-            path: /ui/v2/healthy
+            path: /ui/v2/login/healthy
             port: http-server
             scheme: HTTP
           initialDelaySeconds: 15

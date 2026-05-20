@@ -114,17 +114,14 @@ zitadel:
     FirstInstance:
       Skip: true
 
-    # New-instance default for Login V2 base URI. Paired with
-    # `login.env.NEXT_PUBLIC_BASE_PATH=/ui/v2` to collapse the historical
-    # `/ui/v2/login/login` redirect target into `/ui/v2/login`.
-    # Existing instance does NOT auto-pick this up (FirstInstance.Skip:
-    # true) — see tasks.md §9.3a / §10.3a for the post-deploy
-    # `SetInstanceFeatures` API call.
-    DefaultInstance:
-      Features:
-        LoginV2:
-          Required: true
-          BaseURI: /ui/v2
+    # DefaultInstance.Features.LoginV2.BaseURI: /ui/v2 was reverted —
+    # the matching Next.js `NEXT_PUBLIC_BASE_PATH` runtime override
+    # doesn't take (env is inlined at image build time). Without the
+    # client-side collapse, setting BaseURI here would only break the
+    # redirect target: the API would redirect to /ui/v2/login?... but
+    # the Login UI app would 404 (still serves at /ui/v2/login/*).
+    # Chart default (empty/unset) keeps the redirect target at
+    # /ui/v2/login/login which matches what the Next.js app serves.
 
     Log:
       Level: info
@@ -210,14 +207,21 @@ login:
     create: false
     name: zitadel
 
-  env:
-  # Collapse the chart's default `/ui/v2/login` base path to `/ui/v2`.
-  # Paired with zitadel.configmapConfig.DefaultInstance.Features.LoginV2.BaseURI
-  # (above) so the OIDC redirect target is `/ui/v2/login?...` instead
-  # of `/ui/v2/login/login?...`.
-  - name: NEXT_PUBLIC_BASE_PATH
-    value: /ui/v2
-  # NOTE: ZITADEL_SERVICE_USER_TOKEN_FILE is NOT set inline. The chart's
+  # NOTE: NEXT_PUBLIC_BASE_PATH override (to /ui/v2) was reverted —
+  # `NEXT_PUBLIC_*` env vars in Next.js are INLINED AT BUILD TIME, not
+  # runtime. The upstream zitadel-login image at v4.14.0 was built
+  # with the chart-default base path /ui/v2/login baked in; setting
+  # NEXT_PUBLIC_BASE_PATH=/ui/v2 at runtime is silently ignored by
+  # the Next.js binary. Routes still live at /ui/v2/login/*, so our
+  # probes at /ui/v2/{healthy,ready} returned 404 and the Pod was
+  # killed by the liveness probe in a CrashLoop. The user-visible
+  # URL stays `/ui/v2/login/login?authRequest=...` (one segment for
+  # the chart-default base path + the Next.js /login dispatcher
+  # route). Collapsing the redundancy requires either rebuilding the
+  # image with a different base path or a Gateway URLRewrite —
+  # tracked as a follow-up.
+  #
+  # ZITADEL_SERVICE_USER_TOKEN_FILE is NOT set inline. The chart's
   # auto-generated `login-config-dotenv` ConfigMap (mounted at
   # `/.env-file/`) sets it to `/login-client/pat`. The Login UI reads
   # the .env file at startup, NOT process env vars — so inline `login.env`
@@ -283,11 +287,15 @@ login:
     type: ClusterIP
     port: 80
 
-  # Chart probe paths are hard-coded via `login.{liveness,readiness}ProbePath`
-  # template helpers (NOT exposed as values). They serve the stale
-  # `/ui/v2/login/{healthy,ready}` paths under our `NEXT_PUBLIC_BASE_PATH=/ui/v2`
-  # collapse, so we disable chart probes and re-inject correct ones via
-  # `overlays/<env>/login-probe-patch.yaml`.
+  # Disable chart-rendered probes so each overlay's
+  # `login-probe-patch.yaml` can re-inject them with conservative
+  # timings (chart default `initialDelaySeconds=0, periodSeconds=5,
+  # timeoutSeconds=1-implicit, failureThreshold=3` CrashLoops
+  # Next.js cold starts on Spot nodes at 50m CPU / 128Mi mem within
+  # ~10s). The overlay patches keep the chart's correct paths
+  # `/ui/v2/login/{healthy,ready}` (matching the image's baked-in
+  # base path — `NEXT_PUBLIC_*` env vars are inlined at build time
+  # and NOT runtime-tunable).
   readinessProbe:
     enabled: false
   livenessProbe:
