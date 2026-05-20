@@ -36,8 +36,8 @@ patches:
   target:
     kind: HTTPRoute
     name: zitadel-route
-# Re-inject Login UI probes after disabling chart's hard-coded paths.
-# See login-probe-patch.yaml for the rationale.
+# Re-inject Login UI probes after disabling chart's default tight
+# timings. See login-probe-patch.yaml for rationale.
 - path: login-probe-patch.yaml
   target:
     kind: Deployment
