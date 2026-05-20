@@ -1,0 +1,26 @@
+# See `../dev/login-probe-patch.yaml` for full rationale.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zitadel-api-login
+spec:
+  template:
+    spec:
+      containers:
+      - name: zitadel-login
+        readinessProbe:
+          httpGet:
+            path: /ui/v2/ready
+            port: http-server
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /ui/v2/healthy
+            port: http-server
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          failureThreshold: 3

@@ -3,53 +3,30 @@ kind: Kustomization
 
 namespace: zitadel
 
+# Render the Zitadel Helm chart layering base/values.yaml + overlay.
+# See `../dev/kustomization.yaml` for the LoadRestrictionsNone rationale.
+helmCharts:
+- name: zitadel
+  repo: https://charts.zitadel.com
+  version: 9.34.1
+  releaseName: zitadel
+  namespace: zitadel
+  includeCRDs: false
+  valuesFile: ../../base/values.yaml
+  additionalValuesFiles:
+  - values.yaml
+
 resources:
 - ../../base
 # Prod DB grant Job — idempotent ALTER DATABASE OWNER + GRANT scoped to the
-# prod Cloud SQL `zitadel` DB. Mirrors the dev pattern at
-# `../dev/job-grant-db.yaml` but targets the prod connection name and the
-# prod IAM user `zitadel@liverty-music-prod.iam`.
+# prod Cloud SQL `zitadel` DB.
 - job-grant-db.yaml
 # Per design D5 + spec Requirement 6: opt-in PodMonitoring CRD for prod-only
-# GMP scrape of zitadel-api `/debug/metrics`, keep-rule bounded to
-# `zitadel_command_*` + `http_server_request_duration_*` series.
+# GMP scrape of zitadel-api `/debug/metrics`.
 - podmonitoring.yaml
 # NOTE: `cronjob-restart-zitadel.yaml` is intentionally NOT imported here.
-# That resource is a dev-only band-aid for the `self-hosted-zitadel` §18.6
-# hang (search the `liverty-music.app/temporary` annotation in the dev
-# overlay). Prod must not silently inherit a weekly forced restart.
-
-configMapGenerator:
-# Merge prod env-specific overrides into the base `zitadel-config` ConfigMap.
-# Currently overrides ZITADEL_EXTERNALDOMAIN, Cloud SQL IAM SA usernames,
-# and connection pool tuning — see `configmap-patch.env` for the full set +
-# rationale.
-- name: zitadel-config
-  behavior: merge
-  envs:
-  - configmap-patch.env
 
 patches:
-# Per design D8 of the prod-k8s-manifests change: both Deployments patched
-# to replicas=1 + spot-pool nodeSelector. `deployment-api-patch.yaml` also
-# overrides cloud-sql-proxy args to the prod instance; `deployment-web-patch.yaml`
-# also sets ZITADEL_API_URL to the prod public URL.
-- path: deployment-api-patch.yaml
-  target:
-    kind: Deployment
-    name: zitadel-api
-- path: deployment-web-patch.yaml
-  target:
-    kind: Deployment
-    name: zitadel-web
-# Relax both PDBs to minAvailable=0 so the single replicas can be voluntarily
-# evicted (Spot preemption, drain). Required after replicas=1 patches above.
-- path: pdb-patch.yaml
-# Remove podAntiAffinity from both Deployments. Autopilot's Warden rejects
-# Deployments that use podAntiAffinity with CPU requests <500m per Pod, and
-# replicas=1 (above) makes anti-affinity a no-op anyway. See the file header
-# for the full Warden error message and the right-size-prod follow-up plan.
-- path: affinity-patch.yaml
 # Override the Workload Identity GCP SA on the `zitadel` ServiceAccount
 # (base annotates the dev project's SA; prod pods need the prod SA).
 - path: serviceaccount-patch.yaml
@@ -62,3 +39,8 @@ patches:
   target:
     kind: HTTPRoute
     name: zitadel-route
+# Re-inject Login UI probes after disabling chart's hard-coded paths.
+- path: login-probe-patch.yaml
+  target:
+    kind: Deployment
+    name: zitadel-api-login

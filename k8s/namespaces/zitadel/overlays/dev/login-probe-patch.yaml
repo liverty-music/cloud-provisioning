@@ -1,0 +1,35 @@
+# Re-inject readiness + liveness probes on the chart-rendered Login UI
+# Deployment. The chart's template helpers `login.livenessProbePath` /
+# `login.readinessProbePath` hard-code `/ui/v2/login/{healthy,ready}` —
+# stale under `NEXT_PUBLIC_BASE_PATH=/ui/v2`. Disabling chart probes in
+# values.yaml (login.readinessProbe.enabled: false, livenessProbe: false)
+# leaves the container with no Pod-level probes; this strategic-merge
+# patch puts them back with paths aligned to the new base path.
+#
+# The Gateway-level HealthCheckPolicy (separate concern, defined in
+# `base/healthcheckpolicy.yaml`) is updated alongside.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zitadel-api-login
+spec:
+  template:
+    spec:
+      containers:
+      - name: zitadel-login
+        readinessProbe:
+          httpGet:
+            path: /ui/v2/ready
+            port: http-server
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /ui/v2/healthy
+            port: http-server
+            scheme: HTTP
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          failureThreshold: 3

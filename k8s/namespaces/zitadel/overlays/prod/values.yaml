@@ -1,0 +1,72 @@
+# Prod-specific Helm values, layered on top of `../../base/values.yaml`.
+# See `../dev/values.yaml` for the full structural commentary.
+
+zitadel:
+  configmapConfig:
+    ExternalDomain: auth.liverty-music.app
+    Database:
+      Postgres:
+        User:
+          Username: zitadel@liverty-music-prod.iam
+        Admin:
+          Username: zitadel@liverty-music-prod.iam
+
+  # K8s native sidecars (restartPolicy: Always on initContainers).
+  # See ../dev/values.yaml + base/values.yaml for full rationale.
+  initContainers:
+  - name: cloud-sql-proxy
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+    restartPolicy: Always
+    args:
+    - --psc
+    - --auto-iam-authn
+    - --port=5432
+    - --address=127.0.0.1
+    - liverty-music-prod:asia-northeast2:postgres-osaka
+    ports:
+    - containerPort: 5432
+      name: postgres
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      allowPrivilegeEscalation: false
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+  - name: bootstrap-uploader
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    restartPolicy: Always
+    command:
+    - /bin/sh
+    - -c
+    - |
+      set -eu
+      KEY_FILE=/var/zitadel/bootstrap/admin-sa.json
+      SECRET_NAME=zitadel-machine-key-for-pulumi-admin
+      echo "bootstrap-uploader: waiting for $KEY_FILE"
+      while [ ! -f "$KEY_FILE" ]; do sleep 2; done
+      if existing=$(gcloud secrets versions access latest --secret="$SECRET_NAME" 2>/dev/null); then
+        if [ "$existing" = "$(cat "$KEY_FILE")" ]; then
+          echo "bootstrap-uploader: stored version already matches, skipping upload"
+          exec tail -f /dev/null
+        fi
+      fi
+      echo "bootstrap-uploader: uploading new admin-sa key"
+      gcloud secrets versions add "$SECRET_NAME" --data-file="$KEY_FILE"
+      echo "bootstrap-uploader: upload complete"
+      exec tail -f /dev/null
+    volumeMounts:
+    - name: bootstrap
+      mountPath: /var/zitadel/bootstrap
+      readOnly: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
