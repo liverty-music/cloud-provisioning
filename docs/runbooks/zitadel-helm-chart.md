@@ -94,7 +94,10 @@ make lint-k8s
 3. **Update image tag** in `base/values.yaml` AND `login.image.tag`
    to the matching `vX.Y.Z` (both API and Login UI use the same
    semver tag; see deployment-web comment thread in git history for
-   why).
+   why). **Also update `OTEL_RESOURCE_ATTRIBUTES` in the top-level
+   `env:` block of `base/values.yaml`** — it hard-codes
+   `service.version=vX.Y.Z` and without an explicit bump Cloud Trace
+   service maps + alert annotations report the stale prior version.
 4. **Render + diff** against the pre-bump rendered output to surface
    chart changes (added/removed manifests, schema migrations,
    default value changes):

@@ -8,19 +8,22 @@ spec:
     spec:
       containers:
       - name: zitadel-login
+        # See ../dev/login-probe-patch.yaml for the timing rationale.
         readinessProbe:
           httpGet:
             path: /ui/v2/ready
             port: http-server
             scheme: HTTP
-          initialDelaySeconds: 0
-          periodSeconds: 5
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
           failureThreshold: 3
         livenessProbe:
           httpGet:
             path: /ui/v2/healthy
             port: http-server
             scheme: HTTP
-          initialDelaySeconds: 0
-          periodSeconds: 5
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
           failureThreshold: 3

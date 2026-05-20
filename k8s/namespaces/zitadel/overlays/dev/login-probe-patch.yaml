@@ -17,19 +17,31 @@ spec:
     spec:
       containers:
       - name: zitadel-login
+        # Tuned to the prior hand-rolled deployment-web.yaml values
+        # (readiness initialDelay=5/period=10/timeout=5/failureThreshold=3;
+        # liveness initialDelay=15/period=30/timeout=5/failureThreshold=3).
+        # The chart's `login.readinessProbe.*` values are NOT used because
+        # they're disabled at base/values.yaml (chart hard-codes the
+        # probe PATH itself in `login.{liveness,readiness}ProbePath`
+        # template helpers, not configurable). The chart-default timings
+        # alone (initialDelay=0, period=5, timeout=1-implicit, failureThreshold=3)
+        # crash-loop Next.js cold starts on Spot nodes at this resource
+        # envelope (50m CPU, 128Mi mem) within ~10s.
         readinessProbe:
           httpGet:
             path: /ui/v2/ready
             port: http-server
             scheme: HTTP
-          initialDelaySeconds: 0
-          periodSeconds: 5
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
           failureThreshold: 3
         livenessProbe:
           httpGet:
             path: /ui/v2/healthy
             port: http-server
             scheme: HTTP
-          initialDelaySeconds: 0
-          periodSeconds: 5
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
           failureThreshold: 3

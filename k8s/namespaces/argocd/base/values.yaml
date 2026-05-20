@@ -8,12 +8,22 @@ configs:
   cm:
     # Enable Helm template rendering inside kustomize overlays that use helmCharts:.
     # Required for external-secrets and reloader overlays.
-    # `--load-restrictor=LoadRestrictionsNone` lets overlays reference
+    #
+    # `--load-restrictor=LoadRestrictionsNone` is a CLUSTER-WIDE flag —
+    # every ArgoCD-managed Application loses the default
+    # `LoadRestrictionsRootOnly` directory-boundary check after this is
+    # applied. The flag was added for the zitadel overlays, which use
     # `valuesFile: ../../base/values.yaml` for shared Helm chart values
-    # (used by the zitadel overlays; see
-    # `k8s/namespaces/zitadel/base/kustomization.yaml` for rationale).
-    # Documented trade-off (loss of kustomization relocatability) is
-    # acceptable here — no overlay is designed to be moved/copied.
+    # (see `k8s/namespaces/zitadel/base/kustomization.yaml` for full
+    # rationale). Other existing overlays (external-secrets, reloader,
+    # nats, keda, atlas-operator) do not currently use out-of-tree file
+    # references — verified at this commit — so the flag widens the
+    # defence-in-depth boundary but does not silently enable any
+    # existing-but-prohibited reference.
+    #
+    # Documented Kustomize trade-off (loss of kustomization
+    # relocatability) is acceptable: no overlay in this repo is
+    # designed to be moved/copied to another path.
     kustomize.buildOptions: "--enable-helm --load-restrictor=LoadRestrictionsNone"
   params:
     # Use server-side diff for accurate sync status on GKE Autopilot.
