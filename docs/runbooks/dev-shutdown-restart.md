@@ -542,28 +542,18 @@ ENABLED version remains, and bounce the pod again.
 > improvement could be a Pulumi `Command` resource that runs this on
 > shutdown automatically, but that's out of scope for now.
 
-### B6b. Capture the new dev Zitadel instance id
-
-After the Cloud SQL wipe + re-bootstrap, Zitadel creates a **new instance with a new id** (same chicken-and-egg as `adminOrgIdMap[dev]` in §B4a, just one layer up). `instanceIdMap[dev]` in `src/zitadel/constants.ts` still holds the `__UNSET__` sentinel from the dev-shutdown era. Without this step, the next `pulumi up` would hit the `ZitadelInstanceCustomDomain` Dynamic Resource's fail-fast guard with:
-
-> `ZitadelInstanceCustomDomain: instanceId is the __UNSET__ sentinel. Run \`node scripts/discover-zitadel-instance-id.mjs --env=dev\` ...`
-
-Run the discovery script from `cloud-provisioning/`:
-
-```bash
-node scripts/discover-zitadel-instance-id.mjs --env=dev
-```
-
-The script signs a `pulumi-system` System User JWT using the private key in GSM (`zitadel-system-api-key`) and prints the captured id ready to paste:
-
-```
-[discover] paste this into src/zitadel/constants.ts (instanceIdMap):
-  dev: '<NEW_INSTANCE_ID>',
-```
-
-Update `instanceIdMap[dev]` in `src/zitadel/constants.ts`, commit, and let Pulumi proceed. The Dynamic Resource will then call `AddCustomDomain` to re-register `zitadel-api.zitadel.svc.cluster.local` against the new instance — same idempotent path the prod Phase 2 took.
-
-> **Prerequisite for this step**: the `pulumi-system` System User must already be loaded on the `zitadel-api` Pod. That happens automatically as part of B5's ArgoCD sync (the `external-secret-system-api-pub` ExternalSecret + the `ZITADEL_SYSTEMAPIUSERS` env on `deployment-api.yaml` are in base). Wait for `kubectl get pods -n zitadel -l component=api` to show 1/1 Ready before running the script.
+> **Catastrophic restore-from-scratch path:** if Cloud SQL was wiped and
+> the Zitadel database is entirely fresh (not just the pods being
+> restarted), follow the
+> [`docs/runbooks/zitadel-helm-chart.md` "Catastrophic restore-from-scratch
+> path"](zitadel-helm-chart.md#catastrophic-restore-from-scratch-path)
+> BEFORE running §B7 — that runbook covers flipping
+> `zitadel.configmapConfig.FirstInstance.Skip: false` temporarily,
+> capturing the new admin org ID for `adminOrgIdMap[env]`, and calling
+> `SetInstanceFeatures(loginV2.baseUri="/ui/v2")` against the freshly-
+> bootstrapped instance. Skipping these means the new instance will
+> redirect to `/ui/v2/login/login` (the chart default) instead of the
+> intended `/ui/v2/login`.
 
 ### B7. End-to-end smoke
 

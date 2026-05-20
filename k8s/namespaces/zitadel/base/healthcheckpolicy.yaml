@@ -33,6 +33,8 @@ spec:
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
+  # Policy name kept as `zitadel-web-policy` for ops continuity; targetRef
+  # below points at the chart-natural Service name `zitadel-api-login`.
   name: zitadel-web-policy
   labels:
     app: zitadel
@@ -43,8 +45,11 @@ spec:
       type: HTTP
       httpHealthCheck:
         port: 3000
-        requestPath: /ui/v2/login
+        # Login UI's dedicated liveness endpoint after the base path
+        # collapse (`NEXT_PUBLIC_BASE_PATH=/ui/v2`). Matches the Pod-level
+        # livenessProbe in `overlays/<env>/login-probe-patch.yaml`.
+        requestPath: /ui/v2/healthy
   targetRef:
     group: ""
     kind: Service
-    name: zitadel-web
+    name: zitadel-api-login

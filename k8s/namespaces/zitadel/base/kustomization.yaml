@@ -3,28 +3,42 @@ kind: Kustomization
 
 namespace: zitadel
 
+# IMPORTANT: This base does NOT render the Helm chart itself —
+# `helmCharts:` lives in each overlay. Each overlay references
+# `base/values.yaml` (this directory) via `helmCharts.valuesFile`
+# and layers env-specific overrides via `additionalValuesFiles`.
+#
+# The cross-directory `valuesFile: ../../base/values.yaml` reference is
+# blocked by Kustomize's default `LoadRestrictionsRootOnly` security
+# mode. We pass `--load-restrictor=LoadRestrictionsNone` to allow it.
+# Both CI (`Makefile:lint-k8s`) and ArgoCD (`argocd-cm.kustomize.buildOptions`)
+# carry the flag.
+#
+# The documented trade-off (loss of kustomization "relocatability") is
+# acceptable here because no part of this kustomization is designed to
+# be moved or copied to another path; everything is anchored relative
+# to this repo.
+#
+# Standalone resources kept as raw manifests (chart's gateway templates
+# disabled in base values):
+# - namespace.yaml: declares the zitadel namespace
+# - serviceaccount.yaml: shared `zitadel` SA + Workload Identity
+#   GSA->KSA annotation (referenced by chart values
+#   `serviceAccount.name: zitadel` + `serviceAccount.create: false`)
+# - httproute.yaml + healthcheckpolicy.yaml: GKE Gateway routing
+# - external-secret.yaml: ESO-managed `zitadel-masterkey` Secret
+#   (chart reads via `zitadel.masterkeySecretName`)
+# - external-secret-web-pat.yaml: ESO-managed `zitadel-web-pat` Secret
+# - external-secret-postgres-admin.yaml: ESO-managed Postgres admin
+#   password Secret (used by overlay `job-grant-db.yaml`)
 resources:
 - namespace.yaml
 - serviceaccount.yaml
-- deployment-api.yaml
-- deployment-web.yaml
-- service-api.yaml
-- service-web.yaml
 - httproute.yaml
 - healthcheckpolicy.yaml
-- pdb.yaml
 - external-secret.yaml
 - external-secret-postgres-admin.yaml
-- external-secret-system-api-pub.yaml
 - external-secret-web-pat.yaml
-# NOTE: `job-grant-db.yaml` lives in `overlays/dev/` because the Job hardcodes
-# the dev Cloud SQL instance + dev IAM SA usernames. Prod will need its own
-# job-grant-db.yaml (or a future templating refactor) once prod prereqs land.
-
-configMapGenerator:
-- name: zitadel-config
-  envs:
-  - configmap.env
 
 labels:
 - includeSelectors: false

@@ -10,15 +10,7 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
-import { ZitadelInstanceCustomDomain } from './zitadel/dynamic/index.js'
-import {
-	instanceIdMap,
-	SecretsComponent,
-	SYSTEM_API_USER_NAME,
-	ZITADEL_API_INTERNAL_HOST,
-	Zitadel,
-	zitadelDomainMap,
-} from './zitadel/index.js'
+import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
 const displayName = 'Liverty Music'
@@ -168,70 +160,10 @@ const gcp = new Gcp({
 // `gcp.workloadSAs` (cluster Workload Identity SAs) is optional and gates
 // only the IAM bindings inside `SecretsComponent`; the Secret + Version
 // resources are created regardless.
-const zitadelSecrets = new SecretsComponent('zitadel-secrets', {
+new SecretsComponent('zitadel-secrets', {
 	project: gcp.project,
 	workloadSAs: gcp.workloadSAs,
 })
-
-// Register the cluster-internal hostname as an InstanceCustomDomain so
-// Login V2 UI's outbound Connect-RPC calls can target the in-cluster
-// Service URL (`http://zitadel-api.zitadel.svc.cluster.local`) instead
-// of the public LB hairpin — the public-URL path 30s-timed-out on
-// Node's HTTP client through GCP HTTPS LB (see OpenSpec change
-// `route-login-v2-via-internal-zitadel-api`).
-//
-// The Dynamic Resource signs a System User JWT directly using Node
-// `crypto` and POSTs to `instance.v2.InstanceService/AddCustomDomain`
-// because `@pulumiverse/zitadel@0.2.0` exposes neither the resource
-// nor a `system_api` provider auth block. The System User
-// (`pulumi-system`) is declared via `ZITADEL_SYSTEMAPIUSERS` on the
-// `zitadel-api` Pod, provisioned by Phase 1.
-//
-// Skipped when `workloadEnabled=false`: the `zitadel-api` Pod is
-// destroyed in dev shutdown mode so there is no API to talk to. The
-// Dynamic Resource will recreate the registration on next `pulumi up`
-// once workloads are back up; idempotent via 409 AlreadyExists handling
-// inside the resource.
-//
-// `dependsOn` the System User private key SecretVersion to guarantee
-// the SecretVersion is materialised in GSM before the Dynamic
-// Resource's `create` callback reads it.
-const zitadelInstanceInternalDomain =
-	workloadEnabled && zitadel !== undefined
-		? new ZitadelInstanceCustomDomain(
-				'zitadel-api-internal',
-				{
-					domain: zitadelDomainMap[env],
-					systemUserName: SYSTEM_API_USER_NAME,
-					privateKeyPem: zitadelSecrets.systemApiPrivateKeyPem,
-					instanceId: instanceIdMap[env],
-					customDomain: ZITADEL_API_INTERNAL_HOST,
-				},
-				{
-					dependsOn: [zitadelSecrets.systemApiPrivateSecretVersion],
-					// `protect: true` because a `pulumi destroy` on this
-					// resource calls `RemoveCustomDomain` against the
-					// Zitadel instance — which immediately breaks every
-					// Login UI Pod's outbound API call (the cluster-internal
-					// hostname no longer matches any InstanceCustomDomain
-					// → HTTP 404 instance-not-found). The `workloadEnabled
-					// && zitadel !== undefined` guard prevents accidental
-					// teardown via a config flip, but a future refactor
-					// that removes this `new ZitadelInstanceCustomDomain`
-					// block in src/ would still slip past that guard.
-					// `protect: true` makes the destroy intent explicit:
-					// the operator must remove `protect` (or call
-					// `pulumi state delete`) before Pulumi will tear it
-					// down.
-					protect: true,
-				},
-			)
-		: undefined
-
-// Surfaced as a Pulumi export so the stack-level state record holds
-// the composite id (`<instanceId>/<customDomain>`) for ops debugging.
-export const zitadelApiInternalDomainId =
-	zitadelInstanceInternalDomain?.registeredId
 
 // 3. GitHub Repository Environments (All Environments)
 const sharedVariables = {

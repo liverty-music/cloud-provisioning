@@ -1,0 +1,326 @@
+# Shared Helm values for the official Zitadel chart (zitadel/zitadel-charts).
+# Both overlays (`overlays/{dev,prod}/`) reference this file via the
+# `helmCharts.valuesFile` field. Env-specific overrides live in each
+# overlay's own `values.yaml`, layered on top via `additionalValuesFiles`.
+#
+# Cross-dir file reference is enabled by `--load-restrictor=LoadRestrictionsNone`
+# on both CI (`Makefile:lint-k8s`) and ArgoCD (`argocd-cm.kustomize.buildOptions`).
+# The trade-off documented by Kustomize — loss of kustomization
+# relocatability — is acceptable here because the kustomization is
+# anchored in this repo and is not designed to be copied / moved.
+
+fullnameOverride: zitadel-api
+
+image:
+  tag: v4.14.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+nodeSelector:
+  cloud.google.com/gke-spot: "true"
+
+# Anti-affinity dropped (single replica + GKE Autopilot's CPU-≥500m
+# constraint that would reject podAntiAffinity at this resource size).
+# Restore in overlays if a future `right-size-prod`-style change boosts
+# CPU requests + replica count.
+affinity: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  protocol: http2
+  appProtocol: kubernetes.io/h2c
+
+ingress:
+  enabled: false
+gateway:
+  httpRoute:
+    enabled: false
+  grpcRoute:
+    enabled: false
+
+# Reuse the existing `zitadel` ServiceAccount (declared in
+# `base/serviceaccount.yaml` with its Workload Identity GSA->KSA
+# annotation). prod overlay's `serviceaccount-patch.yaml` swaps the
+# annotation to the prod GSA.
+serviceAccount:
+  create: false
+  name: zitadel
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+pdb:
+  enabled: true
+  # minAvailable=0 lets the single replica be voluntarily evicted
+  # (Spot preemption, drain, rollout). Both dev and prod use 1 replica
+  # currently — flip to a non-zero value if replica count >1.
+  minAvailable: 0
+
+revisionHistoryLimit: 10
+
+zitadel:
+  masterkey: ""
+  # K8s Secret synced from GSM via `external-secret.yaml`. Chart expects
+  # the data key to be literally `masterkey`.
+  masterkeySecretName: zitadel-masterkey
+
+  configmapConfig:
+    ExternalSecure: true
+    # ExternalDomain set in overlay values.yaml (auth.dev.liverty-music.app
+    # vs auth.liverty-music.app).
+    ExternalPort: 443
+    TLS:
+      Enabled: false
+
+    Database:
+      Postgres:
+        Host: localhost
+        Port: 5432
+        Database: zitadel
+        User:
+          # Username (zitadel@liverty-music-<env>.iam) set in overlay.
+          SSL:
+            Mode: disable
+        Admin:
+          ExistingDatabase: zitadel
+          # Username set in overlay (same value as User.Username).
+          SSL:
+            Mode: disable
+        # Cloud SQL is db-f1-micro tier (25 conn cap); backend uses ~12.
+        # Replicas=1 * MaxOpen=3 = 3 leaves headroom for Atlas + manual psql.
+        MaxOpenConns: 3
+        MaxIdleConns: 1
+        MaxConnLifetime: 30m
+        MaxConnIdleTime: 5m
+
+    Machine:
+      Identification:
+        Hostname:
+          Enabled: true
+        Webhook:
+          Enabled: false
+
+    # Skip FirstInstance: existing DB already holds the admin org +
+    # pulumi-admin user. Catastrophic-restore path: temporarily flip to
+    # `false`, let `bootstrap-uploader` sidecar publish a fresh admin SA
+    # key to GSM, then flip back.
+    FirstInstance:
+      Skip: true
+
+    # New-instance default for Login V2 base URI. Paired with
+    # `login.env.NEXT_PUBLIC_BASE_PATH=/ui/v2` to collapse the historical
+    # `/ui/v2/login/login` redirect target into `/ui/v2/login`.
+    # Existing instance does NOT auto-pick this up (FirstInstance.Skip:
+    # true) — see tasks.md §9.3a / §10.3a for the post-deploy
+    # `SetInstanceFeatures` API call.
+    DefaultInstance:
+      Features:
+        LoginV2:
+          Required: true
+          BaseURI: /ui/v2
+
+    Log:
+      Level: info
+      Formatter:
+        Format: json
+
+  secretConfig: null
+  configSecretName: ""
+
+  # Sidecars (cloud-sql-proxy + bootstrap-uploader) live in each overlay's
+  # values.yaml under `zitadel.initContainers` (NOT `extraContainers`).
+  #
+  # Why initContainers + restartPolicy: Always:
+  # The chart auto-injects `zitadel.extraContainers` into the API Deployment
+  # AND the init/setup Jobs. Classic sidecars (cloud-sql-proxy is a
+  # never-exits proxy; bootstrap-uploader does `tail -f /dev/null`) keep
+  # the Job Pod running indefinitely, so the Job hits its
+  # `activeDeadlineSeconds: 300` and fails on every chart deploy.
+  #
+  # K8s 1.29+ "native sidecar containers" — initContainers with
+  # `restartPolicy: Always` — run alongside the main container exactly
+  # like sidecars in a Deployment, AND receive SIGTERM + exit cleanly
+  # when the main container completes in a Job. GKE Autopilot runs
+  # 1.30+, so this pattern works. The chart's templates render
+  # `zitadel.initContainers` verbatim via `toYaml`, so `restartPolicy: Always`
+  # carries through.
+  #
+  # Why NOT in base: Helm values list-merge REPLACES rather than MERGES,
+  # and the cloud-sql-proxy connection name is env-specific. Each
+  # overlay carries the full list.
+
+# Top-level `env:` injected into the API container by the chart's
+# deployment_zitadel.yaml template (the chart's value path is the
+# top-level `env`, NOT `zitadel.env`).
+#
+# OpenTelemetry SDK env vars carry forward from the prior
+# `configmap.env`. Zitadel v4.14.0 supports OTEL_* via autoexport
+# (release notes). Without these, Zitadel emits no observability
+# output (v4 has no `/debug/metrics` HTTP scrape endpoint —
+# verified empirically: the path returns 404 on v4.14.0).
+#
+# Pushes metrics + traces to the in-cluster OTLP collector; the
+# collector's `metrics` and `traces` pipelines export to Cloud
+# Monitoring + Cloud Trace respectively.
+env:
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: http://otel-collector.otel-collector.svc.cluster.local:4317
+- name: OTEL_EXPORTER_OTLP_PROTOCOL
+  value: grpc
+- name: OTEL_METRICS_EXPORTER
+  value: otlp
+- name: OTEL_TRACES_EXPORTER
+  value: otlp
+- name: OTEL_LOGS_EXPORTER
+  value: none
+- name: OTEL_RESOURCE_ATTRIBUTES
+  value: service.name=zitadel,service.version=v4.14.0
+# 60s push interval matches `zitadel-observability` design D4 — alert
+# evaluation window is also 60s, so each evaluation cycle sees ~1 fresh
+# data point.
+- name: OTEL_METRIC_EXPORT_INTERVAL
+  value: "60000"
+
+login:
+  enabled: true
+  # Login UI's chart-natural name is `<zitadel.fullname>-login` —
+  # `login.fullnameOverride` is NOT honored by the chart templates
+  # (`_helpers.tpl:38` hard-codes `-login` suffix). So the Service /
+  # Deployment land as `zitadel-api-login`; HTTPRoute backendRefs and
+  # HealthCheckPolicy targetRef are wired accordingly.
+
+  image:
+    tag: v4.14.0
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  nodeSelector:
+    cloud.google.com/gke-spot: "true"
+  affinity: {}
+
+  serviceAccount:
+    create: false
+    name: zitadel
+
+  env:
+  # Collapse the chart's default `/ui/v2/login` base path to `/ui/v2`.
+  # Paired with zitadel.configmapConfig.DefaultInstance.Features.LoginV2.BaseURI
+  # (above) so the OIDC redirect target is `/ui/v2/login?...` instead
+  # of `/ui/v2/login/login?...`.
+  - name: NEXT_PUBLIC_BASE_PATH
+    value: /ui/v2
+  - name: ZITADEL_SERVICE_USER_TOKEN_FILE
+    value: /var/run/zitadel/login-client.pat
+  # CUSTOM_REQUEST_HEADERS is intentionally NOT set here. The chart
+  # auto-generates it as
+  # `Host:<ExternalDomain>,X-Zitadel-Public-Host:<ExternalDomain>` via
+  # the `login-config-dotenv` ConfigMap. Setting it inline would
+  # override BOTH headers — but `X-Zitadel-Public-Host` is the canonical
+  # header Zitadel reads (`PublicHostHeaders` default, `cmd/defaults.yaml`)
+  # for instance discovery from cluster-internal callers.
+
+  # Mount the existing Pulumi-managed `zitadel-web-pat` Secret at the
+  # path the Login UI reads via `ZITADEL_SERVICE_USER_TOKEN_FILE`.
+  extraVolumes:
+  - name: login-pat
+    secret:
+      secretName: zitadel-web-pat
+      items:
+      - key: token
+        path: login-client.pat
+  extraVolumeMounts:
+  - name: login-pat
+    mountPath: /var/run/zitadel
+    readOnly: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  pdb:
+    enabled: true
+    minAvailable: 0
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  # Chart probe paths are hard-coded via `login.{liveness,readiness}ProbePath`
+  # template helpers (NOT exposed as values). They serve the stale
+  # `/ui/v2/login/{healthy,ready}` paths under our `NEXT_PUBLIC_BASE_PATH=/ui/v2`
+  # collapse, so we disable chart probes and re-inject correct ones via
+  # `overlays/<env>/login-probe-patch.yaml`.
+  readinessProbe:
+    enabled: false
+  livenessProbe:
+    enabled: false
+
+initJob:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+setupJob:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Chart-side machineKey writer: enabled so catastrophic-restore can
+  # extract the FirstInstance admin SA key from the ephemeral setup
+  # Pod. Under normal operation (`FirstInstance.Skip: true` above) the
+  # writer never fires — it only activates when the chart's setup Job
+  # creates a fresh instance and writes `/machinekey/sa.json`. In that
+  # case the writer packages the key into a K8s Secret named after the
+  # FirstInstance machine username (`pulumi-admin`), and the operator
+  # uploads that Secret's payload to GSM
+  # `zitadel-machine-key-for-pulumi-admin` (see
+  # `docs/runbooks/zitadel-helm-chart.md` "Catastrophic restore-from-
+  # scratch path" for the manual upload command). The earlier
+  # `bootstrap-uploader` sidecar in `zitadel.initContainers` was
+  # incompatible with this chart-native flow (the chart's setup Job
+  # is an ephemeral Pod the API Deployment's sidecar can't see), so
+  # it was removed.
+  machinekeyWriter:
+    enabled: true
+
+cleanupJob:
+  enabled: false
+
+postgresql:
+  enabled: false
+
+metrics:
+  enabled: false
+
+# wait-for-zitadel initContainer (on the Login UI Deployment) defaults
+# to no resource requests/limits, which fails kube-linter. Small
+# footprint matches the short-lived wait4x process.
+tools:
+  wait4x:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi

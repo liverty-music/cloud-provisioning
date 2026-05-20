@@ -1,10 +1,22 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Apply `zitadel` namespace to overlay-added resources (the base's
-# `namespace:` field only covers resources defined in the base; the
-# CronJob + RBAC below are introduced here, so we set it explicitly).
 namespace: zitadel
+
+# Render the Zitadel Helm chart layering: base/values.yaml (shared) →
+# overlays/dev/values.yaml (env diffs). The cross-directory reference
+# requires `--load-restrictor=LoadRestrictionsNone` on both CI
+# (`Makefile:lint-k8s`) and ArgoCD (`argocd-cm.kustomize.buildOptions`).
+helmCharts:
+- name: zitadel
+  repo: https://charts.zitadel.com
+  version: 9.34.1
+  releaseName: zitadel
+  namespace: zitadel
+  includeCRDs: false
+  valuesFile: ../../base/values.yaml
+  additionalValuesFiles:
+  - values.yaml
 
 resources:
 - ../../base
@@ -14,33 +26,19 @@ resources:
 # `liverty-music.app/temporary` annotation to locate.
 - cronjob-restart-zitadel.yaml
 # Dev-only DB grant Job. Hardcodes the dev Cloud SQL instance + dev IAM
-# SA username; cannot live in base without a templating layer. Prod will
-# need its own equivalent when prod prereqs (Cloud SQL prod instance,
-# IAM user, postgres-admin-password GSM secret) are provisioned.
+# SA username; cannot live in base without a templating layer.
 - job-grant-db.yaml
 
-configMapGenerator:
-- name: zitadel-config
-  behavior: merge
-  envs:
-  - configmap-patch.env
-
 patches:
-# Dev-only replica count + spot-pool nodeSelector + reduced resource requests.
-- path: deployment-patch.yaml
-  target:
-    kind: Deployment
-    name: zitadel-api
-- path: deployment-web-patch.yaml
-  target:
-    kind: Deployment
-    name: zitadel-web
-# Relax both PDBs to minAvailable=0 so the single dev replica can be
-# voluntarily evicted (rollout, drain, Spot preemption).
-- path: pdb-patch.yaml
 # Supply the dev hostname for the Zitadel HTTPRoute (base omits `hostnames`
 # so each overlay scopes its `/` catch-all rule to its own auth domain).
 - path: httproute-patch.yaml
   target:
     kind: HTTPRoute
     name: zitadel-route
+# Re-inject Login UI probes after disabling chart's hard-coded paths.
+# See login-probe-patch.yaml for the rationale.
+- path: login-probe-patch.yaml
+  target:
+    kind: Deployment
+    name: zitadel-api-login

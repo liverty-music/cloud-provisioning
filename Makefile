@@ -22,7 +22,7 @@ lint-k8s:
 		namespace=$$(echo "$$overlay" | cut -d'/' -f3); \
 		env=$$(basename "$$overlay"); \
 		echo "==> Rendering $$namespace ($$env)"; \
-		kustomize build --enable-helm "$$overlay" > "/tmp/rendered/$${namespace}-$${env}.yaml" || exit 1; \
+		kustomize build --enable-helm --load-restrictor=LoadRestrictionsNone "$$overlay" > "/tmp/rendered/$${namespace}-$${env}.yaml" || exit 1; \
 	done
 	kube-linter lint /tmp/rendered --config .kube-linter.yaml
 	./scripts/check-spot-nodeselector.sh /tmp/rendered
