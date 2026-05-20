@@ -233,12 +233,13 @@ describe('instanceCustomDomainProvider.read', () => {
 		expect(result.props).toBe(state)
 	})
 
-	it('returns empty result when the domain has been deleted out-of-band', async () => {
+	it('returns empty result (no id, no props) when the domain has been deleted out-of-band — signals Pulumi to schedule recreation', async () => {
 		mockedCall.mockResolvedValueOnce({
 			statusCode: 200,
 			body: JSON.stringify({ customDomains: [{ domain: 'other' }] }),
 		})
 		const result = await provider.read('id', state)
+		expect(result.id).toBeUndefined()
 		expect(result.props).toBeUndefined()
 	})
 

@@ -123,8 +123,23 @@ export const adminOrgIdMap: Record<Environment, string> = {
  * Introduced by OpenSpec change `route-login-v2-via-internal-zitadel-api`.
  */
 export const instanceIdMap: Record<Environment, string> = {
+	// dev is currently shut down (`liverty-music:workloadEnabled: "false"` in
+	// Pulumi.dev.yaml). The dev Zitadel instance is destroyed, so there is
+	// no instance id to discover. The `__UNSET__` sentinel is harmless
+	// here because the `ZitadelInstanceCustomDomain` resource is gated on
+	// `workloadEnabled && zitadel !== undefined` in `src/index.ts` and
+	// is NOT instantiated when workloads are disabled. When dev is brought
+	// back up (procedure B in docs/runbooks/dev-shutdown-restart.md), the
+	// operator MUST run `node scripts/discover-zitadel-instance-id.mjs
+	// --env=dev` and commit the captured id here BEFORE the next
+	// `pulumi up` would otherwise hit the Dynamic Resource's fail-fast
+	// guard.
 	dev: '__UNSET__',
-	prod: '__UNSET__',
+	// Captured 2026-05-20 after Phase 1 deployed on prod and the
+	// `pulumi-system` System User was loaded on the `zitadel-api` Pod.
+	// Verified via
+	// `node scripts/discover-zitadel-instance-id.mjs --env=prod`.
+	prod: '372892288692519067',
 }
 
 /**

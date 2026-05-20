@@ -3,11 +3,15 @@
 # spot-pool nodeSelector. PDB minAvailable=1 from base is relaxed in
 # pdb-patch.yaml.
 #
-# Also overrides ZITADEL_API_URL to the prod public URL. Base hardcodes the
-# dev URL; without this patch, prod's Login UI would call the dev domain,
-# producing HTTP 404 (the cluster-internal hostname is not in prod's
-# InstanceDomains list) → Login SSR 500. Same env-leak-from-base pattern
-# as the HTTPRoute hostname (design D1).
+# `ZITADEL_API_URL` is intentionally NOT patched here. Per OpenSpec change
+# `route-login-v2-via-internal-zitadel-api`, the base manifest sets the
+# value to the cluster-internal Service URL
+# (`http://zitadel-api.zitadel.svc.cluster.local`), which is
+# environment-agnostic — both dev and prod resolve the Service in their
+# own cluster's DNS. The prior public-URL override that lived here was
+# only necessary because the base value used to be hardcoded to the dev
+# domain; with the base value now internal, no per-env override is
+# needed.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,8 +22,3 @@ spec:
     spec:
       nodeSelector:
         cloud.google.com/gke-spot: "true"
-      containers:
-      - name: web
-        env:
-        - name: ZITADEL_API_URL
-          value: https://auth.liverty-music.app
