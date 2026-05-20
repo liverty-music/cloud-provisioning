@@ -202,14 +202,52 @@ If the Cloud SQL `zitadel` database is wiped (dev shutdown + restore,
 or prod disaster recovery), the chart needs to re-bootstrap a fresh
 instance:
 
-1. Set `zitadel.configmapConfig.FirstInstance.Skip: false` in
-   `base/values.yaml` TEMPORARILY.
-2. Deploy. The `bootstrap-uploader` native sidecar will publish a
-   fresh admin SA key to GSM `zitadel-machine-key-for-pulumi-admin`.
-3. Capture the new admin org ID and update `adminOrgIdMap[env]` in
-   `src/zitadel/constants.ts`.
-4. Flip `FirstInstance.Skip` back to `true` and redeploy.
-5. Call `SetInstanceFeatures(loginV2.baseUri="/ui/v2")` against the
-   freshly-bootstrapped instance to re-establish the URL collapse.
+1. **Flip FirstInstance.Skip to false** in `base/values.yaml`:
+   ```yaml
+   zitadel:
+     configmapConfig:
+       FirstInstance:
+         Skip: false
+   ```
+2. **Deploy.** The chart's setup Job runs `zitadel setup` which writes
+   the FirstInstance admin SA key to `/machinekey/sa.json` in the
+   setup Pod. The chart's `machinekeyWriter` sidecar (re-enabled
+   in `base/values.yaml` for exactly this case) then packages that
+   file into a K8s Secret named after the machine username:
+   ```bash
+   kubectl -n zitadel get secret pulumi-admin -o jsonpath='{.data.pulumi-admin\.json}' | base64 -d > /tmp/admin-sa.json
+   ```
+3. **Upload to GSM.** The chart only creates the K8s Secret — it does
+   NOT touch GSM. The operator manually uploads:
+   ```bash
+   # dev
+   gcloud secrets versions add zitadel-machine-key-for-pulumi-admin \
+     --project=liverty-music-dev \
+     --data-file=/tmp/admin-sa.json
+   # prod (run from a workstation with prod credentials)
+   gcloud secrets versions add zitadel-machine-key-for-pulumi-admin \
+     --project=liverty-music-prod \
+     --data-file=/tmp/admin-sa.json
+   ```
+4. **Wipe the temporary file.** `shred -u /tmp/admin-sa.json`.
+5. **Capture the new admin org ID** and update `adminOrgIdMap[env]`
+   in `src/zitadel/constants.ts` (use `pulumi-admin`'s JWT to query
+   `POST /admin/v1/orgs/_search`).
+6. **Flip `FirstInstance.Skip` back to `true`** and redeploy. The
+   `machinekeyWriter` sidecar stays enabled — it's a no-op when
+   `Skip: true` because the setup Job no longer writes the key file.
+7. **Call `SetInstanceFeatures(loginV2.baseUri="/ui/v2")`** against
+   the freshly-bootstrapped instance to re-establish the URL
+   collapse (the `DefaultInstance.Features.LoginV2.BaseURI` value
+   in `base/values.yaml` applies at first-instance creation only;
+   confirm with a `GetInstanceFeatures` call afterwards).
+
+> **Why not an in-Pod sidecar?** An earlier design used a
+> `bootstrap-uploader` sidecar in the API Deployment that watched for
+> the key file + uploaded it to GSM automatically. That worked when the
+> old `start-from-init` pattern ran init + setup + start in one
+> process, but under the chart's separated init/setup Jobs the key
+> file is written to an ephemeral setup Pod that the API Deployment's
+> sidecar can never see. Manual upload is the simplest correct flow.
 
 See `dev-shutdown-restart.md` for the parallel runbook procedure.

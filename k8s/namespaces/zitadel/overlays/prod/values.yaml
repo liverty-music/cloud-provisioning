@@ -37,36 +37,4 @@ zitadel:
       limits:
         cpu: 100m
         memory: 64Mi
-  - name: bootstrap-uploader
-    image: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    restartPolicy: Always
-    command:
-    - /bin/sh
-    - -c
-    - |
-      set -eu
-      KEY_FILE=/var/zitadel/bootstrap/admin-sa.json
-      SECRET_NAME=zitadel-machine-key-for-pulumi-admin
-      echo "bootstrap-uploader: waiting for $KEY_FILE"
-      while [ ! -f "$KEY_FILE" ]; do sleep 2; done
-      if existing=$(gcloud secrets versions access latest --secret="$SECRET_NAME" 2>/dev/null); then
-        if [ "$existing" = "$(cat "$KEY_FILE")" ]; then
-          echo "bootstrap-uploader: stored version already matches, skipping upload"
-          exec tail -f /dev/null
-        fi
-      fi
-      echo "bootstrap-uploader: uploading new admin-sa key"
-      gcloud secrets versions add "$SECRET_NAME" --data-file="$KEY_FILE"
-      echo "bootstrap-uploader: upload complete"
-      exec tail -f /dev/null
-    volumeMounts:
-    - name: bootstrap
-      mountPath: /var/zitadel/bootstrap
-      readOnly: true
-    resources:
-      requests:
-        cpu: 10m
-        memory: 64Mi
-      limits:
-        cpu: 100m
-        memory: 128Mi
+  # See ../dev/values.yaml for the bootstrap-uploader removal rationale.
