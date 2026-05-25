@@ -27,6 +27,11 @@ export interface GcpArgs {
 	gcpConfig: GcpConfig
 	lastFmApiKey?: pulumi.Output<string>
 	fanartTvApiKey?: pulumi.Output<string>
+	/** Gemini API direct backend API key for the concert searcher workload.
+	 *  Stored in Secret Manager and synced into the `backend-secrets` K8s
+	 *  Secret via ExternalSecret. `gemini.NewConcertSearcher` REQUIRES this
+	 *  (no Vertex AI fallback as of backend #303). */
+	geminiSearchApiKey?: pulumi.Output<string>
 	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
@@ -99,6 +104,7 @@ export class Gcp {
 			gcpConfig,
 			lastFmApiKey,
 			fanartTvApiKey,
+			geminiSearchApiKey,
 			blockchainConfig,
 			cloudflareConfig,
 			postmarkConfig,
@@ -342,6 +348,14 @@ export class Gcp {
 								{
 									name: 'fanarttv-api-key',
 									value: fanartTvApiKey,
+								},
+							]
+						: []),
+					...(geminiSearchApiKey
+						? [
+								{
+									name: 'gemini-search-api-key',
+									value: geminiSearchApiKey,
 								},
 							]
 						: []),

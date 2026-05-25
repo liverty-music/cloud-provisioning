@@ -20,6 +20,12 @@ const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
 const lastFmApiKey = config.getSecret('lastFmApiKey')
 const fanartTvApiKey = config.getSecret('fanartTvApiKey')
+// Gemini API direct backend key for the concert searcher workload. REQUIRED
+// post-#303: the two-step grounded-extract pipeline needs URLContext +
+// TimeRangeFilter, which Vertex AI does not support. `gemini.NewConcertSearcher`
+// fails fast when the env var is empty, so this secret SHALL be set in every
+// stack where the backend workload runs (dev / prod).
+const geminiSearchApiKey = config.getSecret('geminiSearchApiKey')
 const blockchainConfig = config.getObject('blockchain') as
 	| BlockchainConfig
 	| undefined
@@ -139,6 +145,7 @@ const gcp = new Gcp({
 	gcpConfig,
 	lastFmApiKey,
 	fanartTvApiKey,
+	geminiSearchApiKey,
 	blockchainConfig,
 	cloudflareConfig,
 	postmarkConfig,
