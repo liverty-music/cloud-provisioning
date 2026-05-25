@@ -42,7 +42,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
 - pairs:
-    app.kubernetes.io/version: "1.1.0"
+    app.kubernetes.io/version: "1.1.1"
   includeSelectors: false
   includeTemplates: true
 
@@ -188,13 +188,13 @@ configMapGenerator:
 images:
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
-  newTag: v1.1.0  # commit 87fdd23f4c21b58e60999109054a9700cb72ee83
+  newTag: v1.1.1  # commit aae5228de1b5bd3aaffda05ff4b5cb370c8f5855
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-  newTag: v1.1.0  # commit 87fdd23f4c21b58e60999109054a9700cb72ee83
+  newTag: v1.1.1  # commit aae5228de1b5bd3aaffda05ff4b5cb370c8f5855
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-  newTag: v1.1.0  # commit 87fdd23f4c21b58e60999109054a9700cb72ee83
+  newTag: v1.1.1  # commit aae5228de1b5bd3aaffda05ff4b5cb370c8f5855
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-  newTag: v1.1.0  # commit 87fdd23f4c21b58e60999109054a9700cb72ee83
+  newTag: v1.1.1  # commit aae5228de1b5bd3aaffda05ff4b5cb370c8f5855
