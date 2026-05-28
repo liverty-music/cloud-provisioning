@@ -131,7 +131,7 @@ WITH daily AS (
     sku.description AS sku,
     SUM(cost) AS c
   FROM `liverty-music-prod.billing_export.gcp_billing_export_v1_<BILLING_ACCOUNT_ID>`
-  WHERE DATE(usage_start_time) BETWEEN '<spike_date>' AND DATE_SUB('<spike_date>', INTERVAL -1 DAY)
+  WHERE DATE(usage_start_time) BETWEEN DATE_SUB('<spike_date>', INTERVAL 1 DAY) AND '<spike_date>'
   GROUP BY d, sku
 )
 SELECT
