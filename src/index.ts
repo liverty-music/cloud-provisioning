@@ -187,7 +187,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: ['CI Success', 'Claude review'],
+	requiredStatusCheckContexts: ['CI Success'],
 })
 
 // Frontend Repository
@@ -197,7 +197,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: ['CI Success', 'Claude review'],
+	requiredStatusCheckContexts: ['CI Success'],
 })
 
 // Specification Repository
@@ -207,10 +207,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.SPECIFICATION,
 	environment: env,
 	variables: sharedVariables,
-	// Pilot repo for the Claude review Check Run gate introduced by
-	// OpenSpec change `claude-review-check-run`. All four repos now
-	// require `Claude review` after the specification pilot graduated.
-	requiredStatusCheckContexts: ['CI Success', 'Claude review'],
+	requiredStatusCheckContexts: ['CI Success'],
 })
 
 // Cloud Provisioning Repository
@@ -220,7 +217,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.CLOUD_PROVISIONING,
 	environment: env,
 	variables: sharedVariables,
-	requiredStatusCheckContexts: ['CI Success', 'Claude review'],
+	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
 })
 
