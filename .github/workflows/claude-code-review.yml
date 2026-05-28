@@ -19,5 +19,13 @@ permissions:
 
 jobs:
   review:
+    if: ${{ github.event_name == 'pull_request' }}
     uses: liverty-music/.github/.github/workflows/claude-review.yml@main
+    secrets: inherit
+
+  recompute-verdict:
+    if: ${{ github.event_name == 'pull_request_review_thread' }}
+    uses: liverty-music/.github/.github/workflows/claude-review.yml@main
+    with:
+      verdict_only: true
     secrets: inherit
