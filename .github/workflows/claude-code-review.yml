@@ -6,14 +6,12 @@ on:
 
 # Permissions are inherited by the reusable workflow's job and intersected
 # with its own workflow-level declarations. Set them here in the caller so
-# the called job has everything it needs (sticky/inline comment, Claude
-# action OIDC, Check Run publish).
+# the called job has everything it needs (inline comments, Claude action OIDC).
 permissions:
   contents: read
   pull-requests: write
   issues: read
   id-token: write
-  checks: write
 
 jobs:
   review:
