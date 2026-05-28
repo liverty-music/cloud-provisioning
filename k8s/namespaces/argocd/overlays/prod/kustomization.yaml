@@ -38,6 +38,16 @@ patches:
 # Application to act on. Setting replicas=0 eliminates the Pod's
 # Autopilot per-Pod billing without removing the Deployment definition,
 # so re-enablement is a single-line revert.
+#
+# Deployment name note: the standalone `argocd-image-updater` Helm
+# chart (v1.1.1, in base/charts/) renders its Deployment as
+# `argocd-image-updater-controller` — NOT plain `argocd-image-updater`.
+# The chart's template literally appends `-controller`:
+#   templates/deployment.yaml:4 → name: {{ include "argocd-image-updater.fullname" . }}-controller
+# With `releaseName: argocd-image-updater` (see base/kustomization.yaml)
+# the fullname helper returns `argocd-image-updater`, and the literal
+# `-controller` suffix then yields `argocd-image-updater-controller`.
+# Confirmed via `helm template` and against the live cluster.
 - patch: |-
     apiVersion: apps/v1
     kind: Deployment
