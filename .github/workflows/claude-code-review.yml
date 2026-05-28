@@ -3,6 +3,8 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+  pull_request_review_thread:
+    types: [resolved, unresolved]
 
 # Permissions are inherited by the reusable workflow's job and intersected
 # with its own workflow-level declarations. Set them here in the caller so
