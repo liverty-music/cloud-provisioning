@@ -16,17 +16,58 @@ patches:
   target:
     kind: ConfigMap
     name: argocd-cmd-params-cm
-# Example scaling for HA
+# argocd-server: scale down from base HA (2 replicas) to single replica in
+# prod. Cost-optimization decision: at launch-phase traffic levels the
+# UI/API has no SLA that requires HA, and Autopilot bills per Pod at a
+# minimum of 50m CPU + 64 MiB memory + 1 GiB ephemeral storage per Pod.
+# Revert to 2 once steady-state SLA on the Argo CD control plane is
+# required.
 - patch: |-
     apiVersion: apps/v1
     kind: Deployment
     metadata:
       name: argocd-server
     spec:
-      replicas: 2
+      replicas: 1
   target:
     kind: Deployment
     name: argocd-server
+# argocd-image-updater-controller: disabled in prod. The prod overlay
+# pins images to semver tags (per the enable-prod-ar-immutable-tags
+# change, #274) and bumps them via manual PR, so the controller has no
+# Application to act on. Setting replicas=0 eliminates the Pod's
+# Autopilot per-Pod billing without removing the Deployment definition,
+# so re-enablement is a single-line revert.
+- patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: argocd-image-updater-controller
+    spec:
+      replicas: 0
+  target:
+    kind: Deployment
+    name: argocd-image-updater-controller
+# argocd-applicationset-controller: disabled in prod. No ApplicationSet
+# CRs exist in the prod cluster as of this change, so the controller
+# idles 24/7 for no benefit. Re-enable (set replicas=1) before
+# introducing any ApplicationSet-managed Application.
+- patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: argocd-applicationset-controller
+    spec:
+      replicas: 0
+  target:
+    kind: Deployment
+    name: argocd-applicationset-controller
+# argocd-notifications-controller is intentionally NOT disabled — it
+# delivers Google Chat alerts for on-sync-failed / on-health-degraded /
+# on-sync-status-unknown via the active subscription in
+# argocd-notifications-cm. Losing those alerts would impair prod
+# operability, which exceeds the ~¥300/month savings from disabling
+# the controller.
 # Spot VM nodeSelector — required by `check-spot-nodeselector.sh` on every
 # Pod template in prod overlays (per spec Requirement 4 of the
 # prod-k8s-manifests change). Matches dev's pattern; needed because the

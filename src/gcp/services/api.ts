@@ -31,6 +31,7 @@ export type GoogleApis =
 	| 'places.googleapis.com'
 	| 'cloudkms.googleapis.com'
 	| 'certificatemanager.googleapis.com'
+	| 'bigquery.googleapis.com'
 
 export class ApiService {
 	constructor(

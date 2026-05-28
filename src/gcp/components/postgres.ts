@@ -3,11 +3,25 @@ import * as pulumi from '@pulumi/pulumi'
 import type { Environment } from '../../config.js'
 import { ApiService } from '../services/api.js'
 
+export type PostgresAvailabilityType = 'ZONAL' | 'REGIONAL'
+
 export interface PostgresComponentArgs {
 	project: gcp.organizations.Project
 	region: pulumi.Input<string>
 	regionName: pulumi.Input<string>
 	environment: Environment
+	/**
+	 * Cloud SQL availability tier. `ZONAL` runs a single primary in one
+	 * zone (cost-priority, no automatic failover). `REGIONAL` adds a
+	 * synchronous standby in a different zone of the same region,
+	 * roughly doubling the instance cost in exchange for an HA SLA with
+	 * automatic failover. Resolved upstream from
+	 * `liverty-music:postgresAvailabilityType` and passed in by the
+	 * caller; default at the call site is `ZONAL` (launch-phase policy).
+	 * See the `prod-cost-optimization` OpenSpec change for the rationale
+	 * and the `database` capability spec for the staged rollout policy.
+	 */
+	availabilityType: PostgresAvailabilityType
 	/**
 	 * Workload tier gate. When `false` (dev shutdown mode), the Cloud SQL
 	 * instance is set to `activationPolicy: NEVER` (stopped — CPU/RAM
@@ -90,6 +104,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			region,
 			regionName,
 			environment,
+			availabilityType,
 			workloadEnabled,
 			subnetId,
 			networkId,
@@ -148,8 +163,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				settings: {
 					tier: 'db-f1-micro', // Small Start (Shared CPU)
 					edition: 'ENTERPRISE', // Standard Edition
-					availabilityType:
-						environment === 'dev' ? 'ZONAL' : 'REGIONAL',
+					availabilityType,
 					activationPolicy: workloadEnabled ? 'ALWAYS' : 'NEVER',
 					diskSize: 10,
 					diskType: 'PD_SSD',
