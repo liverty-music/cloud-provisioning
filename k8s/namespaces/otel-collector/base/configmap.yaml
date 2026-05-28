@@ -17,6 +17,33 @@ data:
         timeout: 5s
         send_batch_size: 512
 
+      # Drop low-value, high-volume auto-generated metrics before they reach
+      # the `googlecloud` exporter. Cloud Monitoring's free tier is 150 MiB
+      # per *billing account* (not per project) per month — easy to exhaust
+      # once prod traffic ramps up. The OTLP metrics we drop here account
+      # for ~87% of ingest volume but are not referenced by any alert or
+      # dashboard (all alert policies are log-based).
+      #
+      # Dropped:
+      #   - rpc.server.*    (5 histograms from otelconnect auto-instrumentation)
+      #   - http.client.*   (2 histograms from otelhttp auto-instrumentation)
+      #
+      # Kept (passes through to Cloud Monitoring as workload.googleapis.com/*):
+      #   - concert.search.count            (business KPI, counter)
+      #   - db.pool.active_connections      (DB pool health, gauge)
+      #   - db.pool.idle_connections        (DB pool health, gauge)
+      #
+      # To re-enable a metric (e.g., adding rpc.server.duration for a future
+      # latency SLO), narrow the regexp accordingly. To re-enable all OTLP
+      # metrics, remove `filter/drop_workload_noise` from the pipeline below.
+      filter/drop_workload_noise:
+        metrics:
+          exclude:
+            match_type: regexp
+            metric_names:
+              - ^rpc\.server\..*$
+              - ^http\.client\..*$
+
     exporters:
       googlecloud: {}
 
@@ -40,5 +67,7 @@ data:
         # design D2 for the architecture rationale.
         metrics:
           receivers: [otlp]
-          processors: [batch]
+          # `filter` runs before `batch` so dropped metrics never enter the
+          # batch buffer, minimizing memory/CPU overhead on the collector.
+          processors: [filter/drop_workload_noise, batch]
           exporters: [googlecloud]

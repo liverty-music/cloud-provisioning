@@ -2,6 +2,7 @@ import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import type { Environment } from '../config.js'
+import { BillingExportComponent } from './components/billing-export.js'
 import { KmsComponent } from './components/kms.js'
 import { KubernetesComponent } from './components/kubernetes.js'
 import { MonitoringComponent } from './components/monitoring.js'
@@ -10,6 +11,7 @@ import {
 	NetworkComponent,
 	type PostmarkDnsConfig,
 } from './components/network.js'
+import type { PostgresAvailabilityType } from './components/postgres.js'
 import { PostgresComponent } from './components/postgres.js'
 import {
 	type BlockchainConfig,
@@ -46,6 +48,12 @@ export interface GcpArgs {
 	 *  resources are not provisioned. See
 	 *  docs/runbooks/dev-shutdown-restart.md. */
 	workloadEnabled: boolean
+	/** Cloud SQL availability tier. `ZONAL` is the launch-phase default
+	 *  for all environments to keep costs low; flip to `REGIONAL` per
+	 *  environment by setting `liverty-music:postgresAvailabilityType`
+	 *  when an HA SLA is required. See the `database` capability spec
+	 *  for the staged rollout policy. */
+	postgresAvailabilityType: PostgresAvailabilityType
 }
 
 export const NetworkConfig = {
@@ -111,6 +119,7 @@ export class Gcp {
 			zitadelMachineKey,
 			zitadelLoginPat,
 			workloadEnabled,
+			postgresAvailabilityType,
 		} = args
 
 		const cloudSqlUsers = gcpConfig.cloudSqlUsers ?? []
@@ -258,6 +267,19 @@ export class Gcp {
 						environment,
 					})
 				: undefined
+
+		// 4.6. GCP Billing Export — BigQuery sink for cost analysis SQL.
+		// Prod-only: the dataset lives in the prod project and aggregates
+		// billing data for the entire billing account (across all
+		// projects). The Console-side enable step is documented in
+		// docs/runbooks/enable-billing-export.md. See OpenSpec change
+		// `prod-cost-optimization` §3 for the motivation.
+		if (environment === 'prod') {
+			new BillingExportComponent('gcp-billing-export', {
+				project: this.project,
+				environment,
+			})
+		}
 
 		const osakaConfig = NetworkConfig.Osaka
 
@@ -417,6 +439,7 @@ export class Gcp {
 			region: Regions.Osaka,
 			regionName: RegionNames.Osaka,
 			environment,
+			availabilityType: postgresAvailabilityType,
 			workloadEnabled,
 			subnetId: this.workloadSAs?.subnetId,
 			networkId: network.network.id,

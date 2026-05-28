@@ -2,4 +2,12 @@ environment:
   - liverty-music/prod
 config:
   gcp:project: liverty-music-prod
-
+  # Cloud SQL availability tier. `ZONAL` is the launch-phase policy
+  # (cost-priority, no automatic failover). Flip to `REGIONAL` once an
+  # HA SLA is required — this triggers Cloud SQL to add a synchronous
+  # standby in another zone, roughly doubling instance cost in exchange
+  # for the HA SLA. The current change accepts the loss of automatic
+  # zonal failover; manual recovery via point-in-time restore from
+  # backups remains available. See the `database` capability spec for
+  # the staged rollout policy.
+  liverty-music:postgresAvailabilityType: ZONAL

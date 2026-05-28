@@ -69,6 +69,28 @@ const env = pulumi.getStack() as Environment
 // `pulumi up` job will abort before computing any resource diff).
 // Disabling prod requires a deliberate code change, not a config flip.
 const workloadEnabled = config.getBoolean('workloadEnabled') ?? true
+
+// Cloud SQL availability tier. Default `ZONAL` so new stacks land in the
+// cost-priority configuration; promote to `REGIONAL` per stack by setting
+// `liverty-music:postgresAvailabilityType: REGIONAL` in `Pulumi.<env>.yaml`
+// once an HA SLA is required. See the `database` capability spec for the
+// staged-rollout policy and the `prod-cost-optimization` change for the
+// motivation. Validation is intentionally narrow (string literal pair) so
+// a typo fails at program-construct time, not at Cloud SQL API time.
+const postgresAvailabilityTypeRaw =
+	config.get('postgresAvailabilityType') ?? 'ZONAL'
+if (
+	postgresAvailabilityTypeRaw !== 'ZONAL' &&
+	postgresAvailabilityTypeRaw !== 'REGIONAL'
+) {
+	throw new Error(
+		`liverty-music:postgresAvailabilityType must be 'ZONAL' or 'REGIONAL', ` +
+			`got '${postgresAvailabilityTypeRaw}'.`,
+	)
+}
+const postgresAvailabilityType = postgresAvailabilityTypeRaw as
+	| 'ZONAL'
+	| 'REGIONAL'
 // Allow-list rather than block-list: any stack other than `dev`
 // (today `prod`; tomorrow `staging` if added to `Environment`) is
 // implicitly off-limits to the shutdown switch. Adding a new
@@ -152,6 +174,7 @@ const gcp = new Gcp({
 	zitadelMachineKey,
 	zitadelLoginPat,
 	workloadEnabled,
+	postgresAvailabilityType,
 })
 
 // 5. Self-hosted Zitadel GSM secret shells (all envs, always).
