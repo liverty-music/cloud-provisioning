@@ -88,19 +88,24 @@ export class BillingExportComponent extends pulumi.ComponentResource {
 		//   (b) the Console enable step succeeds on the first attempt
 		//       without a permission-grant intermediate failure.
 		//
-		// The service account identifier `cloud-billing-export@system.
-		// gserviceaccount.com` is documented at
-		// https://cloud.google.com/billing/docs/how-to/export-data-bigquery-setup
-		// — if a future GCP change renames this principal, the runbook's
-		// troubleshooting section walks through identifying the actual
-		// SA from the Cloud Billing audit logs.
+		// The service account identifier `billing-export-bigquery@system.
+		// gserviceaccount.com` is what GCP's Console actually grants on the
+		// dataset when an operator enables Standard / Detailed / Pricing
+		// export — confirmed empirically by inspecting dataset ACLs after a
+		// Console-side enable. (The earlier guess of
+		// `cloud-billing-export@system.gserviceaccount.com` resolved to a
+		// non-existent principal, so the Pulumi binding was a silent no-op
+		// before this fix.) If a future GCP change renames this principal,
+		// the runbook's troubleshooting section walks through identifying
+		// the actual SA from the dataset's effective ACL or Cloud Logging
+		// audit trail.
 		new gcp.bigquery.DatasetIamMember(
 			'billing-export-writer',
 			{
 				datasetId: this.dataset.datasetId,
 				project: project.projectId,
 				role: 'roles/bigquery.dataEditor',
-				member: 'serviceAccount:cloud-billing-export@system.gserviceaccount.com',
+				member: 'serviceAccount:billing-export-bigquery@system.gserviceaccount.com',
 			},
 			{ parent: this },
 		)

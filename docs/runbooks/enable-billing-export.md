@@ -162,16 +162,19 @@ ORDER BY delta DESC;
 3. Confirm dataset write permissions:
    - The component grants
      `roles/bigquery.dataEditor` to
-     `serviceAccount:cloud-billing-export@system.gserviceaccount.com`.
+     `serviceAccount:billing-export-bigquery@system.gserviceaccount.com`.
    - If GCP has renamed this principal since the component was written,
-     identify the actual SA used by your billing account:
-     - Cloud Console → IAM & Admin → Logs Explorer
-     - Filter:
+     identify the actual SA by inspecting the dataset's effective ACL
+     immediately after a Console-side enable attempt:
+     - `bq --project_id=liverty-music-prod show --format=prettyjson billing_export | jq '.access'`
+     - The `OWNER` or `WRITER` entries added by the Console reveal the
+       current Google-managed billing-export service account.
+     - Alternatively, Cloud Console → IAM & Admin → Logs Explorer, filter
        `protoPayload.serviceName="bigquery.googleapis.com"
         AND protoPayload.resourceName=~"projects/liverty-music-prod/datasets/billing_export"`
-     - Look at recent write attempts; the `protoPayload.authenticationInfo.principalEmail`
-       field reveals the actual SA.
-   - Add the discovered SA to the `BillingExportComponent` IAM binding and
+       and read `protoPayload.authenticationInfo.principalEmail` on recent
+       write attempts.
+   - Update the `BillingExportComponent` IAM binding member to match and
      re-apply.
 
 ### Wrong billing account selected
