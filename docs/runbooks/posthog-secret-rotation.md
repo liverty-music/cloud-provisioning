@@ -81,13 +81,15 @@ effect after restart. Roll the workloads with ArgoCD-aware deployment
 operations rather than `kubectl delete pod`:
 
 ```sh
-# Backend analytics-consumer
-kubectl --context=liverty-music-<env> -n liverty-music \
-  rollout restart deployment analytics-consumer
+# Backend analytics-consumer (Deployment name to be confirmed in Batch 2b;
+# follow the established `<workload>-app` convention used by server-app /
+# consumer-app under k8s/namespaces/backend/base/).
+kubectl --context=liverty-music-<env> -n backend \
+  rollout restart deployment analytics-consumer-app
 
 # Backend Connect-RPC server (uses the personal key for flag sync)
-kubectl --context=liverty-music-<env> -n liverty-music \
-  rollout restart deployment backend
+kubectl --context=liverty-music-<env> -n backend \
+  rollout restart deployment server-app
 
 # Frontend public key is injected via runtime-config Lambda;
 # trigger a new bundle deploy if the env value lives outside Secret Manager,
