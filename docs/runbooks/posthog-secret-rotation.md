@@ -146,12 +146,49 @@ Open or update the existing rotation tracker issue in
 
 If verification in step 4 fails before step 5 completes:
 
-1. Re-enable the previous Secret Manager version
-   (`gcloud secrets versions enable`).
-2. `gcloud secrets versions ... access` to verify the previous value is
-   accessible.
-3. Restart workloads again; they will read the previous version.
-4. Investigate the failure before retrying the rotation.
+1. Identify the previous version number for each secret:
+
+   ```sh
+   gcloud secrets versions list posthog-public-project-key \
+     --project=liverty-music-<env>
+
+   gcloud secrets versions list posthog-personal-api-key \
+     --project=liverty-music-<env>
+   ```
+
+   The previous good version is the one immediately preceding the one
+   added in step 2 of this runbook (look at the `CREATED` timestamps).
+
+2. Re-enable the previous Secret Manager version for both secrets:
+
+   ```sh
+   gcloud secrets versions enable <prev-version-number> \
+     --secret=posthog-public-project-key \
+     --project=liverty-music-<env>
+
+   gcloud secrets versions enable <prev-version-number> \
+     --secret=posthog-personal-api-key \
+     --project=liverty-music-<env>
+   ```
+
+3. Confirm the previous value is now accessible (the command prints the
+   secret payload — redirect to a file or run in a private terminal):
+
+   ```sh
+   gcloud secrets versions access <prev-version-number> \
+     --secret=posthog-public-project-key \
+     --project=liverty-music-<env>
+
+   gcloud secrets versions access <prev-version-number> \
+     --secret=posthog-personal-api-key \
+     --project=liverty-music-<env>
+   ```
+
+4. Restart the workloads again so the pods pick up the previous version
+   (use the same `kubectl rollout restart` commands from step 3 of the
+   main procedure).
+
+5. Investigate the failure before retrying the rotation.
 
 If verification fails AFTER step 5 (old keys revoked), there is no
 clean rollback — issue a fresh pair of keys via step 1 and re-run from
