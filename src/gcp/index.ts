@@ -29,6 +29,18 @@ export interface GcpArgs {
 	gcpConfig: GcpConfig
 	lastFmApiKey?: pulumi.Output<string>
 	fanartTvApiKey?: pulumi.Output<string>
+	/** PostHog Cloud EU public project API key for the backend
+	 *  analytics-consumer workload. When set in ESC, stored in Secret
+	 *  Manager as `posthog-public-project-key`. The corresponding K8s
+	 *  ExternalSecret entry mounting it into `backend-secrets` as
+	 *  `POSTHOG_PROJECT_API_KEY` is added in a follow-up PR after the
+	 *  GSM secret exists — adding it now would block `backend-secrets`
+	 *  sync for unrelated keys when the GSM secret is absent (ESO
+	 *  v1beta1 fails the entire bundle when a referenced remote key
+	 *  is missing). When unset in ESC, no GSM secret is provisioned
+	 *  and the backend's nil-client mode logs and acks events without
+	 *  forwarding (introduce-analytics-tool Task 1.2). */
+	posthogProjectApiKey?: pulumi.Output<string>
 	/** Gemini API direct backend API key for the concert searcher workload.
 	 *  Stored in Secret Manager and synced into the `backend-secrets` K8s
 	 *  Secret via ExternalSecret. `gemini.NewConcertSearcher` REQUIRES this
@@ -112,6 +124,7 @@ export class Gcp {
 			gcpConfig,
 			lastFmApiKey,
 			fanartTvApiKey,
+			posthogProjectApiKey,
 			geminiSearchApiKey,
 			blockchainConfig,
 			cloudflareConfig,
@@ -370,6 +383,25 @@ export class Gcp {
 								{
 									name: 'fanarttv-api-key',
 									value: fanartTvApiKey,
+								},
+							]
+						: []),
+					// PostHog public project API key (introduce-analytics-tool
+					// Task 1.2). Conditional-spread matches every other optional
+					// secret in this file. Empty payloads cannot be sent to GCP
+					// Secret Manager — it rejects `AddSecretVersion` calls with
+					// zero-byte `secret_data` (INVALID_ARGUMENT, "Resource
+					// payload must have data") — so skipping creation entirely
+					// when the ESC config is unset is the only safe option.
+					// The corresponding K8s ExternalSecret entry lands in a
+					// follow-up PR once the operator runs
+					// `esc env set liverty-music/<env> pulumiConfig.posthogProjectApiKey`
+					// and `pulumi up` has provisioned this GSM secret.
+					...(posthogProjectApiKey
+						? [
+								{
+									name: 'posthog-public-project-key',
+									value: posthogProjectApiKey,
 								},
 							]
 						: []),
