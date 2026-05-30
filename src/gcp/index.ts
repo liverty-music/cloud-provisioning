@@ -30,11 +30,16 @@ export interface GcpArgs {
 	lastFmApiKey?: pulumi.Output<string>
 	fanartTvApiKey?: pulumi.Output<string>
 	/** PostHog Cloud EU public project API key for the backend
-	 *  analytics-consumer workload. Stored in Secret Manager as
-	 *  `posthog-public-project-key` and synced into `backend-secrets` via
-	 *  ExternalSecret. When the underlying ESC config is unset, no GSM
-	 *  secret is created and the backend's nil-client mode logs and acks
-	 *  events without forwarding (introduce-analytics-tool Task 1.2). */
+	 *  analytics-consumer workload. When set in ESC, stored in Secret
+	 *  Manager as `posthog-public-project-key`. The corresponding K8s
+	 *  ExternalSecret entry mounting it into `backend-secrets` as
+	 *  `POSTHOG_PROJECT_API_KEY` is added in a follow-up PR after the
+	 *  GSM secret exists — adding it now would block `backend-secrets`
+	 *  sync for unrelated keys when the GSM secret is absent (ESO
+	 *  v1beta1 fails the entire bundle when a referenced remote key
+	 *  is missing). When unset in ESC, no GSM secret is provisioned
+	 *  and the backend's nil-client mode logs and acks events without
+	 *  forwarding (introduce-analytics-tool Task 1.2). */
 	posthogProjectApiKey?: pulumi.Output<string>
 	/** Gemini API direct backend API key for the concert searcher workload.
 	 *  Stored in Secret Manager and synced into the `backend-secrets` K8s
@@ -381,18 +386,25 @@ export class Gcp {
 								},
 							]
 						: []),
-					// PostHog public project API key. Always provisioned so the
-					// backend's ExternalSecret can mount POSTHOG_PROJECT_API_KEY
-					// even before the user creates a real PostHog Cloud EU
-					// project (Task 1.1). An empty fallback puts the
-					// analytics-consumer into nil-client (log-and-ack) mode;
-					// once `esc env set ... pulumiConfig.posthogProjectApiKey`
-					// is set, the next `pulumi up` populates the secret with
-					// the real value and the consumer starts forwarding.
-					{
-						name: 'posthog-public-project-key',
-						value: posthogProjectApiKey ?? pulumi.secret(''),
-					},
+					// PostHog public project API key (introduce-analytics-tool
+					// Task 1.2). Conditional-spread matches every other optional
+					// secret in this file. Empty payloads cannot be sent to GCP
+					// Secret Manager — it rejects `AddSecretVersion` calls with
+					// zero-byte `secret_data` (INVALID_ARGUMENT, "Resource
+					// payload must have data") — so skipping creation entirely
+					// when the ESC config is unset is the only safe option.
+					// The corresponding K8s ExternalSecret entry lands in a
+					// follow-up PR once the operator runs
+					// `esc env set liverty-music/<env> pulumiConfig.posthogProjectApiKey`
+					// and `pulumi up` has provisioned this GSM secret.
+					...(posthogProjectApiKey
+						? [
+								{
+									name: 'posthog-public-project-key',
+									value: posthogProjectApiKey,
+								},
+							]
+						: []),
 					...(geminiSearchApiKey
 						? [
 								{
