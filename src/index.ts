@@ -20,6 +20,12 @@ const githubConfig = config.requireObject('github') as GitHubConfig
 const gcpConfig = config.requireObject('gcp') as GcpConfig
 const lastFmApiKey = config.getSecret('lastFmApiKey')
 const fanartTvApiKey = config.getSecret('fanartTvApiKey')
+// PostHog Cloud EU public project API key, sourced via `esc env set
+// liverty-music/<env> pulumiConfig.posthogProjectApiKey "phc_..." --secret`.
+// Conditionally seeds a GSM secret read by the backend analytics-consumer
+// via ESO. When unset, the backend's nil-client mode logs and acks each
+// USER.created event without forwarding (local-dev convention).
+const posthogProjectApiKey = config.getSecret('posthogProjectApiKey')
 // Gemini API direct backend key for the concert searcher workload. REQUIRED
 // post-#303: the two-step grounded-extract pipeline needs URLContext +
 // TimeRangeFilter, which Vertex AI does not support. `gemini.NewConcertSearcher`
@@ -167,6 +173,7 @@ const gcp = new Gcp({
 	gcpConfig,
 	lastFmApiKey,
 	fanartTvApiKey,
+	posthogProjectApiKey,
 	geminiSearchApiKey,
 	blockchainConfig,
 	cloudflareConfig,
