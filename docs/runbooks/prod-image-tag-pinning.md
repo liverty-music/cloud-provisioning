@@ -140,6 +140,8 @@ The escape hatch SHALL NOT be used for routine ops (failed rebuilds, typos, "wan
 
 After the `promote-prod-image-via-retag` change lands (live as of 2026-05-18 for frontend) and the `backend-symmetric-retag` change lands (extending the same pattern to the 4-image backend matrix), the prod release path no longer runs `docker build` — it resolves the dev AR digest for `github.sha` and copies it to prod AR via `crane copy` (from `google/go-containerregistry`, installed by `imjasonh/setup-crane`). The proposal's original choice of `gcloud artifacts docker tags add` was inverted during implementation: the gcloud command only renames tags **within a single repository** despite its argument shape, so cross-project copy fails with `Image <src-FQDN> does not match image <dst-FQDN>`. See `openspec/changes/promote-prod-image-via-retag/design.md` D1 (post-archive: `openspec/specs/prod-image-pipeline/spec.md`) for the full post-mortem. This section covers the failure modes specific to the retag flow.
 
+As of OpenSpec change `guarantee-dev-image-per-main-commit`, both push-path workflows dropped their `paths:` trigger gate: every push to `main` runs, and a per-run "build vs inherit" decision guarantees that **every `main` commit has a resolvable dev `:<sha>` image** (built when a build-relevant file changed, otherwise inherited from the parent tip's digest). This makes "any `main` commit is releasable" a true invariant, so a release cut on `main` HEAD always resolves — the old "release failed because HEAD was a doc-only / filtered commit" failure mode is eliminated. The invariant is self-seeding: the commit that edits the workflow file itself matches the build glob set, so it takes the build path and re-establishes the chain.
+
 ### Backend matrix dimension (4 parallel jobs)
 
 The backend `deploy.yml` runs the retag inside a strategy matrix over `{server, consumer, concert-discovery, artist-image-sync}`, so on a release event each of the failure modes below can manifest **per matrix entry**. Operator-side handling:
@@ -156,19 +158,21 @@ The three failure modes below apply to ANY individual matrix entry, not the work
 **Symptom**: the "Resolve dev AR digest" workflow step retries 6 times (initial + 5 retries × 60 s) and fails with:
 
 ```
-::error::dev AR tag :<sha> not found after 6 attempts (~5 min total wait).
-Either the dev build for this commit failed, or the release was cut on a non-main commit.
+::error::dev AR tag :<sha> not resolved after 6 attempts (~5 min total wait).
+Given the every-main-commit-has-an-image invariant, the push-path build/inherit
+for this commit is still in-flight or failed — do NOT re-target an earlier commit.
 ```
 
-**Causes**:
-- **Most likely**: the release was cut on a commit whose dev build failed or was filtered out (e.g., a doc-only commit that didn't trigger the `Deploy <repo>` workflow's `paths:` filter — see `frontend/.github/workflows/push-image.yaml` or `backend/.github/workflows/deploy.yml`).
-- **Less likely**: the release was cut seconds after the merge-to-main and the dev push was still in-flight when the 5-minute retry budget expired. Almost always: the dev build is slower than expected; the retry budget already absorbs the typical 60–180 s ArgoCD Image Updater poll.
+**Causes** — as of OpenSpec change `guarantee-dev-image-per-main-commit`, every `main` commit has a resolvable dev `:<sha>` image (the push-path either builds it, or, for a commit that changed no build-relevant file, *inherits* the parent tip's digest onto `:<sha>`). So the **previously most-common cause — "the release was cut on a doc-only / `paths:`-filtered commit that produced no image" — no longer occurs**: there is no longer a `paths:` trigger gate, and filtered commits get an inherited image. The remaining causes are:
+- **Most likely**: the release was cut seconds after the merge-to-main and the push-path build/inherit job is still in-flight when the 5-minute retry budget expired. The retry budget already absorbs the typical build/inherit completion time.
+- **The push-path job for that commit failed** (build error, or an inherit step that could not resolve a parent digest — see the broken-chain note below).
 - **Edge case**: the release `target_commitish` is a non-main SHA. The workflow's "Verify release commit is on main" step should catch this earlier — if you reach the digest-resolve step with a non-main SHA, something else broke.
 
 **Recovery**:
-1. Check the dev `Deploy <repo>` run for the same commit SHA — for frontend: `gh run list --repo liverty-music/frontend --branch main --workflow push-image.yaml --limit 10`; for backend: `gh run list --repo liverty-music/backend --branch main --workflow deploy.yml --limit 10`. If the dev build failed, fix the failure and push to `main`. Then either re-run the existing release (`gh release delete vX.Y.Z` then `gh release create vX.Y.Z --target <new-sha>`) or cut a new patch.
-2. If the dev build was skipped entirely (paths filter), make a trivial commit that DOES match the filter (e.g., bump `package.json`'s patch version for frontend, or touch any `**.go`/`go.mod` for backend), push, wait for the dev image to land in dev AR, then re-cut the release on the new SHA. For the backend matrix, only the failing matrix entry's dev `:<sha>` needs to be (re-)produced — the other 3 matrix entries' dev `:<sha>` tags from the original push are still resolvable.
-3. If the dev build IS in AR and the digest-resolve step still failed, the IAM grant likely regressed — see "Cross-project IAM grant revoked" below.
+1. Check the push-path `Deploy <repo>` run for the same commit SHA — for frontend: `gh run list --repo liverty-music/frontend --branch main --workflow push-image.yaml --limit 10`; for backend: `gh run list --repo liverty-music/backend --branch main --workflow deploy.yml --limit 10`. If it is still in-flight, wait and `gh run rerun --job <job-id>` the failed release matrix entry once it completes. **Do NOT re-target the release to an earlier commit** — main HEAD always has (or will have) an image; re-targeting is the old workaround that this change made unnecessary.
+2. If the push-path job for that SHA **failed**, fix the failure and re-run that run (push-path) so the `:<sha>` (built or inherited) lands in dev AR, then re-run the release matrix entry. For the backend matrix, only the failing matrix entry's dev `:<sha>` needs to be (re-)produced — the other 3 entries' tags from the original push are still resolvable.
+3. **Broken inherit chain**: if the push-path job failed specifically because an inherit step could not resolve a parent digest (`tried :<before> and :main`), seed the chain by pushing any build-relevant change (frontend: a `src/**` / `package.json` edit; backend: any `**.go` / `go.mod` edit) to `main` — that forces a fresh build and re-establishes the chain for subsequent commits.
+4. If the dev `:<sha>` IS in AR and the digest-resolve step still failed, the IAM grant likely regressed — see "Cross-project IAM grant revoked" below.
 
 ### Failure: cross-project IAM grant revoked accidentally
 
