@@ -12,6 +12,7 @@ data:
       "zitadelOrgId": "371348346264093539",
       "vapidPublicKey": "BNg-zJP4IiX11Cz1dghWll0mwBnMV6oeOSSVsYyOK2l8NFAqN9xHFSTS_W3_oXO4k3BlMyYLjkMUE-uA7LABGHo",
       "circuitBaseUrl": "/circuits/ticketcheck-v1",
+      "posthogApiHost": "https://eu.i.posthog.com",
       "previewArtistIds": [
         "019c8655-7a05-71ef-82b4-a4ac2494e29f",
         "019c8655-7a05-721d-b0a8-4c11724d5c90",
