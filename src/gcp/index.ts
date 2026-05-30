@@ -29,6 +29,13 @@ export interface GcpArgs {
 	gcpConfig: GcpConfig
 	lastFmApiKey?: pulumi.Output<string>
 	fanartTvApiKey?: pulumi.Output<string>
+	/** PostHog Cloud EU public project API key for the backend
+	 *  analytics-consumer workload. Stored in Secret Manager as
+	 *  `posthog-public-project-key` and synced into `backend-secrets` via
+	 *  ExternalSecret. When the underlying ESC config is unset, no GSM
+	 *  secret is created and the backend's nil-client mode logs and acks
+	 *  events without forwarding (introduce-analytics-tool Task 1.2). */
+	posthogProjectApiKey?: pulumi.Output<string>
 	/** Gemini API direct backend API key for the concert searcher workload.
 	 *  Stored in Secret Manager and synced into the `backend-secrets` K8s
 	 *  Secret via ExternalSecret. `gemini.NewConcertSearcher` REQUIRES this
@@ -112,6 +119,7 @@ export class Gcp {
 			gcpConfig,
 			lastFmApiKey,
 			fanartTvApiKey,
+			posthogProjectApiKey,
 			geminiSearchApiKey,
 			blockchainConfig,
 			cloudflareConfig,
@@ -373,6 +381,18 @@ export class Gcp {
 								},
 							]
 						: []),
+					// PostHog public project API key. Always provisioned so the
+					// backend's ExternalSecret can mount POSTHOG_PROJECT_API_KEY
+					// even before the user creates a real PostHog Cloud EU
+					// project (Task 1.1). An empty fallback puts the
+					// analytics-consumer into nil-client (log-and-ack) mode;
+					// once `esc env set ... pulumiConfig.posthogProjectApiKey`
+					// is set, the next `pulumi up` populates the secret with
+					// the real value and the consumer starts forwarding.
+					{
+						name: 'posthog-public-project-key',
+						value: posthogProjectApiKey ?? pulumi.secret(''),
+					},
 					...(geminiSearchApiKey
 						? [
 								{
