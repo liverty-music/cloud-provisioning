@@ -1,0 +1,299 @@
+name: Bump Prod Pin
+
+# Automated prod kustomize pin-bump (OpenSpec change `automate-prod-pin-bump`,
+# tracking issue liverty-music/specification#553).
+#
+# Replaces the manual "open a pin-bump PR in cloud-provisioning" gate. After a
+# backend/frontend Release retags the dev-AR digest into prod AR, the release
+# workflow emits a `repository_dispatch` (type `bump-prod-pin`) carrying
+# `{ component, tag, sha }`. This workflow validates the payload, confirms the
+# prod-AR image actually exists (provenance gate), rewrites the prod overlay's
+# `newTag` + `app.kubernetes.io/version` label in lock-step, validates with
+# `kustomize build`, then pushes straight to `main` as `github-actions[bot]`.
+# ArgoCD's existing auto-sync rolls it out. No PR.
+#
+# See docs/runbooks/prod-image-tag-pinning.md for the operator-facing flow,
+# the manual-recovery path, and the `git revert` rollback.
+
+on:
+  # Automated path: emitted by backend `deploy.yml` / frontend
+  # `push-image.yaml` after a successful prod-AR retag. Runs unattended.
+  repository_dispatch:
+    types: [bump-prod-pin]
+  # Manual recovery path for a dropped/lost dispatch. Admin-gated via the
+  # `prod-pin` Environment (see the conditional `environment:` below) so it
+  # cannot be used to force an unreviewed prod change.
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to bump (backend or frontend)'
+        required: true
+        type: choice
+        options:
+          - backend
+          - frontend
+      tag:
+        description: 'Release tag to pin (vX.Y.Z)'
+        required: true
+        type: string
+      sha:
+        description: 'Source commit SHA (recorded in the inline newTag trailer)'
+        required: true
+        type: string
+
+# Serialize all bumps: a backend and a frontend release can land within
+# seconds of each other. `cancel-in-progress: false` means a queued bump
+# waits for the running one rather than being dropped; the fetch-rebase-retry
+# loop around the push handles the (conflict-free, disjoint-file) interleave.
+concurrency:
+  group: bump-prod-pin
+  cancel-in-progress: false
+
+env:
+  REGION: asia-northeast2
+  PROD_PROJECT_ID: liverty-music-prod
+  # Standing tracking issue for the bump-automation (every bump commit refs it
+  # for provenance — the per-release "why" is the Release itself).
+  TRACKING_ISSUE: liverty-music/specification#553
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # Conditional environment (OpenSpec design D8): the required-reviewer rule
+    # on the `prod-pin` Environment fires for EVERY job that references it
+    # (Environment protection rules have no trigger-type filter). Binding it
+    # unconditionally would also stall the automated `repository_dispatch`
+    # path on admin approval. So bind it ONLY on the manual trigger:
+    #   - workflow_dispatch -> `prod-pin` -> pauses for admin approval
+    #   - repository_dispatch -> '' (empty) -> runs unattended
+    environment: ${{ github.event_name == 'workflow_dispatch' && 'prod-pin' || '' }}
+    permissions:
+      # Push the bump commit to `main` with the built-in token (the
+      # `github-actions[bot]` actor, which branch protection lets bypass).
+      contents: write
+      # Federate to the prod CI service account for the `crane manifest`
+      # provenance check against prod AR.
+      id-token: write
+    steps:
+      # ----------------------------------------------------------------------
+      # 1.2 Parse + validate the payload (from either trigger).
+      # ----------------------------------------------------------------------
+      - name: Resolve and validate payload
+        id: payload
+        env:
+          # repository_dispatch carries client_payload.*; workflow_dispatch
+          # carries inputs.*. Coalesce to a single env var each.
+          COMPONENT: ${{ github.event.client_payload.component || inputs.component }}
+          TAG: ${{ github.event.client_payload.tag || inputs.tag }}
+          SHA: ${{ github.event.client_payload.sha || inputs.sha }}
+        run: |
+          set -euo pipefail
+          echo "Trigger: ${{ github.event_name }}; component=${COMPONENT} tag=${TAG} sha=${SHA}"
+
+          case "${COMPONENT}" in
+            backend|frontend) ;;
+            *)
+              echo "::error::Invalid component '${COMPONENT}' — must be 'backend' or 'frontend'."
+              exit 1
+              ;;
+          esac
+
+          if ! echo "${TAG}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Invalid tag '${TAG}' — must match ^v[0-9]+\.[0-9]+\.[0-9]+$ (e.g. v1.4.0)."
+            exit 1
+          fi
+
+          if [ -z "${SHA}" ]; then
+            echo "::error::Empty sha — the source commit SHA is required for the inline newTag trailer."
+            exit 1
+          fi
+
+          # Bare semver (no leading `v`) for the app.kubernetes.io/version label.
+          BARE="${TAG#v}"
+
+          {
+            echo "component=${COMPONENT}"
+            echo "tag=${TAG}"
+            echo "sha=${SHA}"
+            echo "bare=${BARE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history + token retained so the fetch-rebase-retry push loop
+          # can rebase on a concurrent bump and push back to main.
+          fetch-depth: 0
+          persist-credentials: true
+
+      # ----------------------------------------------------------------------
+      # 1.2a Provenance gate — fail-closed BEFORE any edit. The prod-AR image
+      # at `:<tag>` exists only if the release retag actually wrote it, so this
+      # one check simultaneously confirms the tag names a genuine release, that
+      # this component's retag completed, and rejects the silent-downgrade and
+      # bogus-tag paths. Applies to both triggers.
+      # ----------------------------------------------------------------------
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # Repository-level vars (not environment-scoped) so they resolve on
+          # the empty-environment `repository_dispatch` path. Provisioned by
+          # Pulumi on the prod stack — see cloud-provisioning/src/github/.
+          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for prod AR
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      # SHA-pinned: this action installs `crane`, which here runs with prod-AR
+      # read credentials. SHA of v0.4 matches the backend/frontend release
+      # workflows' pinning.
+      - name: Install crane
+        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+
+      - name: Verify prod-AR image provenance
+        id: provenance
+        env:
+          COMPONENT: ${{ steps.payload.outputs.component }}
+          TAG: ${{ steps.payload.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${COMPONENT}" = "backend" ]; then
+            images="server consumer concert-discovery artist-image-sync"
+          else
+            images="web-app"
+          fi
+          base="${REGION}-docker.pkg.dev/${PROD_PROJECT_ID}/${COMPONENT}"
+          for img in ${images}; do
+            ref="${base}/${img}:${TAG}"
+            echo "Checking provenance: ${ref}"
+            if ! crane manifest "${ref}" > /dev/null 2>crane_err.txt; then
+              echo "::error::Provenance gate FAILED — prod-AR image not found: ${ref}. The release retag for '${COMPONENT}' has not produced this tag (or it was removed). Refusing to pin a non-existent image. crane stderr: $(cat crane_err.txt)"
+              exit 1
+            fi
+          done
+          echo "All ${COMPONENT} images exist in prod AR at ${TAG}."
+
+      # ----------------------------------------------------------------------
+      # 1.4 Idempotency guard — if every target newTag already equals the
+      # release tag, exit 0 without committing (handles dispatch redelivery /
+      # manual re-run).
+      # ----------------------------------------------------------------------
+      - name: Idempotency check
+        id: idem
+        env:
+          COMPONENT: ${{ steps.payload.outputs.component }}
+          TAG: ${{ steps.payload.outputs.tag }}
+        run: |
+          set -euo pipefail
+          file="k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml"
+          # Distinct set of current newTag values across all image entries.
+          current="$(yq '.images[].newTag' "$file" | sort -u)"
+          if [ "${current}" = "${TAG}" ]; then
+            echo "All newTag values already equal ${TAG}; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ----------------------------------------------------------------------
+      # 1.3 yq edit — rewrite every images[].newTag + its inline `# commit
+      # <sha>` trailer and the app.kubernetes.io/version label, in lock-step.
+      # ----------------------------------------------------------------------
+      - name: Edit prod overlay
+        if: steps.idem.outputs.skip != 'true'
+        env:
+          COMPONENT: ${{ steps.payload.outputs.component }}
+          TAG: ${{ steps.payload.outputs.tag }}
+          SHA: ${{ steps.payload.outputs.sha }}
+          BARE: ${{ steps.payload.outputs.bare }}
+        run: |
+          set -euo pipefail
+          file="k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml"
+          # newTag for every image entry (4 for backend, 1 for frontend).
+          TAG="${TAG}" yq -i '.images[].newTag = strenv(TAG)' "$file"
+          # Inline source-commit trailer after each newTag.
+          COMMENT="commit ${SHA}" yq -i '.images[].newTag line_comment = strenv(COMMENT)' "$file"
+          # Bare-semver version label (single labels entry holds the pair).
+          BARE="${BARE}" yq -i '(.labels[].pairs."app.kubernetes.io/version") = strenv(BARE)' "$file"
+          echo "----- edited ${file} -----"
+          yq '{"images": .images, "labels": .labels}' "$file"
+
+      # ----------------------------------------------------------------------
+      # 1.5 Validation gate — `kustomize build` the edited overlay. A non-zero
+      # build aborts before push, keeping `main` always-syncable. (No helmCharts
+      # in the backend/frontend bases, so plain build suffices.)
+      # ----------------------------------------------------------------------
+      - name: Install Kustomize
+        if: steps.idem.outputs.skip != 'true'
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Validate overlay renders
+        if: steps.idem.outputs.skip != 'true'
+        env:
+          COMPONENT: ${{ steps.payload.outputs.component }}
+        run: |
+          set -euo pipefail
+          kustomize build "k8s/namespaces/${COMPONENT}/overlays/prod" > /dev/null
+          echo "kustomize build of the ${COMPONENT} prod overlay succeeded."
+
+      # ----------------------------------------------------------------------
+      # 1.6 + 1.7 Commit as github-actions[bot] and push to main with a
+      # fetch-rebase-retry loop (≤5 attempts). No PR.
+      # ----------------------------------------------------------------------
+      - name: Commit and push to main
+        if: steps.idem.outputs.skip != 'true'
+        env:
+          COMPONENT: ${{ steps.payload.outputs.component }}
+          TAG: ${{ steps.payload.outputs.tag }}
+          SHA: ${{ steps.payload.outputs.sha }}
+          BARE: ${{ steps.payload.outputs.bare }}
+        run: |
+          set -euo pipefail
+          file="k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Defensive: if no net diff (e.g. label/comment already matched),
+          # skip the commit rather than create an empty one.
+          if git diff --quiet -- "$file"; then
+            echo "No net change after edit; skipping commit."
+            exit 0
+          fi
+
+          git add "$file"
+          # Build the commit message in a file to avoid heredoc indentation
+          # leaking YAML/shell indent into the body.
+          {
+            printf 'feat(prod): pin %s prod overlay to %s\n\n' "${COMPONENT}" "${TAG}"
+            printf 'Automated prod kustomize pin-bump: a %s Release (%s) retagged its\n' "${COMPONENT}" "${TAG}"
+            printf 'dev-AR digest into prod AR, so this moves the prod overlay image pin\n'
+            printf 'and app.kubernetes.io/version label to that release in lock-step.\n'
+            printf 'ArgoCD auto-syncs the rollout. Replaces the former manual pin-bump PR\n'
+            printf '(OpenSpec change automate-prod-pin-bump).\n\n'
+            printf 'component: %s\n' "${COMPONENT}"
+            printf 'tag: %s\n' "${TAG}"
+            printf 'version label: %s\n' "${BARE}"
+            printf 'source sha: %s\n\n' "${SHA}"
+            printf 'Refs: %s\n' "${TRACKING_ISSUE}"
+          } > /tmp/bump-commit-msg.txt
+          git commit -F /tmp/bump-commit-msg.txt
+
+          # Fetch-rebase-retry: a concurrent bump touches a DIFFERENT overlay
+          # file, so the rebase is conflict-free; the retry simply re-applies
+          # this commit on top of the other's. ≤5 attempts.
+          for attempt in $(seq 1 5); do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt ${attempt}/5."
+              exit 0
+            fi
+            echo "Push rejected on attempt ${attempt}/5; fetching + rebasing onto origin/main..."
+            git fetch origin main
+            git rebase origin/main
+          done
+          echo "::error::Failed to push the pin-bump to main after 5 rebase-retry attempts."
+          exit 1

@@ -24,44 +24,47 @@ See `openspec/changes/archive/<date>-enable-prod-ar-immutable-tags/design.md` de
 
 ## Operator workflow: cutting a release
 
+As of OpenSpec change `automate-prod-pin-bump` (tracking issue
+liverty-music/specification#553), the prod pin-bump is **fully automated**.
+Cutting the GitHub Release is the only human action; there is no longer a
+manual pin-bump PR. The chain is:
+
+```
+GH Release (backend/frontend)
+  → release workflow retags dev-AR digest → prod AR (:vX.Y.Z + :<sha>)
+  → release workflow emits repository_dispatch (bump-prod-pin) → cloud-provisioning
+  → bump-prod-pin.yml: validate payload → provenance gate (crane manifest)
+                       → yq edit newTag + version label → kustomize build
+                       → commit + push to main as github-actions[bot]
+  → ArgoCD auto-syncs the prod overlay → Pods roll
+```
+
 ### 1. Build + publish prod image (in `liverty-music/backend` or `liverty-music/frontend`)
 
 1. Merge release-bound PRs to `main`.
 2. From the GitHub UI: **Releases → Draft a new release → Tag = `v1.0.1`** (next patch) → Publish.
-3. GitHub Actions (`deploy.yml` for backend, `push-image.yaml` for frontend) fires on the `release: published` event:
+3. The release workflow (`deploy.yml` for backend, `push-image.yaml` for frontend) fires on `release: published`:
    - Authenticates to prod via Workload Identity Federation (`github-actions@liverty-music-prod.iam`).
-   - Builds the image.
-   - Pushes with **two tags**: `:v1.0.1` and `:<commit-sha>`.
-4. Wait for both pushes to succeed. Verify via:
-   ```bash
-   gcloud artifacts docker images list \
-     asia-northeast2-docker.pkg.dev/liverty-music-prod/backend \
-     --include-tags --filter='package~server' --limit=5
-   ```
-   The new digest SHOULD appear with both `:v1.0.1` and the SHA as tags.
+   - Retags the dev-AR digest for `github.sha` into prod AR under `:v1.0.1` and `:<commit-sha>` (`crane copy`, no rebuild).
+   - On retag success, the `dispatch-prod-pin` job emits a `repository_dispatch` (`event_type: bump-prod-pin`, `client_payload: { component, tag, sha }`) to `cloud-provisioning` via a short-lived GitHub App token.
+   - For the backend 4-image matrix, the dispatch is gated on **all 4** entries succeeding (`needs.build-and-push.result == 'success'` with `fail-fast: false`), so a partial retag never bumps the pin.
 
-### 2. Bump the prod kustomize overlay (in `liverty-music/cloud-provisioning`)
+### 2. Automated pin-bump (no manual action)
 
-1. Open a PR on `cloud-provisioning` updating both:
-   - `k8s/namespaces/backend/overlays/prod/kustomization.yaml` — bump `newTag: v1.0.0` → `newTag: v1.0.1` for all four backend images, AND bump the corresponding inline comment SHA. Also bump the `labels:` block's `app.kubernetes.io/version: "1.0.1"`.
-   - `k8s/namespaces/frontend/overlays/prod/kustomization.yaml` — bump `newTag:` + comment + `app.kubernetes.io/version` for `web-app` if frontend was part of the release.
+`bump-prod-pin.yml` in `cloud-provisioning` receives the dispatch and, for the named component:
 
-   ⚠️ **`v`-prefix gotcha**: `newTag:` SHALL use the `v` prefix (`v1.0.1`) because that's the AR-side tag convention. `app.kubernetes.io/version:` SHALL be the bare semver (`"1.0.1"`, no `v`) because that's the Kubernetes Recommended Labels convention. Two different conventions in two adjacent fields of the same overlay — common bump-time mistake. The verification step below catches it.
+1. Validates the payload (`component ∈ {backend, frontend}`, `tag` matches `^v[0-9]+\.[0-9]+\.[0-9]+$`).
+2. **Provenance gate** — `crane manifest` every prod-AR image at `:tag` (4 for backend, 1 for frontend). A missing image **aborts before any edit** (fail-closed), rejecting bogus/stale tags and the silent-downgrade path.
+3. Idempotency — if every `newTag` already equals `tag`, exits 0 without committing.
+4. `yq` edit — rewrites every `images[].newTag` + its inline `# commit <sha>` trailer and the `app.kubernetes.io/version` label (bare semver, no `v`) in lock-step. The two-conventions `v`-prefix gotcha is handled in code: `newTag` keeps the `v`, the label strips it.
+5. `kustomize build` of the edited prod overlay — a non-zero build **aborts before push** (replaces the CI gate the manual PR provided).
+6. Commits as `github-actions[bot]` and pushes straight to `main` (fetch-rebase-retry, ≤5 attempts; `concurrency` serialized). No PR.
 
-2. Run locally before pushing:
-   ```bash
-   # Check every rendered image carries the new semver tag
-   kubectl kustomize k8s/namespaces/backend/overlays/prod | grep -E 'image:.*:v[0-9]+\.[0-9]+\.[0-9]+'
-
-   # Check every label has a bare-semver value (no `v` prefix slip)
-   kubectl kustomize k8s/namespaces/backend/overlays/prod | grep -E 'app\.kubernetes\.io/version: "?v' && echo "FAIL: v-prefix in label value" || echo "OK: label values are bare semver"
-   ```
-   Confirm every rendered image carries `:v1.0.1` and every label is `app.kubernetes.io/version: "1.0.1"` (no `"v1.0.1"`).
-3. Open PR, get review, merge.
+To watch it: `gh run list --repo liverty-music/cloud-provisioning --workflow bump-prod-pin.yml --limit 5`.
 
 ### 3. ArgoCD reconciles
 
-ArgoCD detects the cloud-provisioning `main` change and rolls the prod Deployments / CronJobs with the new `image:` reference and `app.kubernetes.io/version` label. Pods restart; image bytes resolve via the AR tag → digest lookup.
+ArgoCD detects the `cloud-provisioning:main` bump commit and rolls the prod Deployments / CronJobs with the new `image:` reference and `app.kubernetes.io/version` label. Pods restart; image bytes resolve via the AR tag → digest lookup.
 
 ### 4. Verify
 
@@ -70,7 +73,45 @@ kubectl --context=gke_liverty-music-prod_asia-northeast2_autopilot-cluster-osaka
     -n backend get deploy,cronjob -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[*].image}{"\n"}{end}'
 ```
 
-All images SHALL end with `:v1.0.1`.
+All images SHALL end with `:v1.0.1`. For frontend, also run the prod smoke:
+`gh workflow run push-image.yaml --repo liverty-music/frontend -f smoke_url=https://liverty-music.app`.
+
+## Manual recovery: `workflow_dispatch` fallback (admin-only)
+
+If a dispatch is dropped (e.g. a transient GitHub outage between the release
+workflow and `cloud-provisioning`), the bump never lands. Recover by running
+`bump-prod-pin.yml` manually with the same payload:
+
+```bash
+gh workflow run bump-prod-pin.yml --repo liverty-music/cloud-provisioning \
+  -f component=backend -f tag=v1.0.1 -f sha=<release-commit-sha>
+```
+
+This path is **admin-gated**: `workflow_dispatch` runs bind the `prod-pin`
+GitHub Environment (via the conditional `environment:` expression), which has a
+required-reviewer rule, so the run pauses for admin approval before the bump
+executes. The automated `repository_dispatch` path resolves the environment to
+empty and runs unattended. The provenance gate applies identically, so even an
+approved manual run cannot pin a tag whose prod image does not exist.
+
+This is a privileged recovery operation, **not** a routine path — use it only
+to replay a genuinely-dropped dispatch.
+
+## Rollback (`git revert`)
+
+To roll prod back to the prior version, `git revert` the bump commit on
+`cloud-provisioning:main`:
+
+```bash
+git -C cloud-provisioning revert <bump-commit-sha>   # restores the prior newTag + label
+git -C cloud-provisioning push origin main           # (requires the human up-to-date/PR path)
+```
+
+The prior version's tag is already in prod AR (immutable, locked), so ArgoCD
+re-syncs to the locked prior digest with no registry-side action. Note that a
+human revert push obeys branch protection (PR + up-to-date), unlike the bot's
+bypass — so open a one-line revert PR if pushing as a human. See also the
+"Rollback to a prior version" subsection below.
 
 ## AR rejection behavior
 
@@ -90,6 +131,83 @@ unexpected http response 409: ... tag already exists in immutable repository ...
 ```
 
 This is **expected and desired** when the policy is working. A 409 on a tag push attempt means "this tag is already locked at the current digest; you cannot silently overwrite it".
+
+## Automation setup (one-time)
+
+The `automate-prod-pin-bump` pipeline depends on four pieces of GitHub
+configuration. The Pulumi-managed pieces live in `src/github/` and apply on a
+prod `pulumi up`; the rest are documented here because they require an
+out-of-band credential or a setting GitHub does not expose to this provider
+version.
+
+### 1. Cross-repo dispatch credential (GitHub App) — backend + frontend
+
+The release workflows trigger `repository_dispatch` against `cloud-provisioning`
+with a **GitHub App installation token** (short-lived, auditable) rather than a
+long-lived PAT. The `POST /repos/{owner}/{repo}/dispatches` API requires
+`Contents: write` (no narrower scope exists), so the security boundary is NOT
+the token scope — it is branch protection (see §2): the token cannot push to
+`cloud-provisioning:main` because only `github-actions[bot]` bypasses, so its
+reach is limited to non-`main` refs ArgoCD does not track.
+
+One-time setup:
+1. Create a GitHub App in the `liverty-music` org (Settings → Developer settings
+   → GitHub Apps → New). Permissions: **Repository → Contents: Read and write**
+   (the documented minimum for the dispatches API). No webhook needed.
+2. Install it on **`cloud-provisioning` only** (scope the installation).
+3. Generate a private key; note the App ID.
+4. Store the App ID and private key in Pulumi ESC so they are wired as the
+   backend + frontend `prod` environment secrets `PROD_PIN_DISPATCH_APP_ID` /
+   `PROD_PIN_DISPATCH_APP_PRIVATE_KEY` (consumed by the `dispatch-prod-pin` job
+   via `actions/create-github-app-token`):
+   ```bash
+   esc env set liverty-music/prod pulumiConfig.github.prodPinDispatchAppId "<app-id>"
+   esc env set liverty-music/prod pulumiConfig.github.prodPinDispatchAppPrivateKey "$(cat app-private-key.pem)" --secret
+   ```
+   Then run a prod `pulumi up`; `GitHubRepositoryComponent` creates the two
+   environment secrets on backend + frontend (no-op if the config is absent).
+5. **Verify the reach is bounded**: confirm a token minted by this App CANNOT
+   push to `cloud-provisioning:main` (branch protection denies it) — only its
+   `repository_dispatch` trigger should succeed.
+
+### 2. `cloud-provisioning:main` branch-protection bypass for the bot
+
+`bump-prod-pin.yml` pushes the validated bump straight to `main` as
+`github-actions[bot]` using the built-in `GITHUB_TOKEN`. For that push to be
+accepted, `github-actions[bot]` MUST be a **bypass actor** on the `main`
+protection, covering BOTH the pull-request requirement AND the "require branches
+up to date" check.
+
+This is **IaC-managed** in `src/github/components/repository.ts`: for
+cloud-provisioning prod, the `main` protection is expressed as a
+`github.RepositoryRuleset` (not the classic `github.BranchProtection`) with the
+GitHub Actions integration (`slug: github-actions`, resolved via the
+`getGithubApp` data source) as an `always` **bypass actor**. Classic branch
+protection has no per-actor bypass for the strict (up-to-date) status check —
+only a ruleset `bypassActors` entry can grant it — which is why
+cloud-provisioning's protection uses a ruleset while the other repos stay on
+classic `BranchProtection`. The ruleset replicates the prior rules (PR required,
+0 approvals; strict `CI Success`; no force-push; no deletion) and applies to
+everyone except the single Actions-app bypass actor; **no human and no PAT** is
+added.
+
+> **Migration note.** A prod `pulumi up` will **delete** the classic
+> `cloud-provisioning-protection` `BranchProtection` and **create** the
+> `cloud-provisioning-main-ruleset`. Review the `pulumi preview` diff before
+> applying; the swap is a replace, so `main` is briefly governed by whichever
+> of the two exists during the apply — apply attended.
+
+Verify after apply: a bot push from `bump-prod-pin.yml` lands on `main` without
+a PR; a human direct push to `main` is still rejected (PR + up-to-date required).
+
+### 3. `prod-pin` GitHub Environment (admin reviewer) — cloud-provisioning
+
+The `workflow_dispatch` manual fallback is gated behind the `prod-pin`
+Environment with a required-reviewer (admin) rule, bound **only** on the manual
+trigger via the conditional `environment:` expression in `bump-prod-pin.yml`.
+This Environment is Pulumi-managed in `src/github/` (created on the prod stack);
+the required reviewer is the org admin. Verify by test: a `workflow_dispatch`
+run pauses for approval; a `repository_dispatch` run does NOT.
 
 ## Recovery procedures
 

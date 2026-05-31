@@ -210,6 +210,25 @@ const sharedVariables = {
 	SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
 }
 
+// Cross-repo dispatch credential (GitHub App) for the `automate-prod-pin-bump`
+// release path. Wired onto the backend + frontend `prod` environments so the
+// `dispatch-prod-pin` job can mint an installation token (scoped to
+// cloud-provisioning) and POST the `bump-prod-pin` `repository_dispatch`.
+// Prod-only and optional: absent until the App is created and its credential
+// is set in ESC (`pulumiConfig.github.prodPinDispatchAppId` /
+// `...PrivateKey`). See docs/runbooks/prod-image-tag-pinning.md "Automation
+// setup" §1.
+const prodPinDispatchSecrets =
+	env === 'prod' &&
+	githubConfig.prodPinDispatchAppId &&
+	githubConfig.prodPinDispatchAppPrivateKey
+		? {
+				PROD_PIN_DISPATCH_APP_ID: githubConfig.prodPinDispatchAppId,
+				PROD_PIN_DISPATCH_APP_PRIVATE_KEY:
+					githubConfig.prodPinDispatchAppPrivateKey,
+			}
+		: undefined
+
 // Backend Repository
 new GitHubRepositoryComponent({
 	brandId,
@@ -217,6 +236,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
 	variables: sharedVariables,
+	secrets: prodPinDispatchSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
 })
 
@@ -227,6 +247,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
 	variables: sharedVariables,
+	secrets: prodPinDispatchSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
 })
 
@@ -249,6 +270,25 @@ new GitHubRepositoryComponent({
 	variables: sharedVariables,
 	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
+	// Prod-only (repo-level vars are repo-global, so only one stack may own
+	// them): the `bump-prod-pin.yml` `repository_dispatch` path runs with an
+	// empty `environment:` and reads the prod WIF provider + SA from these
+	// repository-level variables to authenticate `crane` for the provenance
+	// gate against prod AR.
+	repositoryVariables:
+		env === 'prod'
+			? {
+					WORKLOAD_IDENTITY_PROVIDER:
+						gcp.githubWorkloadIdentityProvider,
+					SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
+				}
+			: undefined,
+	// Admin-reviewer gate for the `bump-prod-pin.yml` manual recovery path.
+	pinBumpReviewerUsername: env === 'prod' ? 'pannpers' : undefined,
+	// Express prod `main` protection as a ruleset so `github-actions[bot]` can
+	// bypass it to push the automated pin-bump (the only mechanism that bypasses
+	// the strict up-to-date check). Bypass scoped to the Actions app only.
+	mainBranchBotBypass: true,
 })
 
 // Export common resources
