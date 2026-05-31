@@ -79,6 +79,28 @@ zitadel:
     TLS:
       Enabled: false
 
+    # Instance resolution header chain. Zitadel v4.7.1+ resolves the virtual
+    # instance from InstanceHostHeaders (default [x-zitadel-instance-host]
+    # only) — it no longer reads the `Host` header. The Login V2 Pod calls the
+    # API at the cluster-internal Service over h2c (service.protocol: http2,
+    # appProtocol: kubernetes.io/h2c), so on the wire `:authority` = the dial
+    # target `zitadel-api` and the chart-generated `Host:<ExternalDomain>`
+    # does not survive HTTP/2. With no x-zitadel-instance-host sent, lookup
+    # falls back to `:authority`=zitadel-api → Errors.Instance.NotFound → the
+    # SSR render fails and the Gateway returns 504.
+    #
+    # The Login Pod already sends X-Zitadel-Public-Host=<ExternalDomain> (its
+    # CUSTOM_REQUEST_HEADERS), so adding x-zitadel-public-host to this chain
+    # lets internal calls resolve the instance via a header that is already on
+    # the wire. The default x-zitadel-instance-host is restated first because
+    # Zitadel overrides (not merges) the list. Browser→Gateway traffic sends
+    # neither header and keeps resolving via the `:authority` fallback
+    # (= <ExternalDomain>), so its behavior is unchanged. Header names are
+    # domain-independent, hence base (covers dev + prod).
+    InstanceHostHeaders:
+    - x-zitadel-instance-host
+    - x-zitadel-public-host
+
     Database:
       Postgres:
         Host: localhost
