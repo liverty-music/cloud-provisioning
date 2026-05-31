@@ -13,6 +13,7 @@ data:
       "vapidPublicKey": "BH-m9-6-0-y70MdQG7Lz-htDaz4T_NuYdmcgK5wBEElzXo22AyGs30gvHAtHbWtQBQa4XxySD6ZEaiM9Crwl6Pc",
       "circuitBaseUrl": "/circuits/ticketcheck-v1",
       "posthogApiHost": "https://eu.i.posthog.com",
+      "posthogProjectKey": "phc_CVzLNs8ys4zeczYv36Td3aYgBhzdnaMKUqKBT7tM8H4Q",
       "previewArtistIds": [
         "019e3029-8044-75fc-a662-2ddfce51178e",
         "019e3029-8044-7603-b047-c713d5183f2c",
