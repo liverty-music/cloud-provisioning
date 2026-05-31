@@ -96,4 +96,4 @@ patches:
 images:
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
-  newTag: v1.2.0  # commit 7e46667276b5c2e3825aaf85fe0f53de2defbd20
+  newTag: v1.3.0  # commit cde432bda3d28d451aaa60d29118daea9283f3f4
