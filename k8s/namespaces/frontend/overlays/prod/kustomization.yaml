@@ -90,9 +90,14 @@ patches:
 # the dev-AR `:latest` reference dynamically. Prod uses explicit semver
 # pinning; dev AR repos stay mutable so Image Updater can rewrite tags.
 #
-# Bumping on release: cut a new GH Release (e.g., v1.0.1) on frontend.
-# GHA pushes both `:v1.0.1` and `:<new-sha>` to prod AR. Open a PR here
-# updating `newTag:` + comment to the new values.
+# Bumping on release: this block is now CI-written, not hand-edited.
+# Cutting a GH Release (e.g., v1.0.1) on frontend retags the dev-AR digest
+# into prod AR, then emits a `repository_dispatch` to this repo's
+# `.github/workflows/bump-prod-pin.yml`, which rewrites the `web-app`
+# `newTag:` + its inline `# commit <sha>` trailer AND the
+# `app.kubernetes.io/version` label above (in lock-step) and pushes straight
+# to main. ArgoCD auto-syncs. No manual pin-bump PR. See
+# docs/runbooks/prod-image-tag-pinning.md (OpenSpec change automate-prod-pin-bump).
 images:
 - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
   newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
