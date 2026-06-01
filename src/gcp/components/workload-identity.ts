@@ -165,6 +165,20 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 			this,
 		)
 
+		// Enable the cloud-provisioning `bump-prod-pin.yml` workflow to
+		// impersonate the GitHub Actions SA via WIF. It only reads prod AR
+		// (`crane manifest` provenance gate) before pushing the kustomize
+		// pin-bump; without this binding the auth step fails with
+		// `iam.serviceAccounts.getAccessToken denied`. See OpenSpec change
+		// `automate-prod-pin-bump`.
+		this.iamService.bindWifUser(
+			`${githubActionsSAName}-cloud-provisioning`,
+			`attribute.repository/liverty-music/cloud-provisioning`,
+			this.githubActionsSA,
+			this.pool,
+			this,
+		)
+
 		this.registerOutputs({
 			pool: this.pool,
 			provider: this.provider,
