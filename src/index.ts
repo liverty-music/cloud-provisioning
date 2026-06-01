@@ -287,9 +287,13 @@ new GitHubRepositoryComponent({
 	// repo-variables API returns 403). The WIF provider + SA are not sensitive;
 	// masking in logs is a harmless side effect.
 	repositorySecrets:
-		env === 'prod' && ciBotSecrets
+		env === 'prod'
 			? {
-					...ciBotSecrets,
+					// Spread the ci-bot credential only when present (optional —
+					// absent before the App is provisioned); the WIF provider + SA
+					// are always written for prod so the crane provenance auth works
+					// regardless.
+					...(ciBotSecrets ?? {}),
 					WORKLOAD_IDENTITY_PROVIDER:
 						gcp.githubWorkloadIdentityProvider,
 					SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
