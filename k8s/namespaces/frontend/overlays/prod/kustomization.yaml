@@ -1,14 +1,18 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 # Prod frontend overlay. Env-divergent fields per design D2 / spec Requirement 3:
 #   - HTTPRoute hostname: liverty-music.app (apex) vs dev's dev.liverty-music.app
 #   - Runtime config (web-app-runtime-config ConfigMap) — prod hostnames,
 #     prod OIDC client/org IDs, prod VAPID key, `info` log level.
 # Resource sizing matches dev exactly; spot label matches.
+
 resources:
-  - ../../base
-  - configmap.yaml
+- ../../base
+- configmap.yaml
+
 namespace: frontend
+
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource. Value SHALL be the bare semver without the leading `v`
 # (per Kubernetes Recommended Labels convention: `1.0.0`, not `v1.0.0`). Bump
@@ -21,42 +25,46 @@ namespace: frontend
 # - `includeTemplates: true` propagates the label to `spec.template.metadata.labels`
 #   on the Deployment so Pods carry it for Prometheus / OTel scraping.
 labels:
-  - pairs:
-      app.kubernetes.io/version: "1.5.0"
-    includeSelectors: false
-    includeTemplates: true
+- pairs:
+    app.kubernetes.io/version: "1.4.0"
+  includeSelectors: false
+  includeTemplates: true
+
 patches:
-  - path: spot-vm_patch.yaml
-    target:
-      kind: Deployment
-  # Match dev's resource sizing exactly (design D2).
-  - target:
-      kind: Deployment
-    patch: |-
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: web-app
-      spec:
-        template:
-          spec:
-            containers:
-            - name: caddy
-              resources:
-                requests:
-                  cpu: 10m
-                  memory: 52Mi
-                limits:
-                  cpu: 100m
-                  memory: 128Mi
-  # Prod HTTPRoute hostname (apex).
-  - target:
-      kind: HTTPRoute
-      name: web-route
-    patch: |-
-      - op: add
-        path: /spec/hostnames
-        value: ["liverty-music.app"]
+- path: spot-vm_patch.yaml
+  target:
+    kind: Deployment
+
+# Match dev's resource sizing exactly (design D2).
+- target:
+    kind: Deployment
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: caddy
+            resources:
+              requests:
+                cpu: 10m
+                memory: 52Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+
+# Prod HTTPRoute hostname (apex).
+- target:
+    kind: HTTPRoute
+    name: web-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["liverty-music.app"]
+
 # Pin the web-app image to prod Artifact Registry with an immutable
 # semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags` +
 # the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -91,6 +99,6 @@ patches:
 # to main. ArgoCD auto-syncs. No manual pin-bump PR. See
 # docs/runbooks/prod-image-tag-pinning.md (OpenSpec change automate-prod-pin-bump).
 images:
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
-    newTag: v1.5.0 # commit 751dc51e7155acd431a23d14b55fe9b197d9ad74
+- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
+  newTag: v1.4.0  # commit 8e12fd182357632b2a6a18a1d0b75dca38c96b90
