@@ -202,7 +202,9 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 		if (repositoryVariables) {
 			for (const [key, value] of Object.entries(repositoryVariables)) {
 				new github.ActionsVariable(
-					`${repositoryName}-repo-var-${key}`,
+					// kebab-case the resource name per CLAUDE.md (the variable name
+					// `key` is UPPER_SNAKE, e.g. WORKLOAD_IDENTITY_PROVIDER).
+					`${repositoryName}-repo-var-${key.toLowerCase().replace(/_/g, '-')}`,
 					{
 						repository: repositoryName,
 						variableName: key,
@@ -220,7 +222,9 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 		if (repositorySecrets) {
 			for (const [key, value] of Object.entries(repositorySecrets)) {
 				new github.ActionsSecret(
-					`${repositoryName}-repo-secret-${key}`,
+					// kebab-case the resource name per CLAUDE.md (the secret name
+					// `key` is UPPER_SNAKE, e.g. CI_BOT_APP_ID).
+					`${repositoryName}-repo-secret-${key.toLowerCase().replace(/_/g, '-')}`,
 					{
 						repository: repositoryName,
 						secretName: key,
