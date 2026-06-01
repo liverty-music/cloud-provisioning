@@ -1,6 +1,5 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-
 # Prod backend overlay. Env-divergent fields per design D2 / spec Requirement 3:
 #   - GSA: backend-app@liverty-music-prod (vs liverty-music-dev)
 #   - Cloud SQL: liverty-music-prod:asia-northeast2:postgres-osaka
@@ -21,14 +20,11 @@ kind: Kustomization
 #     `vapid-private-key` private scalar (see server/configmap.env note).
 # The concert-discovery CronJob runs on the base daily schedule (no
 # Fridays-only patch), because prod's concert ingestion should be regular.
-
 resources:
-- ../../base
-- sql-proxy/deployment.yaml
-- podmonitoring.yaml
-
+  - ../../base
+  - sql-proxy/deployment.yaml
+  - podmonitoring.yaml
 namespace: backend
-
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource (Deployment, CronJob, Service, etc.). Value SHALL be the
 # bare semver without the leading `v` (per Kubernetes Recommended Labels
@@ -41,121 +37,111 @@ namespace: backend
 # - `includeTemplates: true` propagates the label to `spec.template.metadata.labels`
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
-- pairs:
-    app.kubernetes.io/version: "1.3.1"
-  includeSelectors: false
-  includeTemplates: true
-
+  - pairs:
+      app.kubernetes.io/version: "1.4.0"
+    includeSelectors: false
+    includeTemplates: true
 patches:
-- path: serviceaccount_patch.yaml
-  target:
-    kind: ServiceAccount
-    name: backend-app
-
-# Global Spot VM patch for all Deployments
-- path: spot-vm_patch.yaml
-  target:
-    kind: Deployment
-
-- path: spot-vm_patch_cronjob.yaml
-  target:
-    kind: CronJob
-
-# Replicas: 1 (per design D8 — single replica during bootstrap)
-- target:
-    kind: Deployment
-    name: server-app
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
+  - path: serviceaccount_patch.yaml
+    target:
+      kind: ServiceAccount
+      name: backend-app
+  # Global Spot VM patch for all Deployments
+  - path: spot-vm_patch.yaml
+    target:
+      kind: Deployment
+  - path: spot-vm_patch_cronjob.yaml
+    target:
+      kind: CronJob
+  # Replicas: 1 (per design D8 — single replica during bootstrap)
+  - target:
+      kind: Deployment
       name: server-app
-    spec:
-      replicas: 1
-
-# Match dev's resource sizing exactly (design D2)
-- target:
-    kind: Deployment
-    name: server-app
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: server-app
+      spec:
+        replicas: 1
+  # Match dev's resource sizing exactly (design D2)
+  - target:
+      kind: Deployment
       name: server-app
-    spec:
-      template:
-        spec:
-          containers:
-          - name: server
-            resources:
-              requests:
-                cpu: 10m
-                memory: 60Mi
-              limits:
-                cpu: 200m
-                memory: 256Mi
-
-# Prod HTTPRoute hostname.
-- target:
-    kind: HTTPRoute
-    name: server-route
-  patch: |-
-    - op: add
-      path: /spec/hostnames
-      value: ["api.liverty-music.app"]
-
-# Match dev's consumer resource sizing.
-- target:
-    kind: Deployment
-    name: consumer-app
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: server-app
+      spec:
+        template:
+          spec:
+            containers:
+            - name: server
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 60Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+  # Prod HTTPRoute hostname.
+  - target:
+      kind: HTTPRoute
+      name: server-route
+    patch: |-
+      - op: add
+        path: /spec/hostnames
+        value: ["api.liverty-music.app"]
+  # Match dev's consumer resource sizing.
+  - target:
+      kind: Deployment
       name: consumer-app
-    spec:
-      template:
-        spec:
-          containers:
-          - name: consumer
-            resources:
-              requests:
-                cpu: 10m
-                memory: 20Mi
-              limits:
-                cpu: 200m
-                memory: 128Mi
-
-# Consumer ScaledObject — start with maxReplicas: 1 (per design D8). KEDA can scale up via Pulumi tweak.
-- target:
-    kind: ScaledObject
-    name: consumer-app
-  patch: |-
-    apiVersion: keda.sh/v1alpha1
-    kind: ScaledObject
-    metadata:
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: consumer-app
+      spec:
+        template:
+          spec:
+            containers:
+            - name: consumer
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 20Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+  # Consumer ScaledObject — start with maxReplicas: 1 (per design D8). KEDA can scale up via Pulumi tweak.
+  - target:
+      kind: ScaledObject
       name: consumer-app
-    spec:
-      maxReplicaCount: 1
-
+    patch: |-
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      metadata:
+        name: consumer-app
+      spec:
+        maxReplicaCount: 1
 configMapGenerator:
-- name: server-config
-  behavior: merge
-  envs:
-  - server/configmap.env
-- name: concert-discovery-job-config
-  behavior: merge
-  envs:
-  - cronjob/concert-discovery/configmap.env
-- name: artist-image-sync-job-config
-  behavior: merge
-  envs:
-  - cronjob/artist-image-sync/configmap.env
-- name: consumer-consumer-config
-  behavior: merge
-  envs:
-  - consumer/configmap.env
-
+  - name: server-config
+    behavior: merge
+    envs:
+      - server/configmap.env
+  - name: concert-discovery-job-config
+    behavior: merge
+    envs:
+      - cronjob/concert-discovery/configmap.env
+  - name: artist-image-sync-job-config
+    behavior: merge
+    envs:
+      - cronjob/artist-image-sync/configmap.env
+  - name: consumer-consumer-config
+    behavior: merge
+    envs:
+      - consumer/configmap.env
 # Pin all four backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -191,15 +177,15 @@ configMapGenerator:
 # No manual pin-bump PR. See docs/runbooks/prod-image-tag-pinning.md
 # (OpenSpec change automate-prod-pin-bump).
 images:
-- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
-  newTag: v1.3.1  # commit b374f39448fb72d963be0dce3a6363c33094101e
-- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-  newTag: v1.3.1  # commit b374f39448fb72d963be0dce3a6363c33094101e
-- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-  newTag: v1.3.1  # commit b374f39448fb72d963be0dce3a6363c33094101e
-- name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-  newTag: v1.3.1  # commit b374f39448fb72d963be0dce3a6363c33094101e
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
+    newTag: v1.4.0 # commit 536230bff1f7973eafe4c672dfd0e7af38a69309
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
+    newTag: v1.4.0 # commit 536230bff1f7973eafe4c672dfd0e7af38a69309
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
+    newTag: v1.4.0 # commit 536230bff1f7973eafe4c672dfd0e7af38a69309
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
+    newTag: v1.4.0 # commit 536230bff1f7973eafe4c672dfd0e7af38a69309
