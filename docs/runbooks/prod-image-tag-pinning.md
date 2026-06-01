@@ -140,29 +140,40 @@ prod `pulumi up`; the rest are documented here because they require an
 out-of-band credential or a setting GitHub does not expose to this provider
 version.
 
-### 1. Cross-repo dispatch credential (GitHub App) — backend + frontend
+### 1. Cross-repo dispatch credential (GitHub App `liverty-music-ci-bot`)
 
 The release workflows trigger `repository_dispatch` against `cloud-provisioning`
 with a **GitHub App installation token** (short-lived, auditable) rather than a
-long-lived PAT. The `POST /repos/{owner}/{repo}/dispatches` API requires
-`Contents: write` (no narrower scope exists), so the security boundary is NOT
-the token scope — it is branch protection (see §2): the token cannot push to
-`cloud-provisioning:main` because only `github-actions[bot]` bypasses, so its
-reach is limited to non-`main` refs ArgoCD does not track.
+long-lived PAT. The App is a shared org CI-automation bot (`liverty-music-ci-bot`)
+— intentionally named generically so it can be reused for future cross-repo CI
+automation at the same trust level, while keeping **least privilege**
+(`Contents: write` only, installed on `cloud-provisioning` only). The
+`POST /repos/{owner}/{repo}/dispatches` API requires `Contents: write` (no
+narrower scope exists), so the security boundary is NOT the token scope — it is
+branch protection (see §2): the token cannot push to `cloud-provisioning:main`
+because only `github-actions[bot]` bypasses, so its reach is limited to
+non-`main` refs ArgoCD does not track. Grow this App's permissions/installs only
+deliberately; if a future automation needs materially higher privilege or a
+different trust boundary, create a separate App instead.
 
 One-time setup:
-1. Create a GitHub App in the `liverty-music` org (Settings → Developer settings
-   → GitHub Apps → New). Permissions: **Repository → Contents: Read and write**
-   (the documented minimum for the dispatches API). No webhook needed.
-2. Install it on **`cloud-provisioning` only** (scope the installation).
-3. Generate a private key; note the App ID.
+1. Register a GitHub App in the `liverty-music` org: **Your organizations →
+   Settings → Developer settings → GitHub Apps → New GitHub App**. Name
+   `liverty-music-ci-bot`; uncheck **Webhook → Active**; under **Repository
+   permissions** set **Contents: Read and write** only; **Where can this app be
+   installed? → Only on this account**. Create.
+2. **Install App → Only select repositories → `cloud-provisioning` only.**
+3. On the App's **General** page, **Generate a private key** (downloads a `.pem`)
+   and note the **App ID**.
 4. Store the App ID and private key in Pulumi ESC so they are wired as the
-   backend + frontend `prod` environment secrets `PROD_PIN_DISPATCH_APP_ID` /
-   `PROD_PIN_DISPATCH_APP_PRIVATE_KEY` (consumed by the `dispatch-prod-pin` job
-   via `actions/create-github-app-token`):
+   backend + frontend `prod` environment secrets `CI_BOT_APP_ID` /
+   `CI_BOT_APP_PRIVATE_KEY` (consumed by the `dispatch-prod-pin` job via
+   `actions/create-github-app-token`). The secret stays on the consuming repos'
+   `prod` environments — NOT org-wide — so a compromised non-prod workflow cannot
+   mint the token:
    ```bash
-   esc env set liverty-music/prod pulumiConfig.github.prodPinDispatchAppId "<app-id>"
-   esc env set liverty-music/prod pulumiConfig.github.prodPinDispatchAppPrivateKey "$(cat app-private-key.pem)" --secret
+   esc env set liverty-music/prod pulumiConfig.github.ciBotAppId "<app-id>"
+   esc env set liverty-music/prod pulumiConfig.github.ciBotAppPrivateKey "$(cat liverty-music-ci-bot.*.private-key.pem)" --secret
    ```
    Then run a prod `pulumi up`; `GitHubRepositoryComponent` creates the two
    environment secrets on backend + frontend (no-op if the config is absent).
