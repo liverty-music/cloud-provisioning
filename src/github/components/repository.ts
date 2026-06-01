@@ -35,14 +35,17 @@ export interface GitHubRepositoryComponentArgs {
 	pinBumpReviewerUsername?: string
 	/**
 	 * When true, the prod `main` protection is expressed as a
-	 * `github.RepositoryRuleset` (replacing the classic `BranchProtection`)
-	 * with the GitHub Actions integration as an `always` bypass actor. This is
-	 * the only mechanism that lets `github-actions[bot]` push the automated
-	 * pin-bump straight to `main` past BOTH the PR requirement AND the
-	 * strict "up-to-date" status check (classic protection cannot bypass the
-	 * strict check per-actor). See OpenSpec change `automate-prod-pin-bump`
-	 * D8 / spec "cloud-provisioning branch protection SHALL allow the bot to
-	 * bypass". The bypass is scoped to the Actions app only — no human/PAT.
+	 * `github.OrganizationRuleset` scoped to this repo's default branch
+	 * (replacing the classic `BranchProtection`) with the GitHub Actions
+	 * integration as an `always` bypass actor. This lets `github-actions[bot]`
+	 * push the automated pin-bump straight to `main` past BOTH the PR
+	 * requirement AND the strict "up-to-date" status check. An org ruleset is
+	 * required because a *repository* ruleset rejects the GitHub Actions
+	 * integration bypass (the global `github-actions` app is GitHub-owned, not
+	 * org-owned), while classic protection cannot bypass the strict check
+	 * per-actor. See OpenSpec change `automate-prod-pin-bump` D8 / spec
+	 * "branch protection SHALL allow the bot to bypass". Bypass is scoped to
+	 * the Actions integration only — no human/PAT.
 	 */
 	mainBranchBotBypass?: boolean
 }
@@ -235,33 +238,41 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 				// the prod pin-bump straight to `cloud-provisioning:main` as
 				// `github-actions[bot]`, which needs a bypass for BOTH the PR
 				// requirement AND the strict "up-to-date" status check. Classic
-				// `BranchProtection` has no per-actor bypass for the strict check —
-				// only a `RepositoryRuleset` `bypassActors` entry can grant it. We
-				// therefore express the protection as a ruleset (it replaces the
-				// classic protection rather than stacking with it: the two are
-				// evaluated together, so leaving classic protection in place would
-				// still block the bot). The bypass is scoped to the GitHub Actions
-				// integration only — no human, no PAT (spec: "cloud-provisioning
-				// branch protection SHALL allow the bot to bypass").
+				// `BranchProtection` has no per-actor bypass for the strict check,
+				// and a *repository* ruleset rejects the GitHub Actions integration
+				// as a bypass actor ("Actor GitHub Actions integration must be part
+				// of the ruleset source or owner organization" — the global
+				// `github-actions` app is GitHub-owned, not org-owned). An
+				// *organization* ruleset DOES accept the GitHub Actions integration
+				// bypass, so we express the protection as an org ruleset scoped to
+				// this repo's default branch. It replaces the classic protection
+				// (the two stack, so leaving classic protection would still block
+				// the bot). Bypass is scoped to the GitHub Actions integration only
+				// — no human, no PAT (spec: "branch protection SHALL allow the bot
+				// to bypass"). This keeps the built-in GITHUB_TOKEN as the pusher,
+				// preserving the design D1 boundary (the cross-repo dispatch token
+				// is NOT a bypass actor and still cannot push to main).
 				//
 				// The Actions app id (slug `github-actions`) is resolved via the
-				// provider data source rather than hardcoded, so the bypass actor
-				// stays correct without a magic number. `actorId` is a number; the
-				// data source returns the id as a string.
+				// provider data source rather than hardcoded; `actorId` is a number,
+				// the data source returns the id as a string.
 				const actionsApp = github.getGithubAppOutput(
 					{ slug: 'github-actions' },
 					{ provider },
 				)
-				new github.RepositoryRuleset(
-					`${repositoryName}-main-ruleset`,
+				new github.OrganizationRuleset(
+					`${repositoryName}-main-org-ruleset`,
 					{
 						name: `${repositoryName}-main`,
-						repository: repositoryName,
 						target: 'branch',
 						enforcement: 'active',
 						conditions: {
 							refName: {
 								includes: ['~DEFAULT_BRANCH'],
+								excludes: [],
+							},
+							repositoryName: {
+								includes: [repositoryName],
 								excludes: [],
 							},
 						},

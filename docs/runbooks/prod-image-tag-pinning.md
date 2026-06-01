@@ -191,20 +191,25 @@ up to date" check.
 
 This is **IaC-managed** in `src/github/components/repository.ts`: for
 cloud-provisioning prod, the `main` protection is expressed as a
-`github.RepositoryRuleset` (not the classic `github.BranchProtection`) with the
-GitHub Actions integration (`slug: github-actions`, resolved via the
-`getGithubApp` data source) as an `always` **bypass actor**. Classic branch
-protection has no per-actor bypass for the strict (up-to-date) status check —
-only a ruleset `bypassActors` entry can grant it — which is why
-cloud-provisioning's protection uses a ruleset while the other repos stay on
-classic `BranchProtection`. The ruleset replicates the prior rules (PR required,
-0 approvals; strict `CI Success`; no force-push; no deletion) and applies to
-everyone except the single Actions-app bypass actor; **no human and no PAT** is
-added.
+`github.OrganizationRuleset` scoped to `cloud-provisioning`'s default branch
+(not the classic `github.BranchProtection`) with the GitHub Actions integration
+(`slug: github-actions`, resolved via the `getGithubApp` data source) as an
+`always` **bypass actor**. Two reasons it must be an *org* ruleset, not a repo
+one: (a) classic branch protection has no per-actor bypass for the strict
+(up-to-date) status check; (b) a *repository* ruleset rejects the GitHub Actions
+integration bypass with `422 — "Actor GitHub Actions integration must be part of
+the ruleset source or owner organization"` (the global `github-actions` app is
+GitHub-owned, not org-owned), whereas an *organization* ruleset accepts it. This
+keeps the built-in `GITHUB_TOKEN` as the pusher, so the cross-repo dispatch
+token is NOT a bypass actor and still cannot push to `main` (design D1 boundary
+preserved). The ruleset replicates the prior rules (PR required, 0 approvals;
+strict `CI Success`; no force-push; no deletion) and applies to everyone except
+the single Actions-integration bypass actor; **no human and no PAT** is added.
+Other repos keep classic `BranchProtection`.
 
 > **Migration note.** A prod `pulumi up` will **delete** the classic
 > `cloud-provisioning-protection` `BranchProtection` and **create** the
-> `cloud-provisioning-main-ruleset`. Review the `pulumi preview` diff before
+> `cloud-provisioning-main` org ruleset. Review the `pulumi preview` diff before
 > applying; the swap is a replace, so `main` is briefly governed by whichever
 > of the two exists during the apply — apply attended.
 
