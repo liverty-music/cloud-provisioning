@@ -283,10 +283,18 @@ new GitHubRepositoryComponent({
 			: undefined,
 	// Admin-reviewer gate for the `bump-prod-pin.yml` manual recovery path.
 	pinBumpReviewerUsername: env === 'prod' ? 'pannpers' : undefined,
-	// Express prod `main` protection as a ruleset so `github-actions[bot]` can
-	// bypass it to push the automated pin-bump (the only mechanism that bypasses
-	// the strict up-to-date check). Bypass scoped to the Actions app only.
+	// Express prod `main` protection as a RepositoryRuleset whose sole bypass
+	// actor is the org-owned ci-bot App, so the bump workflow (pushing as a
+	// ci-bot installation token) can land the pin-bump on main past the PR +
+	// strict up-to-date rules. The global `github-actions` integration can't be
+	// a repo-ruleset bypass actor, and org rulesets need a Team plan — hence the
+	// org-owned App. `botBypassAppId` resolves the bypass actor; only set in
+	// prod where `ciBotAppId` exists (else classic BranchProtection is used).
 	mainBranchBotBypass: true,
+	botBypassAppId: env === 'prod' ? githubConfig.ciBotAppId : undefined,
+	// ci-bot App credential as REPO-level secrets so the bump workflow's
+	// `repository_dispatch` path (empty environment) can mint the push token.
+	repositorySecrets: ciBotSecrets,
 })
 
 // Export common resources
