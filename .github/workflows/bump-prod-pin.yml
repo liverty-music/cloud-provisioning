@@ -153,11 +153,15 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          # Repository-level vars (not environment-scoped) so they resolve on
-          # the empty-environment `repository_dispatch` path. Provisioned by
+          # Repository-level SECRETS (not environment-scoped) so they resolve on
+          # the empty-environment `repository_dispatch` path. Stored as secrets
+          # rather than variables because the Pulumi GitHub token has
+          # Secrets:write but not Variables:write on the repo (the repo-variables
+          # API returns 403). The values (WIF provider, SA email) are not
+          # sensitive — masking in logs is a harmless side effect. Provisioned by
           # Pulumi on the prod stack — see cloud-provisioning/src/github/.
-          workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2

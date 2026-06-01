@@ -268,19 +268,6 @@ new GitHubRepositoryComponent({
 	variables: sharedVariables,
 	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
-	// Prod-only (repo-level vars are repo-global, so only one stack may own
-	// them): the `bump-prod-pin.yml` `repository_dispatch` path runs with an
-	// empty `environment:` and reads the prod WIF provider + SA from these
-	// repository-level variables to authenticate `crane` for the provenance
-	// gate against prod AR.
-	repositoryVariables:
-		env === 'prod'
-			? {
-					WORKLOAD_IDENTITY_PROVIDER:
-						gcp.githubWorkloadIdentityProvider,
-					SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
-				}
-			: undefined,
 	// Admin-reviewer gate for the `bump-prod-pin.yml` manual recovery path.
 	pinBumpReviewerUsername: env === 'prod' ? 'pannpers' : undefined,
 	// Express prod `main` protection as a RepositoryRuleset whose sole bypass
@@ -292,9 +279,22 @@ new GitHubRepositoryComponent({
 	// prod where `ciBotAppId` exists (else classic BranchProtection is used).
 	mainBranchBotBypass: true,
 	botBypassAppId: env === 'prod' ? githubConfig.ciBotAppId : undefined,
-	// ci-bot App credential as REPO-level secrets so the bump workflow's
-	// `repository_dispatch` path (empty environment) can mint the push token.
-	repositorySecrets: ciBotSecrets,
+	// REPO-level secrets the `bump-prod-pin.yml` `repository_dispatch` path
+	// (empty environment) needs: the ci-bot App credential (to mint the push
+	// token) AND the prod WIF provider + SA (to authenticate `crane` for the
+	// provenance gate). Stored as SECRETS, not variables: the Pulumi GitHub
+	// token has Secrets:write but not Variables:write on the repo (the
+	// repo-variables API returns 403). The WIF provider + SA are not sensitive;
+	// masking in logs is a harmless side effect.
+	repositorySecrets:
+		env === 'prod' && ciBotSecrets
+			? {
+					...ciBotSecrets,
+					WORKLOAD_IDENTITY_PROVIDER:
+						gcp.githubWorkloadIdentityProvider,
+					SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
+				}
+			: undefined,
 })
 
 // Export common resources
