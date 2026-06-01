@@ -210,22 +210,20 @@ const sharedVariables = {
 	SERVICE_ACCOUNT: gcp.githubActionsSAEmail,
 }
 
-// Cross-repo dispatch credential (GitHub App) for the `automate-prod-pin-bump`
-// release path. Wired onto the backend + frontend `prod` environments so the
+// Shared org CI-automation GitHub App credential (`liverty-music-ci-bot`).
+// Wired onto the backend + frontend `prod` environments so the
 // `dispatch-prod-pin` job can mint an installation token (scoped to
 // cloud-provisioning) and POST the `bump-prod-pin` `repository_dispatch`.
 // Prod-only and optional: absent until the App is created and its credential
-// is set in ESC (`pulumiConfig.github.prodPinDispatchAppId` /
-// `...PrivateKey`). See docs/runbooks/prod-image-tag-pinning.md "Automation
-// setup" §1.
-const prodPinDispatchSecrets =
-	env === 'prod' &&
-	githubConfig.prodPinDispatchAppId &&
-	githubConfig.prodPinDispatchAppPrivateKey
+// is set in ESC (`pulumiConfig.github.ciBotAppId` / `...PrivateKey`). The
+// secret is intentionally kept on the consuming repos' `prod` environments
+// (not org-wide) so a compromised non-prod workflow cannot mint the token.
+// See docs/runbooks/prod-image-tag-pinning.md "Automation setup" §1.
+const ciBotSecrets =
+	env === 'prod' && githubConfig.ciBotAppId && githubConfig.ciBotAppPrivateKey
 		? {
-				PROD_PIN_DISPATCH_APP_ID: githubConfig.prodPinDispatchAppId,
-				PROD_PIN_DISPATCH_APP_PRIVATE_KEY:
-					githubConfig.prodPinDispatchAppPrivateKey,
+				CI_BOT_APP_ID: githubConfig.ciBotAppId,
+				CI_BOT_APP_PRIVATE_KEY: githubConfig.ciBotAppPrivateKey,
 			}
 		: undefined
 
@@ -236,7 +234,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
 	variables: sharedVariables,
-	secrets: prodPinDispatchSecrets,
+	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
 })
 
@@ -247,7 +245,7 @@ new GitHubRepositoryComponent({
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
 	variables: sharedVariables,
-	secrets: prodPinDispatchSecrets,
+	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
 })
 
