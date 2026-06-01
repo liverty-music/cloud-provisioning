@@ -34,20 +34,32 @@ export interface GitHubRepositoryComponentArgs {
 	 */
 	pinBumpReviewerUsername?: string
 	/**
-	 * When true, the prod `main` protection is expressed as a
-	 * `github.OrganizationRuleset` scoped to this repo's default branch
-	 * (replacing the classic `BranchProtection`) with the GitHub Actions
-	 * integration as an `always` bypass actor. This lets `github-actions[bot]`
-	 * push the automated pin-bump straight to `main` past BOTH the PR
-	 * requirement AND the strict "up-to-date" status check. An org ruleset is
-	 * required because a *repository* ruleset rejects the GitHub Actions
-	 * integration bypass (the global `github-actions` app is GitHub-owned, not
-	 * org-owned), while classic protection cannot bypass the strict check
-	 * per-actor. See OpenSpec change `automate-prod-pin-bump` D8 / spec
-	 * "branch protection SHALL allow the bot to bypass". Bypass is scoped to
-	 * the Actions integration only — no human/PAT.
+	 * When true AND `botBypassAppId` is set, the prod `main` protection is
+	 * expressed as a `github.RepositoryRuleset` (replacing the classic
+	 * `BranchProtection`) with the org-owned bump App as an `always` bypass
+	 * actor, letting the automated pin-bump push straight to `main` past BOTH
+	 * the PR requirement AND the strict "up-to-date" status check. Classic
+	 * protection cannot bypass the strict check per-actor. If false / no app id,
+	 * classic `BranchProtection` is used instead. See OpenSpec change
+	 * `automate-prod-pin-bump`.
 	 */
 	mainBranchBotBypass?: boolean
+	/**
+	 * GitHub App ID used as the org-owned bypass actor on the `main` ruleset
+	 * (and the identity the bump workflow pushes as). MUST be an org-owned App:
+	 * the global `github-actions` integration is rejected by a repo ruleset
+	 * ("must be part of the ruleset source or owner organization"), and an org
+	 * ruleset (which would accept it) needs a GitHub Team plan. The
+	 * `liverty-music-ci-bot` App id (`ciBotAppId`) is passed here.
+	 */
+	botBypassAppId?: pulumi.Input<string>
+	/**
+	 * Repository-level Actions secrets (not environment-scoped). Used by
+	 * `bump-prod-pin.yml`'s `repository_dispatch` path (empty `environment:`,
+	 * so it cannot read environment secrets) to mint the ci-bot token it pushes
+	 * to `main` with.
+	 */
+	repositorySecrets?: Record<string, pulumi.Input<string>>
 }
 
 export class GitHubRepositoryComponent extends pulumi.ComponentResource {
@@ -78,6 +90,8 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			repositoryVariables,
 			pinBumpReviewerUsername,
 			mainBranchBotBypass,
+			botBypassAppId,
+			repositorySecrets,
 		} = args
 
 		// Use a new provider instance to ensure we can use it in any stack
@@ -188,11 +202,33 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 		if (repositoryVariables) {
 			for (const [key, value] of Object.entries(repositoryVariables)) {
 				new github.ActionsVariable(
-					`${repositoryName}-repo-var-${key}`,
+					// kebab-case the resource name per CLAUDE.md (the variable name
+					// `key` is UPPER_SNAKE, e.g. WORKLOAD_IDENTITY_PROVIDER).
+					`${repositoryName}-repo-var-${key.toLowerCase().replace(/_/g, '-')}`,
 					{
 						repository: repositoryName,
 						variableName: key,
 						value: value,
+					},
+					{ provider, parent: this },
+				)
+			}
+		}
+
+		// Repository-level Actions secrets (not environment-scoped). The
+		// `bump-prod-pin.yml` `repository_dispatch` path runs with an empty
+		// `environment:`, so it reads the ci-bot App credential from here to mint
+		// the installation token it pushes the bump to `main` with.
+		if (repositorySecrets) {
+			for (const [key, value] of Object.entries(repositorySecrets)) {
+				new github.ActionsSecret(
+					// kebab-case the resource name per CLAUDE.md (the secret name
+					// `key` is UPPER_SNAKE, e.g. CI_BOT_APP_ID).
+					`${repositoryName}-repo-secret-${key.toLowerCase().replace(/_/g, '-')}`,
+					{
+						repository: repositoryName,
+						secretName: key,
+						plaintextValue: value,
 					},
 					{ provider, parent: this },
 				)
@@ -233,37 +269,37 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 
 		// Apply main-branch protection (Prod Only to avoid stack conflicts).
 		if (environment === 'prod') {
-			if (mainBranchBotBypass) {
+			if (mainBranchBotBypass && botBypassAppId) {
 				// Ruleset form (automate-prod-pin-bump): `bump-prod-pin.yml` pushes
-				// the prod pin-bump straight to `cloud-provisioning:main` as
-				// `github-actions[bot]`, which needs a bypass for BOTH the PR
-				// requirement AND the strict "up-to-date" status check. Classic
-				// `BranchProtection` has no per-actor bypass for the strict check,
-				// and a *repository* ruleset rejects the GitHub Actions integration
-				// as a bypass actor ("Actor GitHub Actions integration must be part
-				// of the ruleset source or owner organization" — the global
-				// `github-actions` app is GitHub-owned, not org-owned). An
-				// *organization* ruleset DOES accept the GitHub Actions integration
-				// bypass, so we express the protection as an org ruleset scoped to
-				// this repo's default branch. It replaces the classic protection
-				// (the two stack, so leaving classic protection would still block
-				// the bot). Bypass is scoped to the GitHub Actions integration only
-				// — no human, no PAT (spec: "branch protection SHALL allow the bot
-				// to bypass"). This keeps the built-in GITHUB_TOKEN as the pusher,
-				// preserving the design D1 boundary (the cross-repo dispatch token
-				// is NOT a bypass actor and still cannot push to main).
+				// the prod pin-bump straight to `cloud-provisioning:main`, which
+				// needs a bypass for BOTH the PR requirement AND the strict
+				// "up-to-date" status check. Classic `BranchProtection` has no
+				// per-actor bypass for the strict check, so we use a
+				// `RepositoryRuleset` with a `bypassActors` entry.
 				//
-				// The Actions app id (slug `github-actions`) is resolved via the
-				// provider data source rather than hardcoded; `actorId` is a number,
-				// the data source returns the id as a string.
-				const actionsApp = github.getGithubAppOutput(
-					{ slug: 'github-actions' },
-					{ provider },
-				)
-				new github.OrganizationRuleset(
-					`${repositoryName}-main-org-ruleset`,
+				// The bypass actor is the org-owned `liverty-music-ci-bot` App
+				// (`botBypassAppId`), NOT the built-in `github-actions[bot]`: a repo
+				// ruleset rejects the global `github-actions` integration with
+				// "Actor GitHub Actions integration must be part of the ruleset
+				// source or owner organization" (it is GitHub-owned), and an *org*
+				// ruleset (which would accept it) requires a GitHub Team plan
+				// (403 on Free). An org-owned App passes the repo-ruleset
+				// validation. The bump workflow therefore pushes to main using a
+				// ci-bot installation token (see bump-prod-pin.yml), and ci-bot is
+				// the sole bypass actor — no human, no PAT.
+				//
+				// Trade-off (vs the original design D1): ci-bot is ALSO the
+				// cross-repo dispatch credential held on the backend/frontend prod
+				// environments, so a compromised prod release workflow could mint a
+				// ci-bot token and push to `cloud-provisioning:main`. This relaxes
+				// the D1 "dispatch token cannot move prod" boundary; it is mitigated
+				// by the prod-environment gating of those secrets, the provenance
+				// gate, and Release-as-the-human-gate. See the updated spec.
+				new github.RepositoryRuleset(
+					`${repositoryName}-main-ruleset`,
 					{
 						name: `${repositoryName}-main`,
+						repository: repositoryName,
 						target: 'branch',
 						enforcement: 'active',
 						conditions: {
@@ -271,16 +307,12 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 								includes: ['~DEFAULT_BRANCH'],
 								excludes: [],
 							},
-							repositoryName: {
-								includes: [repositoryName],
-								excludes: [],
-							},
 						},
 						bypassActors: [
 							{
-								actorId: actionsApp.id.apply((id) =>
-									Number(id),
-								),
+								actorId: pulumi
+									.output(botBypassAppId)
+									.apply((id) => Number(id)),
 								actorType: 'Integration',
 								// `always`: bypass on direct pushes too, not just PRs —
 								// the bot pushes the bump directly, no PR.

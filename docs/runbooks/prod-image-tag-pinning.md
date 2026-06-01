@@ -165,55 +165,68 @@ One-time setup:
 2. **Install App → Only select repositories → `cloud-provisioning` only.**
 3. On the App's **General** page, **Generate a private key** (downloads a `.pem`)
    and note the **App ID**.
-4. Store the App ID and private key in Pulumi ESC so they are wired as the
-   backend + frontend `prod` environment secrets `CI_BOT_APP_ID` /
-   `CI_BOT_APP_PRIVATE_KEY` (consumed by the `dispatch-prod-pin` job via
-   `actions/create-github-app-token`). The secret stays on the consuming repos'
-   `prod` environments — NOT org-wide — so a compromised non-prod workflow cannot
-   mint the token:
+4. Store the App ID and private key in Pulumi ESC. They are wired as
+   `CI_BOT_APP_ID` / `CI_BOT_APP_PRIVATE_KEY` on (a) the backend + frontend
+   `prod` **environment** secrets — consumed by the `dispatch-prod-pin` job to
+   trigger the dispatch — and (b) the cloud-provisioning **repository** secrets
+   — consumed by `bump-prod-pin.yml` to mint the token it pushes the bump to
+   `main` with (the bump workflow's `repository_dispatch` path runs with an
+   empty `environment:`, so it needs a repo-level secret). All
+   via `actions/create-github-app-token`:
    ```bash
    esc env set liverty-music/prod pulumiConfig.github.ciBotAppId "<app-id>"
    esc env set liverty-music/prod pulumiConfig.github.ciBotAppPrivateKey "$(cat liverty-music-ci-bot.*.private-key.pem)" --secret
    ```
-   Then run a prod `pulumi up`; `GitHubRepositoryComponent` creates the two
-   environment secrets on backend + frontend (no-op if the config is absent).
-5. **Verify the reach is bounded**: confirm a token minted by this App CANNOT
-   push to `cloud-provisioning:main` (branch protection denies it) — only its
-   `repository_dispatch` trigger should succeed.
+   Then run a prod `pulumi up`; `GitHubRepositoryComponent` creates the secrets
+   (no-op if the config is absent).
+5. **Confirm the bypass scope**: after the ruleset applies (§2), the ci-bot App
+   is the sole `main` bypass actor. Note this means ci-bot CAN push to
+   `cloud-provisioning:main` (it is the bump pusher) — see the §2 security
+   trade-off; verify no human/PAT is on the bypass list.
 
-### 2. `cloud-provisioning:main` branch-protection bypass for the bot
+### 2. `cloud-provisioning:main` ruleset bypass (ci-bot App)
 
-`bump-prod-pin.yml` pushes the validated bump straight to `main` as
-`github-actions[bot]` using the built-in `GITHUB_TOKEN`. For that push to be
-accepted, `github-actions[bot]` MUST be a **bypass actor** on the `main`
-protection, covering BOTH the pull-request requirement AND the "require branches
-up to date" check.
+`bump-prod-pin.yml` pushes the validated bump straight to `main` **as the
+`liverty-music-ci-bot` App** (it mints a ci-bot installation token via
+`actions/create-github-app-token` and pushes with it). For that push to be
+accepted, the ci-bot App MUST be a **bypass actor** on the `main` protection,
+covering BOTH the pull-request requirement AND the "require branches up to date"
+check.
 
 This is **IaC-managed** in `src/github/components/repository.ts`: for
-cloud-provisioning prod, the `main` protection is expressed as a
-`github.OrganizationRuleset` scoped to `cloud-provisioning`'s default branch
-(not the classic `github.BranchProtection`) with the GitHub Actions integration
-(`slug: github-actions`, resolved via the `getGithubApp` data source) as an
-`always` **bypass actor**. Two reasons it must be an *org* ruleset, not a repo
-one: (a) classic branch protection has no per-actor bypass for the strict
-(up-to-date) status check; (b) a *repository* ruleset rejects the GitHub Actions
-integration bypass with `422 — "Actor GitHub Actions integration must be part of
-the ruleset source or owner organization"` (the global `github-actions` app is
-GitHub-owned, not org-owned), whereas an *organization* ruleset accepts it. This
-keeps the built-in `GITHUB_TOKEN` as the pusher, so the cross-repo dispatch
-token is NOT a bypass actor and still cannot push to `main` (design D1 boundary
-preserved). The ruleset replicates the prior rules (PR required, 0 approvals;
-strict `CI Success`; no force-push; no deletion) and applies to everyone except
-the single Actions-integration bypass actor; **no human and no PAT** is added.
-Other repos keep classic `BranchProtection`.
+cloud-provisioning prod, the `main` protection is a `github.RepositoryRuleset`
+(replacing the classic `github.BranchProtection`) whose sole `always` bypass
+actor is the ci-bot App (`actorType: Integration`, `actorId: ciBotAppId`). The
+ruleset replicates the prior rules (PR required, 0 approvals; strict
+`CI Success`; no force-push; no deletion) and applies to everyone except ci-bot;
+**no human and no PAT** is added. Other repos keep classic `BranchProtection`.
 
-> **Migration note.** A prod `pulumi up` will **delete** the classic
-> `cloud-provisioning-protection` `BranchProtection` and **create** the
-> `cloud-provisioning-main` org ruleset. Review the `pulumi preview` diff before
-> applying; the swap is a replace, so `main` is briefly governed by whichever
-> of the two exists during the apply — apply attended.
+**Why ci-bot and not `github-actions[bot]`** (the path we did NOT take): a repo
+ruleset rejects the global `github-actions` integration as a bypass actor —
+`422 "Actor GitHub Actions integration must be part of the ruleset source or
+owner organization"` (it is GitHub-owned, not org-owned). The fix that *would*
+keep the built-in `GITHUB_TOKEN` — an **organization** ruleset — requires a
+**GitHub Team plan** (`403 "Upgrade to GitHub Team to enable this feature"` on
+the Free plan). An org-owned App (ci-bot) passes the repo-ruleset validation, so
+the bump pushes as ci-bot instead.
 
-Verify after apply: a bot push from `bump-prod-pin.yml` lands on `main` without
+> **Security trade-off (relaxes design D1).** ci-bot is ALSO the cross-repo
+> dispatch credential stored on the backend/frontend `prod` environments, so a
+> compromised prod release workflow could mint a ci-bot token and push to
+> `cloud-provisioning:main` directly — i.e. the dispatch credential CAN now move
+> prod, which D1 originally forbade. Mitigations: the ci-bot secrets are scoped
+> to the `prod` environment (release events only), the provenance gate still
+> blocks bogus tags, and cutting the Release remains the human gate. Accepted
+> for a solo-dev org to avoid a second dedicated App. To restore the strict
+> boundary, introduce a dedicated push-only App (installed + keyed only on
+> cloud-provisioning) as the bypass actor instead of ci-bot.
+
+> **Migration note.** A prod `pulumi up` **deletes** the classic
+> `cloud-provisioning-protection` `BranchProtection` and **creates** the
+> `cloud-provisioning-main` `RepositoryRuleset`. Review the `pulumi preview`
+> diff; apply attended (the swap is a replace).
+
+Verify after apply: a bump push from `bump-prod-pin.yml` lands on `main` without
 a PR; a human direct push to `main` is still rejected (PR + up-to-date required).
 
 ### 3. `prod-pin` GitHub Environment (admin reviewer) — cloud-provisioning

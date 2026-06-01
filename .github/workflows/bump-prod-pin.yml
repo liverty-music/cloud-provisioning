@@ -118,13 +118,30 @@ jobs:
             echo "bare=${BARE}"
           } >> "$GITHUB_OUTPUT"
 
+      # Mint a ci-bot installation token. The bump is pushed to `main` AS this
+      # org-owned App, which is the sole bypass actor on the `main` ruleset
+      # (the built-in github-actions[bot] cannot be a repo-ruleset bypass actor,
+      # and org rulesets need a Team plan — see bump-prod-pin design). Repo-level
+      # secrets (provisioned by Pulumi) so they resolve on the empty-environment
+      # repository_dispatch path.
+      - name: Mint ci-bot token
+        id: bot
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.CI_BOT_APP_ID }}
+          private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Full history + token retained so the fetch-rebase-retry push loop
-          # can rebase on a concurrent bump and push back to main.
+          # Full history so the fetch-rebase-retry push loop can rebase on a
+          # concurrent bump. Persist the ci-bot token (not the built-in
+          # GITHUB_TOKEN) as the origin credential so the loop's fetch + push
+          # authenticate AS ci-bot — the sole `main` ruleset bypass actor — and
+          # the push is accepted.
           fetch-depth: 0
           persist-credentials: true
+          token: ${{ steps.bot.outputs.token }}
 
       # ----------------------------------------------------------------------
       # 1.2a Provenance gate — fail-closed BEFORE any edit. The prod-AR image
@@ -241,8 +258,9 @@ jobs:
           echo "kustomize build of the ${COMPONENT} prod overlay succeeded."
 
       # ----------------------------------------------------------------------
-      # 1.6 + 1.7 Commit as github-actions[bot] and push to main with a
-      # fetch-rebase-retry loop (≤5 attempts). No PR.
+      # 1.6 + 1.7 Commit as the ci-bot App and push to main with a
+      # fetch-rebase-retry loop (≤5 attempts). No PR. The push authenticates as
+      # ci-bot (the persisted token), the sole `main` ruleset bypass actor.
       # ----------------------------------------------------------------------
       - name: Commit and push to main
         if: steps.idem.outputs.skip != 'true'
@@ -251,12 +269,15 @@ jobs:
           TAG: ${{ steps.payload.outputs.tag }}
           SHA: ${{ steps.payload.outputs.sha }}
           BARE: ${{ steps.payload.outputs.bare }}
+          BOT_SLUG: ${{ steps.bot.outputs.app-slug }}
         run: |
           set -euo pipefail
           file="k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Commit as the ci-bot App identity (the push is authenticated as this
+          # App, the ruleset bypass actor).
+          git config user.name "${BOT_SLUG}[bot]"
+          git config user.email "${BOT_SLUG}[bot]@users.noreply.github.com"
 
           # Defensive: if no net diff (e.g. label/comment already matched),
           # skip the commit rather than create an empty one.
