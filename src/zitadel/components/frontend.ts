@@ -13,6 +13,7 @@ export interface FrontendComponentArgs {
 export class FrontendComponent extends pulumi.ComponentResource {
 	public readonly application: zitadel.ApplicationOidc
 	public readonly loginPolicy: zitadel.LoginPolicy
+	public readonly labelPolicy: zitadel.LabelPolicy
 
 	constructor(
 		name: string,
@@ -118,9 +119,48 @@ export class FrontendComponent extends pulumi.ComponentResource {
 			resourceOptions,
 		)
 
+		// 3. Define zitadel.LabelPolicy resource — product-org branding for the
+		// hosted Login UI v2 (`/ui/v2/login/*`). Login UI v2 automatically
+		// honors the org/instance label policy, so branding the product org +
+		// enforcing it per-app (see `Project.privateLabelingSetting` in
+		// ../index.ts) is all that is needed to on-brand the login screen.
+		//
+		// Colors are derived from the frontend brand tokens (oklch → hex):
+		//   primary  #fd00a6  --color-brand-primary (pink)
+		//   bg       #ffffff / #0d1023  white / --color-surface-base
+		//   font     #161929 / #fafafa  dark navy / --color-text-primary
+		//   warn     #f14d4c  --color-error
+		// `logoPath`/`iconPath` are intentionally left unset — no brand logo
+		// asset exists yet; the logo is a deferred fast-follow. `setActive`
+		// stages-then-activates the policy so the change is live.
+		this.labelPolicy = new zitadel.LabelPolicy(
+			'brand',
+			{
+				orgId: orgId,
+				primaryColor: '#fd00a6',
+				primaryColorDark: '#fd00a6',
+				backgroundColor: '#ffffff',
+				backgroundColorDark: '#0d1023',
+				fontColor: '#161929',
+				fontColorDark: '#fafafa',
+				warnColor: '#f14d4c',
+				warnColorDark: '#f14d4c',
+				// Follow the system theme; the v2 login exposes a toggle and both
+				// palettes are defined.
+				themeMode: 'THEME_MODE_AUTO',
+				// Suppress any future Zitadel watermark.
+				disableWatermark: true,
+				// Cleaner consumer login name (no org-domain suffix).
+				hideLoginNameSuffix: true,
+				setActive: true,
+			},
+			resourceOptions,
+		)
+
 		this.registerOutputs({
 			application: this.application,
 			loginPolicy: this.loginPolicy,
+			labelPolicy: this.labelPolicy,
 		})
 	}
 }

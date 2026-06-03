@@ -248,8 +248,17 @@ export class Zitadel {
 				projectRoleAssertion: false,
 				projectRoleCheck: false,
 				hasProjectCheck: false,
-				// Use default private labeling to avoid potential policy conflicts with instance SMTP
-				privateLabelingSetting: 'PRIVATE_LABELING_SETTING_UNSPECIFIED',
+				// Enforce the product org's own LabelPolicy (see
+				// `FrontendComponent.labelPolicy`) for this app's login flow,
+				// regardless of the logging-in user's resource-owner org. Zitadel
+				// has no application-level label policy; this project setting is
+				// the per-application control that selects which org's branding
+				// the hosted Login UI v2 renders. The admin/console org login is
+				// a separate org and stays unaffected. Supersedes the prior
+				// defensive `UNSPECIFIED` (its SMTP-conflict caution was unrelated
+				// to label policy). See OpenSpec change `brand-zitadel-login-ui`.
+				privateLabelingSetting:
+					'PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY',
 			},
 			{ provider: this.provider, dependsOn: [this.productOrg] },
 		)
