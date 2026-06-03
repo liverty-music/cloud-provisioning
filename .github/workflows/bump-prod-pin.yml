@@ -183,7 +183,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${COMPONENT}" = "backend" ]; then
-            images="server consumer concert-discovery artist-image-sync"
+            images="server consumer concert-discovery artist-image-sync merch-discovery"
           else
             images="web-app"
           fi
