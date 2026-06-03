@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
@@ -17,6 +19,22 @@ import {
 	PRE_ACCESS_TOKEN_PATH,
 	zitadelDomainMap,
 } from './constants.js'
+import { ZitadelHostedLoginTranslation } from './dynamic/index.js'
+
+/**
+ * Complete Japanese Hosted Login translation payload, pinned from upstream
+ * `zitadel/zitadel apps/login/locales/ja.json` at the deployed login version
+ * (`v4.14.0`). Seeded via `ZitadelHostedLoginTranslation` because Zitadel's
+ * backend defaults omit Japanese, so the Settings API otherwise returns English
+ * for `ja` and the Login UI v2 renders the Japanese login in English. MUST stay
+ * complete (the API English-fills omitted keys). Re-sync on Zitadel upgrades;
+ * remove once upstream `v2-default.json` ships Japanese. See OpenSpec change
+ * `fix-zitadel-login-ja-i18n`.
+ */
+const jaLoginTranslationJson = readFileSync(
+	fileURLToPath(new URL('./translations/ja.json', import.meta.url)),
+	'utf-8',
+)
 
 export * from './components/actions-v2.js'
 export * from './components/admin-org-config.js'
@@ -126,6 +144,8 @@ export class Zitadel {
 	public readonly productOrg: zitadel.Org
 	public readonly project: zitadel.Project
 	public readonly frontend: FrontendComponent
+	/** Japanese Hosted Login translation override for the product org. */
+	public readonly jaLoginTranslation: ZitadelHostedLoginTranslation
 	public readonly smtp: SmtpComponent
 	public readonly actionsV2: ActionsV2Component
 	public readonly machineUser: MachineUserComponent
@@ -269,6 +289,24 @@ export class Zitadel {
 			projectId: this.project.id,
 			provider: this.provider,
 		})
+
+		// Japanese Hosted Login translation override, scoped to the product
+		// org. Zitadel's backend default hosted-login translations omit `ja`,
+		// so the Settings API returns English for the `ja` locale and the
+		// Login UI v2 merges that over its bundled Japanese — rendering the
+		// Japanese login in English. Seeding the full Japanese payload here
+		// makes the API return Japanese. Org-scoped so the admin/console org
+		// login is unaffected. See OpenSpec change `fix-zitadel-login-ja-i18n`.
+		this.jaLoginTranslation = new ZitadelHostedLoginTranslation(
+			`${name}-ja-login-translation`,
+			{
+				domain,
+				jwtProfileJson,
+				organizationId: this.productOrg.id,
+				locale: 'ja',
+				translationsJson: jaLoginTranslationJson,
+			},
+		)
 
 		this.smtp = new SmtpComponent(name, {
 			env,
