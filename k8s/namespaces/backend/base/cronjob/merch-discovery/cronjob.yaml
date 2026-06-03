@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: merch-discovery-app
+spec:
+  schedule: "0 11 * * *" # 20:00 JST daily (after concert-discovery 18:00 / artist-image-sync 19:00)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          terminationGracePeriodSeconds: 120
+          serviceAccountName: backend-app
+          restartPolicy: Never
+          containers:
+          - name: merch-discovery
+            image: merch-discovery
+            imagePullPolicy: Always
+            envFrom:
+            - configMapRef:
+                name: merch-discovery-job-config
+            - secretRef:
+                name: backend-secrets
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 250m
+                memory: 256Mi

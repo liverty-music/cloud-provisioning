@@ -72,6 +72,12 @@ patches:
     kind: CronJob
     name: concert-discovery-app
 
+# CronJob: run merch discovery only on Fridays in dev
+- path: cronjob/merch-discovery/schedule_patch.yaml
+  target:
+    kind: CronJob
+    name: merch-discovery-app
+
 # Right-size resources for consumer in dev
 - target:
     kind: Deployment
@@ -119,6 +125,10 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/artist-image-sync/configmap.env
+- name: merch-discovery-job-config
+  behavior: merge
+  envs:
+  - cronjob/merch-discovery/configmap.env
 - name: consumer-consumer-config
   behavior: merge
   envs:

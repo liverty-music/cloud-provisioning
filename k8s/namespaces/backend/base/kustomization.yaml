@@ -6,6 +6,7 @@ resources:
 - server
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
+- cronjob/merch-discovery
 - consumer
 
 namespace: backend

@@ -138,6 +138,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - cronjob/artist-image-sync/configmap.env
+  - name: merch-discovery-job-config
+    behavior: merge
+    envs:
+      - cronjob/merch-discovery/configmap.env
   - name: consumer-consumer-config
     behavior: merge
     envs:
@@ -188,4 +192,7 @@ images:
     newTag: v1.4.0 # commit 536230bff1f7973eafe4c672dfd0e7af38a69309
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
+    newTag: v1.4.0 # commit 536230bff1f7973eafe4c672dfd0e7af38a69309
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/merch-discovery
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/merch-discovery
     newTag: v1.4.0 # commit 536230bff1f7973eafe4c672dfd0e7af38a69309
