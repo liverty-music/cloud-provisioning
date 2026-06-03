@@ -142,11 +142,19 @@ configMapGenerator:
     behavior: merge
     envs:
       - cronjob/merch-discovery/configmap.env
+  - name: sales-phase-discovery-job-config
+    behavior: merge
+    envs:
+      - cronjob/sales-phase-discovery/configmap.env
+  - name: sales-reminders-job-config
+    behavior: merge
+    envs:
+      - cronjob/sales-reminders/configmap.env
   - name: consumer-consumer-config
     behavior: merge
     envs:
       - consumer/configmap.env
-# Pin all four backend images to the prod Artifact Registry with an
+# Pin all backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
 # v1.0.0) backed by AR's `dockerConfig.immutableTags: true` policy, which
@@ -175,7 +183,7 @@ configMapGenerator:
 # Bumping on release: this block is now CI-written, not hand-edited.
 # Cutting a GH Release (e.g., v1.0.1) on backend retags the dev-AR digest
 # into prod AR, then emits a `repository_dispatch` to this repo's
-# `.github/workflows/bump-prod-pin.yml`, which rewrites all four `newTag:`
+# `.github/workflows/bump-prod-pin.yml`, which rewrites every `newTag:`
 # + their inline `# commit <sha>` trailers AND the `app.kubernetes.io/version`
 # label above (in lock-step) and pushes straight to main. ArgoCD auto-syncs.
 # No manual pin-bump PR. See docs/runbooks/prod-image-tag-pinning.md
@@ -195,4 +203,10 @@ images:
     newTag: v1.6.1 # commit ae70efaad90473f2a3f94107a8dd4ffb5bea7159
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/merch-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/merch-discovery
+    newTag: v1.6.1 # commit ae70efaad90473f2a3f94107a8dd4ffb5bea7159
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
+    newTag: v1.6.1 # commit ae70efaad90473f2a3f94107a8dd4ffb5bea7159
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
     newTag: v1.6.1 # commit ae70efaad90473f2a3f94107a8dd4ffb5bea7159

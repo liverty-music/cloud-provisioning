@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sales-reminders-app
+spec:
+  schedule: "*/15 * * * *" # Every 15 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          terminationGracePeriodSeconds: 120
+          serviceAccountName: backend-app
+          restartPolicy: Never
+          containers:
+          - name: sales-reminders
+            image: sales-reminders
+            imagePullPolicy: Always
+            envFrom:
+            - configMapRef:
+                name: sales-reminders-job-config
+            - secretRef:
+                name: backend-secrets
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 250m
+                memory: 256Mi
