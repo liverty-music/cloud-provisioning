@@ -1,4 +1,5 @@
 export * from './execution.js'
+export * from './hosted-login-translation.js'
 export * from './permanent-password.js'
 export * from './smtp-activation.js'
 export * from './target.js'
