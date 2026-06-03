@@ -143,6 +143,28 @@ export const hostedLoginTranslationProvider: pulumi.dynamic.ResourceProvider = {
  * languages to `v2-default.json`; once a deployed Zitadel version ships that,
  * this resource can be removed.
  */
+/**
+ * Bake `jwtProfileJson` into `additionalSecretOutputs` so the admin machine-user
+ * RS256 private key cannot regress to plaintext in the Pulumi state checkpoint.
+ * `pulumi.secret(...)` on an INPUT does NOT auto-propagate secret status to an
+ * identically-named OUTPUT across the dynamic-resource RPC boundary, and the
+ * provider echoes `...inputs` into `outs` in `create()`/`update()`. Merge with
+ * caller-supplied additions rather than overwrite. Module-private (the
+ * barrel re-exports every module with `export *`, and `permanent-password.ts`
+ * already exports a `mergeSecretOutputs`); mirrors that helper's contract.
+ */
+function mergeSecretOutputs(
+	opts?: pulumi.CustomResourceOptions,
+): pulumi.CustomResourceOptions {
+	return {
+		...opts,
+		additionalSecretOutputs: [
+			'jwtProfileJson',
+			...(opts?.additionalSecretOutputs ?? []),
+		],
+	}
+}
+
 export class ZitadelHostedLoginTranslation extends pulumi.dynamic.Resource {
 	public readonly translationsHash!: pulumi.Output<string>
 	public readonly appliedAt!: pulumi.Output<string>
@@ -160,7 +182,7 @@ export class ZitadelHostedLoginTranslation extends pulumi.dynamic.Resource {
 				translationsHash: undefined,
 				appliedAt: undefined,
 			},
-			opts,
+			mergeSecretOutputs(opts),
 		)
 	}
 }
