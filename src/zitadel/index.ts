@@ -5,6 +5,7 @@ import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
 import { ActionsV2Component } from './components/actions-v2.js'
+import { AdminConsoleComponent } from './components/admin-console.js'
 import { AdminOrgConfigComponent } from './components/admin-org-config.js'
 import { E2eTestUserComponent } from './components/e2e-test-user.js'
 import { FrontendComponent } from './components/frontend.js'
@@ -37,6 +38,7 @@ const jaLoginTranslationJson = readFileSync(
 )
 
 export * from './components/actions-v2.js'
+export * from './components/admin-console.js'
 export * from './components/admin-org-config.js'
 export * from './components/e2e-test-user.js'
 export * from './components/frontend.js'
@@ -144,6 +146,8 @@ export class Zitadel {
 	public readonly productOrg: zitadel.Org
 	public readonly project: zitadel.Project
 	public readonly frontend: FrontendComponent
+	/** Internal admin console OIDC surface in the admin role org. */
+	public readonly adminConsole: AdminConsoleComponent
 	/** Japanese Hosted Login translation override for the product org. */
 	public readonly jaLoginTranslation: ZitadelHostedLoginTranslation
 	public readonly smtp: SmtpComponent
@@ -287,6 +291,17 @@ export class Zitadel {
 			env,
 			orgId: this.productOrg.id,
 			projectId: this.project.id,
+			provider: this.provider,
+		})
+
+		// Internal admin console — its own project + ApplicationOidc in the
+		// admin role org (a sibling of `frontend`, not a modification of it).
+		// Authentication runs against the admin org's Google-Workspace
+		// LoginPolicy (provisioned by `AdminOrgConfigComponent` below), which
+		// is the access boundary. See OpenSpec change `add-admin-console`.
+		this.adminConsole = new AdminConsoleComponent(name, {
+			env,
+			adminOrgId: this.adminOrg.id,
 			provider: this.provider,
 		})
 

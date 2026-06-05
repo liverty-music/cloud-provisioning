@@ -346,8 +346,62 @@ for this commit is still in-flight or failed — do NOT re-target an earlier com
 - If you genuinely need to roll back, update the kustomize prod overlay's `newTag:` to the older version's tag — the older immutable tag still resolves to its original digest.
 - For a true emergency tag re-point (compromised upstream dep), use the "Genuine emergency requiring tag re-point" escape hatch above. The retag flow's recovery is identical to the rebuild flow's recovery for this failure mode.
 
+## Admin console release path (independent of the consumer SPA)
+
+The admin console (`admin.liverty-music.app`, OpenSpec change `add-admin-console`)
+is a **second, independently-released artifact** built from the same `frontend`
+repo. It is NOT host-routed off the consumer pod — it has its own image, its own
+Kubernetes Deployment/Service/HTTPRoute (an `admin/` sibling to `web/` in the
+`frontend` namespace), and its own runtime `/config.json`. The two release on
+their own cadence: an admin copy change never re-releases the consumer SPA and
+vice versa.
+
+| | Consumer SPA | Admin console |
+|---|---|---|
+| Image | `frontend/web-app` | `frontend/admin-app` (same AR repo, different image) |
+| Build | `Dockerfile` (serves `index.html`, SW, manifest) | `Dockerfile.admin` (serves `admin.html` only; no SW/manifest) |
+| Frontend CI job | `build-and-push` | `build-and-push-admin` |
+| Hostname | `liverty-music.app` / `dev.liverty-music.app` | `admin.liverty-music.app` / `admin.dev.liverty-music.app` |
+| Runtime config | `web-app-runtime-config` ConfigMap | `admin-app-runtime-config` ConfigMap (admin org id + admin client id) |
+| Dispatch `component` | `frontend` | `frontend-admin` |
+
+**Dev** is fully wired: `build-and-push-admin` pushes `frontend/admin-app:main`
+to dev AR; the dev image-updater alias `admin-app`
+(`k8s/namespaces/argocd/overlays/dev/image-updater.yaml`) reconciles the dev
+overlay's admin Deployment by digest — exactly like `web-app`, independently.
+
+**Prod is intentionally NOT yet wired** (lands in `add-admin-console` §8, gated
+on dev verification first). Two pieces remain for the first prod admin release:
+
+1. **Prod overlay opt-in.** Add `../../base/admin` + an `admin-app-runtime-config`
+   ConfigMap to `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`, and a
+   prod `images:` entry pinning `admin-app` to its own semver. Until then the prod
+   `frontend` ArgoCD Application renders the consumer workload only — adding the
+   admin workload before a prod `admin-app` image exists would `ImagePullBackOff`.
+2. **`bump-prod-pin.yml` per-component image selection + the admin dispatch.**
+   The frontend CI does NOT yet emit the `component: "frontend-admin"` dispatch
+   (it is held back precisely because the receiver can't honor it). Today
+   `bump-prod-pin.yml` (a) rejects any component other than `backend`/`frontend`
+   (it `::error::`s and exits non-zero — it does not silently ignore), and
+   (b) rewrites **every** `images[].newTag` in
+   `k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml` to the release
+   tag. To keep admin and consumer independent, the workflow must learn to map
+   `frontend-admin → frontend` overlay path but edit **only the `admin-app` image
+   entry** (and `frontend` must conversely edit only `web-app`), rather than all
+   entries. Once that lands, re-enable the `frontend-admin` dispatch step in the
+   frontend `push-image.yaml` (currently a documented no-op placeholder). Without
+   this, a consumer release would also bump the admin pin.
+
+Once both land, the admin prod release is structurally identical to the
+consumer's: GH Release → retag dev-AR digest to prod AR → `repository_dispatch`
+(`component: frontend-admin`) → `bump-prod-pin.yml` edits the admin pin → ArgoCD
+auto-syncs the admin Deployment. The consumer pod is never restarted.
+
 ## Related
 
+- Admin console: OpenSpec change `add-admin-console` (frontend `admin/` entry,
+  `Dockerfile.admin`, `build-and-push-admin` CI job; cloud-provisioning admin
+  Zitadel `ApplicationOidc`, `k8s/namespaces/frontend/base/admin/`).
 - Spec: `openspec/specs/prod-image-tag-immutability/spec.md` (post-archive) or the in-flight change at `openspec/changes/enable-prod-ar-immutable-tags/`.
 - Pulumi enforcement: `src/gcp/index.ts` (`gcp.artifactregistry.Repository` with `dockerConfig.immutableTags`).
 - Kustomize overlays: `k8s/namespaces/{backend,frontend}/overlays/prod/kustomization.yaml`.

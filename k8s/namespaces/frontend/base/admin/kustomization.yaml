@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Admin console workload — an `admin/` sibling to `web/` in the same
+# `frontend` namespace, served by the existing `frontend` ArgoCD Application.
+# Its own image (admin-app), Service, and HTTPRoute keep it bundle-, config-,
+# and release-isolated from the consumer web workload (design D4 / ③b). This
+# base is currently pulled in by the dev overlay only; the prod overlay opts in
+# during the prod-rollout step once the admin image has a prod release.
+# See OpenSpec change `add-admin-console`.
+
+resources:
+- deployment.yaml
+- service.yaml
+- httproute.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+namePrefix: admin-
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: admin
+
+images:
+- name: admin-app
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app
+  newTag: latest

@@ -349,6 +349,11 @@ const SERVICES: ReadonlyArray<{
 	{ name: 'backend-server', subdomain: 'api' },
 	{ name: 'web-app', subdomain: '' },
 	{ name: 'zitadel', subdomain: 'auth' },
+	// Internal admin console — dev: admin.dev.liverty-music.app,
+	// prod: admin.liverty-music.app. Served by its own k8s Deployment via a
+	// dedicated HTTPRoute on this same shared gateway. See OpenSpec change
+	// `add-admin-console`.
+	{ name: 'admin-app', subdomain: 'admin' },
 ]
 
 /**

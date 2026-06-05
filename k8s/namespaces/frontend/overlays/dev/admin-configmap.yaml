@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: admin-app-runtime-config
+data:
+  # Admin console runtime config served at the admin pod's /config.json.
+  # Same `frontend-runtime-config` contract as the consumer (the admin entry
+  # reuses the shared loadAppConfig() + AppConfig validator), so all required
+  # fields are present even where the admin foundation does not use them:
+  #   - zitadelOrgId: the bootstrap-created `admin` role org (dev), so the SPA
+  #     passes `urn:zitadel:iam:org:id:<id>` and Zitadel applies the admin org's
+  #     Google-Workspace login policy (the access boundary).
+  #   - zitadelClientId: PENDING — created by `pulumi up` of the admin-console
+  #     ApplicationOidc. Fill from `pulumi stack output adminConsoleClientId`
+  #     after dev provisioning (dev is currently shut down: workloadEnabled=false,
+  #     so the admin app is not created until dev is brought back up).
+  #   - vapidPublicKey: reuses the dev consumer public VAPID key purely to
+  #     satisfy the shared validator's non-empty requirement; the admin
+  #     foundation registers no service worker and sends no push.
+  #   - previewArtist*: empty — consumer-only discovery fields, unused by admin.
+  config.json: |
+    {
+      "environment": "dev",
+      "apiBaseUrl": "https://api.dev.liverty-music.app",
+      "zitadelIssuer": "https://auth.dev.liverty-music.app",
+      "zitadelClientId": "PENDING_PULUMI_UP_adminConsoleClientId",
+      "zitadelOrgId": "371280364565496672",
+      "vapidPublicKey": "BNg-zJP4IiX11Cz1dghWll0mwBnMV6oeOSSVsYyOK2l8NFAqN9xHFSTS_W3_oXO4k3BlMyYLjkMUE-uA7LABGHo",
+      "circuitBaseUrl": "",
+      "previewArtistIds": [],
+      "previewArtistNames": [],
+      "logLevel": "debug"
+    }
