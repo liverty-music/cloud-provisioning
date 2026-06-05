@@ -349,3 +349,19 @@ export const webFrontendClientId: string | pulumi.Output<string> =
 	zitadel?.frontend.application.clientId ?? DEV_SHUTDOWN_SENTINEL
 export const productOrgId: string | pulumi.Output<string> =
 	zitadel?.productOrg.id ?? DEV_SHUTDOWN_SENTINEL
+
+// Admin console OIDC client_id + admin-org id — consumed by the admin
+// runtime ConfigMap (`admin-app-runtime-config`) that serves the admin
+// pod's `/config.json` (admin org id + admin client id). Operators
+// retrieve via `pulumi stack output adminConsoleClientId` / `pulumi stack
+// output adminOrgId` after `pulumi up`. Same `DEV_SHUTDOWN_SENTINEL`
+// fallback contract as the consumer exports above (the Zitadel
+// orchestrator is skipped while `workloadEnabled=false`). The admin org
+// id is the bootstrap-created `admin` role org (see `adminOrgIdMap` in
+// `zitadel/constants.ts`); exporting `adminConsole`'s resolved org id
+// keeps the ConfigMap value sourced from one canonical place.
+// See OpenSpec change `add-admin-console`.
+export const adminConsoleClientId: string | pulumi.Output<string> =
+	zitadel?.adminConsole.application.clientId ?? DEV_SHUTDOWN_SENTINEL
+export const adminOrgId: string | pulumi.Output<string> =
+	zitadel?.adminOrg.id ?? DEV_SHUTDOWN_SENTINEL

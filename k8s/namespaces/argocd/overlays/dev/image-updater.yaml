@@ -33,3 +33,10 @@ spec:
       commonUpdateSettings:
         updateStrategy: digest
         pullSecret: ext:/scripts/auth.sh
+    # Admin console image — a second, independently-reconciled artifact in the
+    # same `frontend` ArgoCD Application. See OpenSpec change `add-admin-console`.
+    - alias: admin-app
+      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app:main
+      commonUpdateSettings:
+        updateStrategy: digest
+        pullSecret: ext:/scripts/auth.sh

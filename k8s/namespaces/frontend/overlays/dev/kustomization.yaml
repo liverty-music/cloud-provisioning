@@ -3,7 +3,14 @@ kind: Kustomization
 
 resources:
 - ../../base
+# Admin console workload (dev only for now — prod opts in at the prod-rollout
+# step once the admin image has a prod release). The global Spot VM + dev
+# right-size patches below target `kind: Deployment`, so they apply to the
+# admin Deployment automatically (the patch-body name is ignored when a target
+# selector is set, as the spot-vm_patch already relies on).
+- ../../base/admin
 - configmap.yaml
+- admin-configmap.yaml
 
 namespace: frontend
 
@@ -42,3 +49,12 @@ patches:
     - op: add
       path: /spec/hostnames
       value: ["dev.liverty-music.app"]
+
+# Patch admin HTTPRoute hostname for dev environment
+- target:
+    kind: HTTPRoute
+    name: admin-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["admin.dev.liverty-music.app"]
