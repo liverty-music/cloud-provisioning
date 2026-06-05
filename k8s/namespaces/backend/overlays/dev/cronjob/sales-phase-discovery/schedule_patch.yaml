@@ -1,0 +1,6 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sales-phase-discovery-app
+spec:
+  schedule: "0 12 * * 5" # Fridays only at 21:00 JST (weekly in dev, mirroring concert/merch discovery)

@@ -78,6 +78,12 @@ patches:
     kind: CronJob
     name: merch-discovery-app
 
+# CronJob: run sales-phase discovery only on Fridays in dev
+- path: cronjob/sales-phase-discovery/schedule_patch.yaml
+  target:
+    kind: CronJob
+    name: sales-phase-discovery-app
+
 # Right-size resources for consumer in dev
 - target:
     kind: Deployment
@@ -129,6 +135,14 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/merch-discovery/configmap.env
+- name: sales-phase-discovery-job-config
+  behavior: merge
+  envs:
+  - cronjob/sales-phase-discovery/configmap.env
+- name: sales-reminders-job-config
+  behavior: merge
+  envs:
+  - cronjob/sales-reminders/configmap.env
 - name: consumer-consumer-config
   behavior: merge
   envs:

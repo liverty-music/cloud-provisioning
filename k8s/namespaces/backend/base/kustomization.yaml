@@ -7,6 +7,8 @@ resources:
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
 - cronjob/merch-discovery
+- cronjob/sales-phase-discovery
+- cronjob/sales-reminders
 - consumer
 
 namespace: backend
