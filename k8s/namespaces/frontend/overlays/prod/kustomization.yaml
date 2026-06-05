@@ -22,7 +22,7 @@ namespace: frontend
 #   on the Deployment so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.10.0"
+      app.kubernetes.io/version: "1.9.1"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -93,4 +93,4 @@ patches:
 images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
-    newTag: v1.10.0 # commit 3ae1f391644535bd39ed0d4205fceadb10577082
+    newTag: v1.9.1 # commit a4620d487df99698f4e3331f9c53141fcf565b75
