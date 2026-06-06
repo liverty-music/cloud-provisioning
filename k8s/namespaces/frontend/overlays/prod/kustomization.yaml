@@ -7,7 +7,15 @@ kind: Kustomization
 # Resource sizing matches dev exactly; spot label matches.
 resources:
   - ../../base
+  # Admin console workload — prod sibling of web/ in the frontend namespace
+  # (relocated from the dev overlay: there is no dev environment to run it).
+  # The Spot VM + right-size patches target `kind: Deployment`, so they apply to
+  # the admin Deployment automatically; the `app.kubernetes.io/version` label and
+  # the `admin-app` image pin below are both v1.11.0. See OpenSpec change
+  # `add-admin-console`.
+  - ../../base/admin
   - configmap.yaml
+  - admin-configmap.yaml
 namespace: frontend
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource. Value SHALL be the bare semver without the leading `v`
@@ -57,6 +65,14 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["liverty-music.app"]
+  # Prod admin HTTPRoute hostname.
+  - target:
+      kind: HTTPRoute
+      name: admin-route
+    patch: |-
+      - op: add
+        path: /spec/hostnames
+        value: ["admin.liverty-music.app"]
 # Pin the web-app image to prod Artifact Registry with an immutable
 # semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags` +
 # the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -93,4 +109,12 @@ patches:
 images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
+    newTag: v1.11.0 # commit e9a20172640d074a6b3b2a8fa2840f4f63b39ae6
+  # Admin console image. NOTE: until `bump-prod-pin.yml` learns per-component
+  # image selection (deferred follow-up), a consumer release's pin-bump rewrites
+  # EVERY newTag here, so admin-app tracks the consumer release tag — tolerable
+  # because build-and-push-admin promotes admin-app to prod AR on every release,
+  # so the tag always resolves. See docs/runbooks/prod-image-tag-pinning.md.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-app
     newTag: v1.11.0 # commit e9a20172640d074a6b3b2a8fa2840f4f63b39ae6
