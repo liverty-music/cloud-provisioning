@@ -37,6 +37,27 @@ const jaLoginTranslationJson = readFileSync(
 	'utf-8',
 )
 
+/**
+ * Complete English Hosted Login translation payload, pinned from upstream
+ * `zitadel/zitadel apps/login/locales/en.json` at the deployed login version
+ * (`v4.14.0`), with the product-org rebrand applied: `register.description`
+ * and `common.title` drop the literal "Zitadel" in favor of "Liverty Music".
+ *
+ * Unlike `ja`, English is NOT a missing-language case — the Settings API
+ * already returns English. We still seed the COMPLETE payload (rather than a
+ * partial 2-key override) because `SetHostedLoginTranslation` English-fills
+ * omitted keys from the backend `v2-default.json` and the Login UI v2 then
+ * shadows its bundled `en.json` with that API result. A partial override would
+ * therefore let backend-default English (which can lag the login app's bundled
+ * `en.json`) silently replace every un-supplied key. Pinning the login app's
+ * own `en.json` keeps all other strings byte-identical to what the image
+ * bundles, so only the two rebranded keys change. Re-sync on Zitadel upgrades.
+ */
+const enLoginTranslationJson = readFileSync(
+	fileURLToPath(new URL('./translations/en.json', import.meta.url)),
+	'utf-8',
+)
+
 export * from './components/actions-v2.js'
 export * from './components/admin-console.js'
 export * from './components/admin-org-config.js'
@@ -150,6 +171,9 @@ export class Zitadel {
 	public readonly adminConsole: AdminConsoleComponent
 	/** Japanese Hosted Login translation override for the product org. */
 	public readonly jaLoginTranslation: ZitadelHostedLoginTranslation
+	/** English Hosted Login translation override for the product org
+	 *  (carries the "Liverty Music" rebrand of the login/register copy). */
+	public readonly enLoginTranslation: ZitadelHostedLoginTranslation
 	public readonly smtp: SmtpComponent
 	public readonly actionsV2: ActionsV2Component
 	public readonly machineUser: MachineUserComponent
@@ -320,6 +344,25 @@ export class Zitadel {
 				organizationId: this.productOrg.id,
 				locale: 'ja',
 				translationsJson: jaLoginTranslationJson,
+			},
+		)
+
+		// English Hosted Login translation override, also scoped to the product
+		// org. English already resolves (it is the instance default language),
+		// so this override exists purely to rebrand the login/register copy:
+		// `register.description` and `common.title` drop the literal "Zitadel"
+		// for "Liverty Music". The payload is the complete pinned `en.json` (see
+		// `enLoginTranslationJson` doc) so only those two keys differ from the
+		// login image's bundled English. Org-scoped, so the admin/console org
+		// login keeps the upstream wording.
+		this.enLoginTranslation = new ZitadelHostedLoginTranslation(
+			`${name}-en-login-translation`,
+			{
+				domain,
+				jwtProfileJson,
+				organizationId: this.productOrg.id,
+				locale: 'en',
+				translationsJson: enLoginTranslationJson,
 			},
 		)
 

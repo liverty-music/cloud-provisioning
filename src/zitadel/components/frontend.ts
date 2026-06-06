@@ -98,6 +98,17 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				// See the design.md Risks table in the `playwright-password-test-user`
 				// OpenSpec change for the full mitigation record.
 				userLogin: true,
+				// `allowRegister` surfaces the Login UI v2 Register page. NOTE:
+				// the register form's First name / Last name / Email fields are
+				// HARDCODED and all `required` in the upstream login app
+				// (`apps/login/.../register-form.tsx` at the deployed `v4.14.0`),
+				// and the backend `AddHumanUser` requires `givenName`/`familyName`.
+				// There is no login-policy / branding / login-UI setting to hide
+				// or optional-ize First/Last name in v4.14.0, and we run the
+				// upstream `zitadel-login` image unmodified (no custom CSS/JS
+				// injection). Dropping those fields would require forking and
+				// rebuilding the login image — deferred. See zitadel/zitadel
+				// issue #4386 (remove required user fields).
 				allowRegister: true,
 				// Disable external IDPs (Google etc.) to enforce passkey-only authentication
 				allowExternalIdp: false,
