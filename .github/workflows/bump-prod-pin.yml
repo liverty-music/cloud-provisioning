@@ -26,12 +26,13 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: 'Component to bump (backend or frontend)'
+        description: 'Component to bump (backend, frontend, or frontend-admin)'
         required: true
         type: choice
         options:
           - backend
           - frontend
+          - frontend-admin
       tag:
         description: 'Release tag to pin (vX.Y.Z)'
         required: true
@@ -91,9 +92,9 @@ jobs:
           echo "Trigger: ${{ github.event_name }}; component=${COMPONENT} tag=${TAG} sha=${SHA}"
 
           case "${COMPONENT}" in
-            backend|frontend) ;;
+            backend|frontend|frontend-admin) ;;
             *)
-              echo "::error::Invalid component '${COMPONENT}' — must be 'backend' or 'frontend'."
+              echo "::error::Invalid component '${COMPONENT}' — must be 'backend', 'frontend', or 'frontend-admin'."
               exit 1
               ;;
           esac
@@ -111,11 +112,36 @@ jobs:
           # Bare semver (no leading `v`) for the app.kubernetes.io/version label.
           BARE="${TAG#v}"
 
+          # Per-component routing. `frontend-admin` is the admin console image: it
+          # SHARES the `frontend` kustomize overlay + prod-AR repo with the
+          # consumer, but bumps ONLY its own `admin-app` image entry and does NOT
+          # move the consumer's `app.kubernetes.io/version` label — so admin and
+          # consumer pins advance independently within the one overlay. `frontend`
+          # conversely edits only `web-app`, never the admin entry.
+          case "${COMPONENT}" in
+            backend)
+              OVERLAY=backend; AR_REPO=backend
+              IMAGES="server consumer concert-discovery artist-image-sync merch-discovery"
+              BUMP_LABEL=true ;;
+            frontend)
+              OVERLAY=frontend; AR_REPO=frontend
+              IMAGES="web-app"
+              BUMP_LABEL=true ;;
+            frontend-admin)
+              OVERLAY=frontend; AR_REPO=frontend
+              IMAGES="admin-app"
+              BUMP_LABEL=false ;;
+          esac
+
           {
             echo "component=${COMPONENT}"
             echo "tag=${TAG}"
             echo "sha=${SHA}"
             echo "bare=${BARE}"
+            echo "overlay=${OVERLAY}"
+            echo "ar_repo=${AR_REPO}"
+            echo "images=${IMAGES}"
+            echo "bump_label=${BUMP_LABEL}"
           } >> "$GITHUB_OUTPUT"
 
       # Mint a ci-bot installation token. The bump is pushed to `main` AS this
@@ -178,25 +204,21 @@ jobs:
       - name: Verify prod-AR image provenance
         id: provenance
         env:
-          COMPONENT: ${{ steps.payload.outputs.component }}
+          AR_REPO: ${{ steps.payload.outputs.ar_repo }}
+          IMAGES: ${{ steps.payload.outputs.images }}
           TAG: ${{ steps.payload.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "${COMPONENT}" = "backend" ]; then
-            images="server consumer concert-discovery artist-image-sync merch-discovery"
-          else
-            images="web-app"
-          fi
-          base="${REGION}-docker.pkg.dev/${PROD_PROJECT_ID}/${COMPONENT}"
-          for img in ${images}; do
+          base="${REGION}-docker.pkg.dev/${PROD_PROJECT_ID}/${AR_REPO}"
+          for img in ${IMAGES}; do
             ref="${base}/${img}:${TAG}"
             echo "Checking provenance: ${ref}"
             if ! crane manifest "${ref}" > /dev/null 2>crane_err.txt; then
-              echo "::error::Provenance gate FAILED — prod-AR image not found: ${ref}. The release retag for '${COMPONENT}' has not produced this tag (or it was removed). Refusing to pin a non-existent image. crane stderr: $(cat crane_err.txt)"
+              echo "::error::Provenance gate FAILED — prod-AR image not found: ${ref}. The release retag has not produced this tag (or it was removed). Refusing to pin a non-existent image. crane stderr: $(cat crane_err.txt)"
               exit 1
             fi
           done
-          echo "All ${COMPONENT} images exist in prod AR at ${TAG}."
+          echo "All target images exist in prod AR at ${TAG}."
 
       # ----------------------------------------------------------------------
       # 1.4 Idempotency guard — if every target newTag already equals the
@@ -206,15 +228,18 @@ jobs:
       - name: Idempotency check
         id: idem
         env:
-          COMPONENT: ${{ steps.payload.outputs.component }}
+          OVERLAY: ${{ steps.payload.outputs.overlay }}
+          IMAGES: ${{ steps.payload.outputs.images }}
           TAG: ${{ steps.payload.outputs.tag }}
         run: |
           set -euo pipefail
-          file="k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml"
-          # Distinct set of current newTag values across all image entries.
-          current="$(yq '.images[].newTag' "$file" | sort -u)"
+          file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
+          # Distinct newTag set across ONLY this component's image entries
+          # (matched by the `/<image>` name suffix), so a frontend-admin bump is
+          # idempotent against the admin-app entry alone, not the whole overlay.
+          current="$(for img in ${IMAGES}; do IMG="$img" yq '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag' "$file"; done | sort -u)"
           if [ "${current}" = "${TAG}" ]; then
-            echo "All newTag values already equal ${TAG}; nothing to do."
+            echo "All target newTag values already equal ${TAG}; nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -227,19 +252,28 @@ jobs:
       - name: Edit prod overlay
         if: steps.idem.outputs.skip != 'true'
         env:
-          COMPONENT: ${{ steps.payload.outputs.component }}
+          OVERLAY: ${{ steps.payload.outputs.overlay }}
+          IMAGES: ${{ steps.payload.outputs.images }}
           TAG: ${{ steps.payload.outputs.tag }}
           SHA: ${{ steps.payload.outputs.sha }}
           BARE: ${{ steps.payload.outputs.bare }}
+          BUMP_LABEL: ${{ steps.payload.outputs.bump_label }}
         run: |
           set -euo pipefail
-          file="k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml"
-          # newTag for every image entry (4 for backend, 1 for frontend).
-          TAG="${TAG}" yq -i '.images[].newTag = strenv(TAG)' "$file"
-          # Inline source-commit trailer after each newTag.
-          COMMENT="commit ${SHA}" yq -i '.images[].newTag line_comment = strenv(COMMENT)' "$file"
-          # Bare-semver version label (single labels entry holds the pair).
-          BARE="${BARE}" yq -i '(.labels[].pairs."app.kubernetes.io/version") = strenv(BARE)' "$file"
+          file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
+          # Rewrite newTag + inline `# commit <sha>` trailer for ONLY this
+          # component's image entries (matched by the `/<image>` name suffix), so
+          # a frontend bump never touches admin-app and vice versa.
+          for img in ${IMAGES}; do
+            IMG="$img" TAG="${TAG}" yq -i '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag = strenv(TAG)' "$file"
+            IMG="$img" COMMENT="commit ${SHA}" yq -i '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag line_comment = strenv(COMMENT)' "$file"
+          done
+          # Bump the app.kubernetes.io/version label only for the primary
+          # component (consumer/backend). `frontend-admin` shares the overlay but
+          # must not move the consumer's version label.
+          if [ "${BUMP_LABEL}" = "true" ]; then
+            BARE="${BARE}" yq -i '(.labels[].pairs."app.kubernetes.io/version") = strenv(BARE)' "$file"
+          fi
           echo "----- edited ${file} -----"
           yq '{"images": .images, "labels": .labels}' "$file"
 
@@ -255,11 +289,11 @@ jobs:
       - name: Validate overlay renders
         if: steps.idem.outputs.skip != 'true'
         env:
-          COMPONENT: ${{ steps.payload.outputs.component }}
+          OVERLAY: ${{ steps.payload.outputs.overlay }}
         run: |
           set -euo pipefail
-          kustomize build "k8s/namespaces/${COMPONENT}/overlays/prod" > /dev/null
-          echo "kustomize build of the ${COMPONENT} prod overlay succeeded."
+          kustomize build "k8s/namespaces/${OVERLAY}/overlays/prod" > /dev/null
+          echo "kustomize build of the ${OVERLAY} prod overlay succeeded."
 
       # ----------------------------------------------------------------------
       # 1.6 + 1.7 Commit as the ci-bot App and push to main with a
@@ -270,13 +304,15 @@ jobs:
         if: steps.idem.outputs.skip != 'true'
         env:
           COMPONENT: ${{ steps.payload.outputs.component }}
+          OVERLAY: ${{ steps.payload.outputs.overlay }}
           TAG: ${{ steps.payload.outputs.tag }}
           SHA: ${{ steps.payload.outputs.sha }}
           BARE: ${{ steps.payload.outputs.bare }}
+          BUMP_LABEL: ${{ steps.payload.outputs.bump_label }}
           BOT_SLUG: ${{ steps.bot.outputs.app-slug }}
         run: |
           set -euo pipefail
-          file="k8s/namespaces/${COMPONENT}/overlays/prod/kustomization.yaml"
+          file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
 
           # Commit as the ci-bot App identity (the push is authenticated as this
           # App, the ruleset bypass actor).
@@ -297,12 +333,19 @@ jobs:
             printf 'feat(prod): pin %s prod overlay to %s\n\n' "${COMPONENT}" "${TAG}"
             printf 'Automated prod kustomize pin-bump: a %s Release (%s) retagged its\n' "${COMPONENT}" "${TAG}"
             printf 'dev-AR digest into prod AR, so this moves the prod overlay image pin\n'
-            printf 'and app.kubernetes.io/version label to that release in lock-step.\n'
+            if [ "${BUMP_LABEL}" = "true" ]; then
+              printf 'and app.kubernetes.io/version label to that release in lock-step.\n'
+            else
+              printf 'to that release. The app.kubernetes.io/version label tracks the\n'
+              printf 'consumer (web-app) and is intentionally left unchanged.\n'
+            fi
             printf 'ArgoCD auto-syncs the rollout. Replaces the former manual pin-bump PR\n'
             printf '(OpenSpec change automate-prod-pin-bump).\n\n'
             printf 'component: %s\n' "${COMPONENT}"
             printf 'tag: %s\n' "${TAG}"
-            printf 'version label: %s\n' "${BARE}"
+            if [ "${BUMP_LABEL}" = "true" ]; then
+              printf 'version label: %s\n' "${BARE}"
+            fi
             printf 'source sha: %s\n\n' "${SHA}"
             printf 'Refs: %s\n' "${TRACKING_ISSUE}"
           } > /tmp/bump-commit-msg.txt
