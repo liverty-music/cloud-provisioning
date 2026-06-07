@@ -3,6 +3,14 @@ import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../../config.js'
 import { baseDomainMap } from '../constants.js'
 
+/**
+ * Project role key for admin-console access. The backend's RBAC gate
+ * (`auth.RequireRole(ctx, "admin")`) checks for exactly this role name in the
+ * token's `urn:zitadel:iam:org:project:roles` claim, so the two MUST stay in
+ * sync — changing this value requires a matching backend change.
+ */
+export const ADMIN_CONSOLE_ROLE_ADMIN = 'admin'
+
 export interface AdminConsoleComponentArgs {
 	env: Environment
 	/** ID of the bootstrap-created `admin` role org. The admin console app
@@ -42,6 +50,7 @@ export interface AdminConsoleComponentArgs {
 export class AdminConsoleComponent extends pulumi.ComponentResource {
 	public readonly project: zitadel.Project
 	public readonly application: zitadel.ApplicationOidc
+	public readonly adminRole: zitadel.ProjectRole
 
 	constructor(
 		name: string,
@@ -71,13 +80,17 @@ export class AdminConsoleComponent extends pulumi.ComponentResource {
 		]
 
 		// Minimal project to host the admin console app inside the admin org.
-		// No role assertion/check — the foundation ships no admin roles.
+		// projectRoleAssertion is ON so the `admin` role (below) is asserted
+		// into the access/ID token under `urn:zitadel:iam:org:project:roles`,
+		// which the backend RBAC gate reads. projectRoleCheck stays OFF so
+		// sign-in itself is not blocked on a role grant — authorization is
+		// enforced at the backend, keeping the login flow resilient.
 		this.project = new zitadel.Project(
 			'admin-console',
 			{
 				name: 'admin-console',
 				orgId: adminOrgId,
-				projectRoleAssertion: false,
+				projectRoleAssertion: true,
 				projectRoleCheck: false,
 				hasProjectCheck: false,
 			},
@@ -118,9 +131,24 @@ export class AdminConsoleComponent extends pulumi.ComponentResource {
 			resourceOptions,
 		)
 
+		// The single `admin` role on the admin-console project. Granted to the
+		// human admin(s) via a UserGrant in the parent stack; the backend's
+		// ConcertModerationService requires this role on every RPC.
+		this.adminRole = new zitadel.ProjectRole(
+			'admin-console-admin',
+			{
+				orgId: adminOrgId,
+				projectId: this.project.id,
+				roleKey: ADMIN_CONSOLE_ROLE_ADMIN,
+				displayName: 'Admin',
+			},
+			resourceOptions,
+		)
+
 		this.registerOutputs({
 			project: this.project,
 			application: this.application,
+			adminRole: this.adminRole,
 		})
 	}
 }
