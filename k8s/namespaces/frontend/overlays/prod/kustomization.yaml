@@ -30,7 +30,7 @@ namespace: frontend
 #   on the Deployment so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.11.0"
+      app.kubernetes.io/version: "1.11.1"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -109,7 +109,7 @@ patches:
 images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
-    newTag: v1.11.0 # commit e9a20172640d074a6b3b2a8fa2840f4f63b39ae6
+    newTag: v1.11.1 # commit ea650a84e1a83d0234b653497ff3a0c8154025b6
   # Admin console image. NOTE: until `bump-prod-pin.yml` learns per-component
   # image selection (deferred follow-up), a consumer release's pin-bump rewrites
   # EVERY newTag here, so admin-app tracks the consumer release tag — tolerable
