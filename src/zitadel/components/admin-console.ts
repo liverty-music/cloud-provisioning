@@ -3,6 +3,14 @@ import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../../config.js'
 import { baseDomainMap } from '../constants.js'
 
+/**
+ * Project role key for admin-console access. The backend's RBAC gate
+ * (`auth.RequireRole(ctx, "admin")`) checks for exactly this role name in the
+ * token's `urn:zitadel:iam:org:project:roles` claim, so the two MUST stay in
+ * sync — changing this value requires a matching backend change.
+ */
+export const ADMIN_CONSOLE_ROLE_ADMIN = 'admin'
+
 export interface AdminConsoleComponentArgs {
 	env: Environment
 	/** ID of the bootstrap-created `admin` role org. The admin console app
@@ -42,6 +50,7 @@ export interface AdminConsoleComponentArgs {
 export class AdminConsoleComponent extends pulumi.ComponentResource {
 	public readonly project: zitadel.Project
 	public readonly application: zitadel.ApplicationOidc
+	public readonly adminRole: zitadel.ProjectRole
 
 	constructor(
 		name: string,
@@ -71,13 +80,18 @@ export class AdminConsoleComponent extends pulumi.ComponentResource {
 		]
 
 		// Minimal project to host the admin console app inside the admin org.
-		// No role assertion/check — the foundation ships no admin roles.
+		// projectRoleAssertion governs the userinfo/ID-token role paths; the
+		// access-token roles that the backend gate actually reads are turned on
+		// by `accessTokenRoleAssertion` on the app below. Both are enabled so the
+		// `admin` role surfaces wherever it is consumed. projectRoleCheck stays
+		// OFF so sign-in is not blocked on a grant — authorization is enforced at
+		// the backend, keeping the login flow resilient.
 		this.project = new zitadel.Project(
 			'admin-console',
 			{
 				name: 'admin-console',
 				orgId: adminOrgId,
-				projectRoleAssertion: false,
+				projectRoleAssertion: true,
 				projectRoleCheck: false,
 				hasProjectCheck: false,
 			},
@@ -105,8 +119,16 @@ export class AdminConsoleComponent extends pulumi.ComponentResource {
 					'OIDC_GRANT_TYPE_REFRESH_TOKEN',
 				],
 				responseTypes: ['OIDC_RESPONSE_TYPE_CODE'],
-				// Assert roles/userinfo in the ID token so a future admin role
-				// guard can read them client-side without an extra round-trip.
+				// Embed the project roles into the JWT *access* token. This is the
+				// flag the backend depends on: it validates the bearer access token
+				// and reads `urn:zitadel:iam:org:project:roles` via
+				// `auth.RequireRole(ctx, "admin")`. Project-level
+				// `projectRoleAssertion` only governs userinfo/ID-token paths, so
+				// without this the bearer token carries no roles and every
+				// ConcertModerationService RPC is denied for the granted admin.
+				accessTokenRoleAssertion: true,
+				// Assert roles/userinfo in the ID token too, so a client-side admin
+				// guard can read them without an extra round-trip.
 				idTokenRoleAssertion: true,
 				idTokenUserinfoAssertion: true,
 				clockSkew: '0s',
@@ -118,9 +140,24 @@ export class AdminConsoleComponent extends pulumi.ComponentResource {
 			resourceOptions,
 		)
 
+		// The single `admin` role on the admin-console project. Granted to the
+		// human admin(s) via a UserGrant in the parent stack; the backend's
+		// ConcertModerationService requires this role on every RPC.
+		this.adminRole = new zitadel.ProjectRole(
+			'admin-console-admin',
+			{
+				orgId: adminOrgId,
+				projectId: this.project.id,
+				roleKey: ADMIN_CONSOLE_ROLE_ADMIN,
+				displayName: 'Admin',
+			},
+			resourceOptions,
+		)
+
 		this.registerOutputs({
 			project: this.project,
 			application: this.application,
+			adminRole: this.adminRole,
 		})
 	}
 }

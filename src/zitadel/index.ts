@@ -5,7 +5,10 @@ import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../config.js'
 import { ActionsV2Component } from './components/actions-v2.js'
-import { AdminConsoleComponent } from './components/admin-console.js'
+import {
+	ADMIN_CONSOLE_ROLE_ADMIN,
+	AdminConsoleComponent,
+} from './components/admin-console.js'
 import { AdminOrgConfigComponent } from './components/admin-org-config.js'
 import { E2eTestUserComponent } from './components/e2e-test-user.js'
 import { FrontendComponent } from './components/frontend.js'
@@ -181,6 +184,7 @@ export class Zitadel {
 	public readonly googleAdminIdp: GoogleAdminIdpComponent
 	public readonly adminOrgConfig: AdminOrgConfigComponent
 	public readonly humanAdmin: HumanAdminComponent
+	public readonly adminRoleGrant: zitadel.UserGrant
 	/** E2E test user — dev-only. `undefined` in prod (and any future env). */
 	public readonly e2eTestUser: E2eTestUserComponent | undefined
 
@@ -437,6 +441,22 @@ export class Zitadel {
 			jwtProfileJson,
 			provider: this.provider,
 		})
+
+		// Grant the admin-console `admin` role to the human admin so their
+		// access token carries the role claim the backend RBAC gate requires.
+		// Lives here (not inside AdminConsoleComponent) because it joins two
+		// siblings — the admin-console project and the human admin user — that
+		// are constructed separately in this stack.
+		this.adminRoleGrant = new zitadel.UserGrant(
+			'admin-console-admin-grant',
+			{
+				orgId: this.adminOrg.id,
+				projectId: this.adminConsole.project.id,
+				userId: this.humanAdmin.humanUser.id,
+				roleKeys: [ADMIN_CONSOLE_ROLE_ADMIN],
+			},
+			{ provider: this.provider },
+		)
 
 		// E2E test user — password-based HumanUser for Playwright headless
 		// capture. Lives in `productOrg` to ride on the same end-user
