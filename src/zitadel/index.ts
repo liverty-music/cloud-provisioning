@@ -455,7 +455,14 @@ export class Zitadel {
 				userId: this.humanAdmin.humanUser.id,
 				roleKeys: [ADMIN_CONSOLE_ROLE_ADMIN],
 			},
-			{ provider: this.provider },
+			// `roleKeys` is a plain string constant, so Pulumi infers no
+			// dependency on the ProjectRole that defines it — the grant could be
+			// created before the role exists, which Zitadel rejects with
+			// `Errors.Project.Role.NotFound`. Order the grant after the role.
+			{
+				provider: this.provider,
+				dependsOn: [this.adminConsole.adminRole],
+			},
 		)
 
 		// E2E test user — password-based HumanUser for Playwright headless
