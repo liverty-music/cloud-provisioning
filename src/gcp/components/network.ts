@@ -354,6 +354,12 @@ const SERVICES: ReadonlyArray<{
 	// dedicated HTTPRoute on this same shared gateway. See OpenSpec change
 	// `add-admin-console`.
 	{ name: 'admin-app', subdomain: 'admin' },
+	// Admin API — dev: api.admin.dev.liverty-music.app,
+	// prod: api.admin.liverty-music.app. The backend's dedicated admin Connect
+	// server (second listener in the same Pod) exposed via server-admin-svc and
+	// a dedicated HTTPRoute on this same shared gateway. See OpenSpec change
+	// `split-admin-rpc-server`.
+	{ name: 'admin-backend-server', subdomain: 'api.admin' },
 ]
 
 /**

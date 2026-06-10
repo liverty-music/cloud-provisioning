@@ -5,9 +5,12 @@ resources:
 - deployment.yaml
 - service.yaml
 - service-webhook.yaml
+- service-admin.yaml
 - health-check-policy.yaml
+- health-check-policy-admin.yaml
 - backend-policy.yaml
 - httproute.yaml
+- httproute-admin.yaml
 - external-secret.yaml
 
 configurations:

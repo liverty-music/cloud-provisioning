@@ -34,6 +34,10 @@ spec:
           name: http
         - containerPort: 9090
           name: webhook
+        # Admin Connect server — second in-process listener serving only
+        # admin-scoped RPCs, exposed via server-admin-svc / api.admin.{env}.
+        - containerPort: 8090
+          name: http-admin
         envFrom:
         - configMapRef:
             name: server-config
