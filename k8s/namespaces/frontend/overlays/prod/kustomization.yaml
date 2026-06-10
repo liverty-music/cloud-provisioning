@@ -117,4 +117,4 @@ images:
   # so the tag always resolves. See docs/runbooks/prod-image-tag-pinning.md.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-app
-    newTag: v1.13.0 # commit fe22bbccdada9fb04bf51041ebf19c3b75fdac94
+    newTag: v1.13.1 # commit 699a626e243cde78f7f881e4eca2d0fd99c47f87
