@@ -66,6 +66,14 @@ patches:
       path: /spec/hostnames
       value: ["api.dev.liverty-music.app"]
 
+- target:
+    kind: HTTPRoute
+    name: server-admin-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["api.admin.dev.liverty-music.app"]
+
 # CronJob: run concert discovery only on Fridays in dev
 - path: cronjob/concert-discovery/schedule_patch.yaml
   target:

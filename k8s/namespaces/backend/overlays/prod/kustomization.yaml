@@ -93,6 +93,14 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["api.liverty-music.app"]
+  # Prod admin API HTTPRoute hostname.
+  - target:
+      kind: HTTPRoute
+      name: server-admin-route
+    patch: |-
+      - op: add
+        path: /spec/hostnames
+        value: ["api.admin.liverty-music.app"]
   # Match dev's consumer resource sizing.
   - target:
       kind: Deployment

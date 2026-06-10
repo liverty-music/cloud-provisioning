@@ -16,10 +16,14 @@ data:
   #     satisfy the shared validator's non-empty requirement; the admin
   #     foundation registers no service worker and sends no push.
   #   - previewArtist*: empty — consumer-only discovery fields, unused by admin.
+  #   - adminApiBaseUrl: the dedicated admin API host the admin RPC clients
+  #     (e.g. ConcertModerationService) target; apiBaseUrl is retained only to
+  #     satisfy the shared validator's non-empty requirement.
   config.json: |
     {
       "environment": "prod",
       "apiBaseUrl": "https://api.liverty-music.app",
+      "adminApiBaseUrl": "https://api.admin.liverty-music.app",
       "zitadelIssuer": "https://auth.liverty-music.app",
       "zitadelClientId": "376175199994839311",
       "zitadelOrgId": "372892288692584603",
