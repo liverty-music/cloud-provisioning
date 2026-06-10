@@ -38,7 +38,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.7.0"
+      app.kubernetes.io/version: "1.8.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -199,19 +199,19 @@ configMapGenerator:
 images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
-    newTag: v1.7.0 # commit 6f2c8360cc13c9b94b249348c6fb64928a72a41c
+    newTag: v1.8.0 # commit c42551cfdb2b65d82b7dc1fd54e97fc936fcdeea
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.7.0 # commit 6f2c8360cc13c9b94b249348c6fb64928a72a41c
+    newTag: v1.8.0 # commit c42551cfdb2b65d82b7dc1fd54e97fc936fcdeea
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.7.0 # commit 6f2c8360cc13c9b94b249348c6fb64928a72a41c
+    newTag: v1.8.0 # commit c42551cfdb2b65d82b7dc1fd54e97fc936fcdeea
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.7.0 # commit 6f2c8360cc13c9b94b249348c6fb64928a72a41c
+    newTag: v1.8.0 # commit c42551cfdb2b65d82b7dc1fd54e97fc936fcdeea
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/merch-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/merch-discovery
-    newTag: v1.7.0 # commit 6f2c8360cc13c9b94b249348c6fb64928a72a41c
+    newTag: v1.8.0 # commit c42551cfdb2b65d82b7dc1fd54e97fc936fcdeea
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
     newTag: v1.6.1 # commit ae70efaad90473f2a3f94107a8dd4ffb5bea7159
