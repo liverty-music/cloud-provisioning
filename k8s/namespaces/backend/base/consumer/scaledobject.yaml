@@ -42,3 +42,22 @@ spec:
       consumer: "USER_created"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # SALES_PHASE.discovered → announcement consumer. Durable name is the subject
+  # with dots replaced by underscores (subscriber DurableCalculator).
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "SALES_PHASE"
+      consumer: "SALES_PHASE_discovered"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # SALES_PHASE.reminder.due → reminder delivery consumer.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "SALES_PHASE"
+      consumer: "SALES_PHASE_reminder_due"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
