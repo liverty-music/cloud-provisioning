@@ -122,7 +122,18 @@ patches:
                 limits:
                   cpu: 200m
                   memory: 128Mi
-  # Consumer ScaledObject — start with maxReplicas: 1 (per design D8). KEDA can scale up via Pulumi tweak.
+  # Consumer ScaledObject — pin to exactly 1 replica (min=max=1).
+  #
+  # minReplicaCount MUST be 1 (not 0): the Watermill JetStream push
+  # consumers (durables) are deleted when the consumer Deployment scales to
+  # zero and no subscriber holds the queue-group interest. A deleted durable
+  # has no metric for KEDA's nats-jetstream scaler to read, so KEDA can never
+  # scale the consumer back up from 0 — events published while idle (e.g. the
+  # daily sales-phase discovery cron) pile up undelivered forever. Keeping one
+  # replica always running holds the durables open so every event is consumed.
+  # Long-lived streams created during earlier always-on periods (CONCERT,
+  # ARTIST, USER) survived by chance; SALES_PHASE, added later, exposed the
+  # deadlock. KEDA still scales up to maxReplicas under load.
   - target:
       kind: ScaledObject
       name: consumer-app
@@ -132,6 +143,7 @@ patches:
       metadata:
         name: consumer-app
       spec:
+        minReplicaCount: 1
         maxReplicaCount: 1
 configMapGenerator:
   - name: server-config
