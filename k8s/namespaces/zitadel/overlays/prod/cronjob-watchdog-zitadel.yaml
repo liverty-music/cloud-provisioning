@@ -109,10 +109,12 @@ spec:
             # `alpine/k8s` bundles both; :1.32.x matches the cluster minor.
             image: alpine/k8s:1.32.3
             env:
-            # Flip to "false" to enable real restarts. Ships in DRY-RUN so
-            # one soak window can confirm zero false positives first.
+            # Active: on the wedge signature (N/N authorize hangs while
+            # healthz=200) the watchdog runs `rollout restart`. Verified in
+            # DRY-RUN first against live prod (healthy → no action). Set
+            # back to "true" to return to observe-only.
             - name: WATCHDOG_DRY_RUN
-              value: "true"
+              value: "false"
             - name: HOME
               value: /tmp
             - name: WATCHDOG_HEALTHZ_URL
