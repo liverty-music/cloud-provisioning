@@ -21,6 +21,11 @@ resources:
 # Prod DB grant Job — idempotent ALTER DATABASE OWNER + GRANT scoped to the
 # prod Cloud SQL `zitadel` DB.
 - job-grant-db.yaml
+# Self-healing watchdog (prod-only): detects the projection-trigger wedge
+# (zitadel#10103) via an auth-flow hang probe and auto-restarts
+# `zitadel-api`. Ships in dry-run mode (WATCHDOG_DRY_RUN=true). See the
+# manifest header for the full rationale.
+- cronjob-watchdog-zitadel.yaml
 # NOTE: PodMonitoring CRD (previously `podmonitoring.yaml`) was deleted as
 # part of the Helm chart migration. Zitadel v4 has no `/debug/metrics`
 # HTTP scrape endpoint — the path returns 404 on v4.14.0. Observability

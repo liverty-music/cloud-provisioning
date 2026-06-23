@@ -1,0 +1,189 @@
+# Self-healing watchdog for the Zitadel projection-trigger wedge
+# (zitadel/zitadel#10103, unfixed in v4.14.0).
+#
+# THE PROBLEM IT SOLVES: when Zitadel hits the in-process wedge, every
+# auth-flow query that triggers-on-read a projection hangs (login 504),
+# yet `/debug/healthz` and `/debug/ready` keep returning 200 — so the
+# kubelet liveness/readiness probes never restart the pod. Recovery is a
+# manual `kubectl rollout restart`. On 2026-06-23 prod login was down ~13
+# min until a human restarted it.
+#
+# WHAT THIS DOES: every minute, probe a REAL auth-flow endpoint
+# (`/oauth/v2/authorize` with valid params → 302 healthy / hang wedged).
+# If it hangs N/N times WHILE `/debug/healthz` is still 200 (the precise
+# wedge signature), restart `zitadel-api`. With 2 prod replicas the
+# rolling restart is non-disruptive. Turns a multi-min manual outage into
+# ~2-min unattended recovery.
+#
+# WHY A CRONJOB, NOT A LIVENESS PROBE: an httpGet liveness on authorize
+# treats 400 as failure (an expired/misconfigured client id → restart
+# loop), can't distinguish a hang from a fast error, and writes a
+# side-effect every probe tick. `curl` in a CronJob matches the *hang*
+# specifically and probes only 1/min.
+#
+# SIDE EFFECT: each probe creates a short-lived throwaway auth request in
+# the eventstore (~1440/day). Accepted pre-launch; a read-only probe
+# target is a documented follow-up.
+#
+# COUPLING: the probe hardcodes the prod consumer OIDC client id +
+# registered redirect uri. If the consumer app is reprovisioned and its
+# client id changes, update WATCHDOG_AUTHZ_URL below (the probe would
+# start returning 400 fast — visible as "healthy" — so it fails safe:
+# it stops detecting, it does not false-restart).
+#
+# Annotated `liverty-music.app/temporary` for cleanup once upstream
+# zitadel#10103 is fixed and pinned.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zitadel-wedge-watchdog
+  annotations:
+    liverty-music.app/temporary: "until-upstream-zitadel-10103-fix"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zitadel-wedge-watchdog
+  annotations:
+    liverty-music.app/temporary: "until-upstream-zitadel-10103-fix"
+# Minimum privilege: only get/patch the specific `zitadel-api` Deployment
+# (`patch` is what `kubectl rollout restart` issues). Nothing else.
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  resourceNames: ["zitadel-api"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zitadel-wedge-watchdog
+  annotations:
+    liverty-music.app/temporary: "until-upstream-zitadel-10103-fix"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: zitadel-wedge-watchdog
+subjects:
+- kind: ServiceAccount
+  name: zitadel-wedge-watchdog
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: zitadel-wedge-watchdog
+  annotations:
+    liverty-music.app/temporary: "until-upstream-zitadel-10103-fix"
+  labels:
+    app: zitadel
+    component: self-healing
+spec:
+  # Every minute.
+  schedule: "* * * * *"
+  timeZone: "Etc/UTC"
+  # A run takes up to ~45s worst case (healthz 5s + 3×10s probes + 2×5s
+  # sleeps); never overlap the next minute's fire.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  # Don't backfill missed fires if the cluster was briefly offline.
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata:
+          labels:
+            app: zitadel
+            component: self-healing
+        spec:
+          serviceAccountName: zitadel-wedge-watchdog
+          restartPolicy: Never
+          nodeSelector:
+            cloud.google.com/gke-spot: "true"
+          containers:
+          - name: watchdog
+            # Needs BOTH `curl` (probe) and `kubectl` (restart).
+            # `alpine/k8s` bundles both; :1.32.x matches the cluster minor.
+            image: alpine/k8s:1.32.3
+            env:
+            # Flip to "false" to enable real restarts. Ships in DRY-RUN so
+            # one soak window can confirm zero false positives first.
+            - name: WATCHDOG_DRY_RUN
+              value: "true"
+            - name: HOME
+              value: /tmp
+            - name: WATCHDOG_HEALTHZ_URL
+              value: "https://auth.liverty-music.app/debug/healthz"
+            # Valid prod consumer client id + registered redirect uri →
+            # 302 when healthy, hang when wedged. Invalid params would 400
+            # *before* the wedged code path, so valid params are required.
+            - name: WATCHDOG_AUTHZ_URL
+              value: "https://auth.liverty-music.app/oauth/v2/authorize?client_id=373015520582107291&response_type=code&scope=openid&redirect_uri=https://liverty-music.app/auth/callback&state=watchdog&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -u
+
+              # Guard: only the wedge signature warrants a restart. The
+              # wedge keeps core health green while auth-flow hangs. If
+              # healthz is NOT 200, the fault is something else (gateway/
+              # DNS/pod-down) that a restart won't fix — bail out.
+              hz=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$WATCHDOG_HEALTHZ_URL" 2>/dev/null || echo 000)
+              if [ "$hz" != "200" ]; then
+                echo "healthz=$hz (not 200): not the wedge signature, skipping."
+                exit 0
+              fi
+
+              # Probe the auth flow 3× ~5s apart. HTTP 000 = curl timeout
+              # = hang = wedge. 302 = healthy.
+              hangs=0
+              i=1
+              while [ "$i" -le 3 ]; do
+                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$WATCHDOG_AUTHZ_URL" 2>/dev/null || echo 000)
+                echo "probe $i/3: authorize http_code=$code"
+                if [ "$code" = "000" ]; then
+                  hangs=$((hangs + 1))
+                fi
+                if [ "$i" -lt 3 ]; then
+                  sleep 5
+                fi
+                i=$((i + 1))
+              done
+
+              if [ "$hangs" -lt 3 ]; then
+                echo "healthy: $hangs/3 probes hung — no action."
+                exit 0
+              fi
+
+              echo "WEDGE DETECTED: $hangs/3 authorize probes hung while healthz=200."
+              if [ "${WATCHDOG_DRY_RUN:-true}" = "true" ]; then
+                echo "WATCHDOG_DRY_RUN=true — would run: kubectl rollout restart deployment/zitadel-api (skipped)."
+                exit 0
+              fi
+              echo "restarting deployment/zitadel-api ..."
+              kubectl rollout restart deployment/zitadel-api
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: true
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          # Writable scratch for kubectl's discovery cache ($HOME=/tmp)
+          # under readOnlyRootFilesystem.
+          - name: tmp
+            emptyDir: {}
