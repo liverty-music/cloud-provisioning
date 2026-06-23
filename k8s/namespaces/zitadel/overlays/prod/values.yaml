@@ -1,6 +1,17 @@
 # Prod-specific Helm values, layered on top of `../../base/values.yaml`.
 # See `../dev/values.yaml` for the full structural commentary.
 
+# Prod runs 2 `zitadel-api` replicas (base is single-replica for dev
+# cost-simplicity). A single wedged process (zitadel/zitadel#10103,
+# in-process projection-trigger deadlock) otherwise takes down ALL login
+# because readiness can't detect the wedge; a second replica keeps login
+# serving and makes the self-healing watchdog's rolling restart
+# (cronjob-watchdog-zitadel.yaml) non-disruptive. PDB `minAvailable: 1`
+# (overrides base's 0) keeps one replica up during voluntary disruptions.
+replicaCount: 2
+pdb:
+  minAvailable: 1
+
 zitadel:
   configmapConfig:
     ExternalDomain: auth.liverty-music.app
