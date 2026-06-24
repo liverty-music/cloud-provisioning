@@ -114,11 +114,13 @@ spec:
             # `alpine/k8s` bundles both; :1.32.x matches the cluster minor.
             image: alpine/k8s:1.32.3
             env:
-            # DRY-RUN: first prod soak in observe-only mode. Set to "false"
-            # once healthy runs confirm the probe authenticates (200, not 401)
-            # and that zero auth-request writes accumulate.
+            # ACTIVE: on the wedge signature (N/N ListProjectRoles hangs while
+            # healthz=200) the watchdog runs `rollout restart`. Verified in
+            # DRY-RUN first against live prod: probe authenticates (200, not
+            # 401) and zero auth-request writes accumulate. Set back to "true"
+            # to return to observe-only.
             - name: WATCHDOG_DRY_RUN
-              value: "true"
+              value: "false"
             - name: HOME
               value: /tmp
             - name: WATCHDOG_HEALTHZ_URL
