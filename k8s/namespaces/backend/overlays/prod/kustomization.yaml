@@ -38,7 +38,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.12.0"
+      app.kubernetes.io/version: "1.13.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -211,19 +211,19 @@ configMapGenerator:
 images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
-    newTag: v1.12.0 # commit dd888e8ff0acc379e30efb80fdf3b0fcb060e26d
+    newTag: v1.13.0 # commit 94e46400882051d381d1a4aca569d80233bf7831
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.12.0 # commit dd888e8ff0acc379e30efb80fdf3b0fcb060e26d
+    newTag: v1.13.0 # commit 94e46400882051d381d1a4aca569d80233bf7831
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.12.0 # commit dd888e8ff0acc379e30efb80fdf3b0fcb060e26d
+    newTag: v1.13.0 # commit 94e46400882051d381d1a4aca569d80233bf7831
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.12.0 # commit dd888e8ff0acc379e30efb80fdf3b0fcb060e26d
+    newTag: v1.13.0 # commit 94e46400882051d381d1a4aca569d80233bf7831
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/merch-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/merch-discovery
-    newTag: v1.12.0 # commit dd888e8ff0acc379e30efb80fdf3b0fcb060e26d
+    newTag: v1.13.0 # commit 94e46400882051d381d1a4aca569d80233bf7831
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
     newTag: v1.12.0 # commit dd888e8ff0acc379e30efb80fdf3b0fcb060e26d
