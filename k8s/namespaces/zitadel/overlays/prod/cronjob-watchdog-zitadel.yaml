@@ -8,28 +8,33 @@
 # manual `kubectl rollout restart`. On 2026-06-23 prod login was down ~13
 # min until a human restarted it.
 #
-# WHAT THIS DOES: every minute, probe a REAL auth-flow endpoint
-# (`/oauth/v2/authorize` with valid params → 302 healthy / hang wedged).
-# If it hangs N/N times WHILE `/debug/healthz` is still 200 (the precise
-# wedge signature), restart `zitadel-api`. With 2 prod replicas the
-# rolling restart is non-disruptive. Turns a multi-min manual outage into
-# ~2-min unattended recovery.
+# WHAT THIS DOES: every minute, probe `ProjectService/ListProjectRoles`
+# via Connect/gRPC HTTP+JSON POST against the static `liverty-music`
+# product project (id 373015520045170843 — always-present, Pulumi-managed).
+# That method internally calls `SearchProjectRoles(…, shouldTriggerBulk=true,
+# …)`, triggering `ProjectRoleProjection.Trigger(WithAwaitRunning())` — the
+# exact projection that wedged on 2026-06-23 — as a pure read (no eventstore
+# write, no OIDC auth-request accumulation). Healthy → 200 fast; wedged →
+# hang (curl HTTP 000). If it hangs N/N times WHILE `/debug/healthz` is
+# still 200 (the precise wedge signature), restart `zitadel-api`. With 2
+# prod replicas the rolling restart is non-disruptive.
 #
-# WHY A CRONJOB, NOT A LIVENESS PROBE: an httpGet liveness on authorize
-# treats 400 as failure (an expired/misconfigured client id → restart
-# loop), can't distinguish a hang from a fast error, and writes a
-# side-effect every probe tick. `curl` in a CronJob matches the *hang*
-# specifically and probes only 1/min.
+# PROBE HOST: public `auth.liverty-music.app` (the Zitadel API domain),
+# consistent with the healthz precondition URL. This exercises the full
+# gateway path (Cloud LB → Envoy → Zitadel) for realistic hang detection.
+# The healthz precondition guards against gateway/DNS outages that would
+# also cause the probe to hang but are not the in-process wedge.
 #
-# SIDE EFFECT: each probe creates a short-lived throwaway auth request in
-# the eventstore (~1440/day). Accepted pre-launch; a read-only probe
-# target is a documented follow-up.
+# CREDENTIAL: a dedicated least-privilege machine-user PAT
+# (`watchdog-probe`, `PROJECT_OWNER_VIEWER` on the product project only).
+# Synced from GSM `zitadel-watchdog-probe-pat` via ExternalSecret into
+# K8s Secret `zitadel-watchdog-probe-pat` in this namespace. Fail-safe:
+# an invalid/expired PAT returns 401 fast, which the watchdog treats as
+# "healthy" (no restart), and logs "watchdog credential invalid" so the
+# loss of detection is discoverable.
 #
-# COUPLING: the probe hardcodes the prod consumer OIDC client id +
-# registered redirect uri. If the consumer app is reprovisioned and its
-# client id changes, update WATCHDOG_AUTHZ_URL below (the probe would
-# start returning 400 fast — visible as "healthy" — so it fails safe:
-# it stops detecting, it does not false-restart).
+# NOTE: unlike the prior authorize probe, this probe creates ZERO
+# OIDC auth requests. The ~1440/day eventstore accumulation is eliminated.
 #
 # Annotated `liverty-music.app/temporary` for cleanup once upstream
 # zitadel#10103 is fixed and pinned.
@@ -109,21 +114,27 @@ spec:
             # `alpine/k8s` bundles both; :1.32.x matches the cluster minor.
             image: alpine/k8s:1.32.3
             env:
-            # Active: on the wedge signature (N/N authorize hangs while
-            # healthz=200) the watchdog runs `rollout restart`. Verified in
-            # DRY-RUN first against live prod (healthy → no action). Set
-            # back to "true" to return to observe-only.
+            # DRY-RUN: first prod soak in observe-only mode. Set to "false"
+            # once healthy runs confirm the probe authenticates (200, not 401)
+            # and that zero auth-request writes accumulate.
             - name: WATCHDOG_DRY_RUN
-              value: "false"
+              value: "true"
             - name: HOME
               value: /tmp
             - name: WATCHDOG_HEALTHZ_URL
               value: "https://auth.liverty-music.app/debug/healthz"
-            # Valid prod consumer client id + registered redirect uri →
-            # 302 when healthy, hang when wedged. Invalid params would 400
-            # *before* the wedged code path, so valid params are required.
-            - name: WATCHDOG_AUTHZ_URL
-              value: "https://auth.liverty-music.app/oauth/v2/authorize?client_id=373015520582107291&response_type=code&scope=openid&redirect_uri=https://liverty-music.app/auth/callback&state=watchdog&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
+            # Connect/gRPC HTTP+JSON endpoint for the read-only probe.
+            # Served by Zitadel at the auth domain. See proposal.md D1.
+            - name: WATCHDOG_PROBE_URL
+              value: "https://auth.liverty-music.app/zitadel.project.v2.ProjectService/ListProjectRoles"
+            # Static ID of the `liverty-music` product project (Pulumi-managed,
+            # always-present). Pinned from `pulumi stack output` on the prod stack.
+            # Re-verify on Zitadel major upgrades or if the project is reprovisioned.
+            - name: WATCHDOG_PROJECT_ID
+              value: "373015520045170843"
+            # PAT file path — mounted from zitadel-watchdog-probe-pat Secret below.
+            - name: WATCHDOG_PAT_FILE
+              value: /var/run/watchdog/token
             command: ["/bin/sh", "-c"]
             args:
             - |
@@ -139,13 +150,33 @@ spec:
                 exit 0
               fi
 
-              # Probe the auth flow 3× ~5s apart. HTTP 000 = curl timeout
-              # = hang = wedge. 302 = healthy.
+              # Read PAT from mounted secret file.
+              if [ ! -f "$WATCHDOG_PAT_FILE" ]; then
+                echo "watchdog credential invalid: PAT file $WATCHDOG_PAT_FILE not found."
+                exit 0
+              fi
+              pat=$(cat "$WATCHDOG_PAT_FILE")
+
+              # Probe `ProjectService/ListProjectRoles` 3× ~5s apart.
+              # This method calls SearchProjectRoles(shouldTriggerBulk=true),
+              # triggering ProjectRoleProjection — the wedged projection.
+              # HTTP 000 = curl timeout = hang = wedge signal.
+              # 200 = healthy. 401/403 = credential invalid (fail-safe: no restart).
               hangs=0
               i=1
               while [ "$i" -le 3 ]; do
-                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$WATCHDOG_AUTHZ_URL" 2>/dev/null || echo 000)
-                echo "probe $i/3: authorize http_code=$code"
+                code=$(curl -s -o /dev/null -w '%{http_code}' \
+                  --max-time 10 \
+                  -X POST "$WATCHDOG_PROBE_URL" \
+                  -H "Authorization: Bearer $pat" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"projectId\":\"$WATCHDOG_PROJECT_ID\"}" \
+                  2>/dev/null || echo 000)
+                echo "probe $i/3: ListProjectRoles http_code=$code"
+                if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+                  echo "watchdog credential invalid: probe returned $code — no action (detection degraded)."
+                  exit 0
+                fi
                 if [ "$code" = "000" ]; then
                   hangs=$((hangs + 1))
                 fi
@@ -160,7 +191,7 @@ spec:
                 exit 0
               fi
 
-              echo "WEDGE DETECTED: $hangs/3 authorize probes hung while healthz=200."
+              echo "WEDGE DETECTED: $hangs/3 ListProjectRoles probes hung while healthz=200."
               if [ "${WATCHDOG_DRY_RUN:-true}" = "true" ]; then
                 echo "WATCHDOG_DRY_RUN=true — would run: kubectl rollout restart deployment/zitadel-api (skipped)."
                 exit 0
@@ -184,8 +215,19 @@ spec:
             volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: watchdog-pat
+              mountPath: /var/run/watchdog
+              readOnly: true
           volumes:
           # Writable scratch for kubectl's discovery cache ($HOME=/tmp)
           # under readOnlyRootFilesystem.
           - name: tmp
             emptyDir: {}
+          # PAT for the watchdog probe bearer token.
+          # Synced from GSM `zitadel-watchdog-probe-pat` by ExternalSecret.
+          - name: watchdog-pat
+            secret:
+              secretName: zitadel-watchdog-probe-pat
+              items:
+              - key: token
+                path: token

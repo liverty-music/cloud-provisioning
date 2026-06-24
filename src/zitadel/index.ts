@@ -17,6 +17,7 @@ import { HumanAdminComponent } from './components/human-admin.js'
 import { LoginClientComponent } from './components/login-client.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { SmtpComponent } from './components/smtp.js'
+import { WatchdogProbeComponent } from './components/watchdog-probe.js'
 import {
 	adminOrgIdMap,
 	BACKEND_WEBHOOK_BASE_URL,
@@ -72,6 +73,7 @@ export * from './components/login-client.js'
 export * from './components/machine-user.js'
 export * from './components/secrets.js'
 export * from './components/smtp.js'
+export * from './components/watchdog-probe.js'
 export * from './constants.js'
 export * from './dynamic/index.js'
 
@@ -188,6 +190,9 @@ export class Zitadel {
 	/** E2E test user — dev-only. `undefined` in prod (and any future env). */
 	public readonly e2eTestUser: E2eTestUserComponent | undefined
 
+	/** Watchdog probe machine user + PAT for the self-healing CronJob. */
+	public readonly watchdogProbe: WatchdogProbeComponent
+
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
 
@@ -195,6 +200,10 @@ export class Zitadel {
 	 *  Store in Secret Manager and mount via ExternalSecret as a file
 	 *  (consumed by `ZITADEL_SERVICE_USER_TOKEN_FILE`). */
 	public readonly loginClientToken: pulumi.Output<string>
+
+	/** Personal Access Token for the watchdog CronJob bearer token.
+	 *  Store in Secret Manager and sync to the `zitadel` namespace via ExternalSecret. */
+	public readonly watchdogProbeToken: pulumi.Output<string>
 
 	constructor(name: string, args: ZitadelArgs) {
 		const {
@@ -404,6 +413,20 @@ export class Zitadel {
 		})
 
 		this.loginClientToken = this.loginClient.token
+
+		// Watchdog probe identity — least-privilege machine user in the product
+		// org (co-located with the project it probes), granted PROJECT_OWNER_VIEWER
+		// on the product project. The PAT is stored in GSM via
+		// `zitadelWatchdogProbePat` (threaded through GcpArgs → KubernetesComponent
+		// esoOnlySecrets) and synced to the `zitadel` namespace by an ExternalSecret.
+		// See OpenSpec change `zitadel-watchdog-readonly-probe`.
+		this.watchdogProbe = new WatchdogProbeComponent(name, {
+			productOrgId: this.productOrg.id,
+			productProjectId: this.project.id,
+			provider: this.provider,
+		})
+
+		this.watchdogProbeToken = this.watchdogProbe.token
 
 		// Instance-level Google IdP for human admin sign-in. The admin org's
 		// LoginPolicy below references this IdP id; the product org's policy
