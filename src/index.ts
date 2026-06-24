@@ -164,6 +164,7 @@ const zitadel = workloadEnabled
 	: undefined
 const zitadelMachineKey = zitadel?.machineKeyDetails
 const zitadelLoginPat = zitadel?.loginClientToken
+const zitadelWatchdogProbePat = zitadel?.watchdogProbeToken
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
@@ -180,6 +181,7 @@ const gcp = new Gcp({
 	postmarkConfig,
 	zitadelMachineKey,
 	zitadelLoginPat,
+	zitadelWatchdogProbePat,
 	workloadEnabled,
 	postgresAvailabilityType,
 })

@@ -55,6 +55,10 @@ export interface GcpArgs {
 	 *  Stored in Secret Manager and mounted into the zitadel-login pod via
 	 *  ExternalSecret as a file referenced by `ZITADEL_SERVICE_USER_TOKEN_FILE`. */
 	zitadelLoginPat?: pulumi.Output<string>
+	/** Personal Access Token for the watchdog CronJob bearer token.
+	 *  Stored in Secret Manager and synced into the `zitadel` namespace via
+	 *  ExternalSecret (`zitadel-watchdog-probe-pat`), mounted into the CronJob. */
+	zitadelWatchdogProbePat?: pulumi.Output<string>
 	/** Gate for the workload tier (GKE / Cloud SQL / monitoring / GSM
 	 *  Zitadel bootstrap secrets). When false (dev shutdown mode), these
 	 *  resources are not provisioned. See
@@ -131,6 +135,7 @@ export class Gcp {
 			postmarkConfig,
 			zitadelMachineKey,
 			zitadelLoginPat,
+			zitadelWatchdogProbePat,
 			workloadEnabled,
 			postgresAvailabilityType,
 		} = args
@@ -443,6 +448,19 @@ export class Gcp {
 								{
 									name: 'zitadel-login-pat',
 									value: pulumi.secret(zitadelLoginPat),
+								},
+							]
+						: []),
+					// PAT for the self-healing watchdog CronJob. ESO syncs this into the
+					// `zitadel` namespace so the CronJob can mount it as a bearer token
+					// for the read-only `ProjectService/ListProjectRoles` probe.
+					...(zitadelWatchdogProbePat
+						? [
+								{
+									name: 'zitadel-watchdog-probe-pat',
+									value: pulumi.secret(
+										zitadelWatchdogProbePat,
+									),
 								},
 							]
 						: []),
