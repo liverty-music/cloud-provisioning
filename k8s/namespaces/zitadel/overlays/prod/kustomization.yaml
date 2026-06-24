@@ -23,8 +23,8 @@ resources:
 - job-grant-db.yaml
 # Self-healing watchdog (prod-only): detects the projection-trigger wedge
 # (zitadel#10103) via a read-only ListProjectRoles hang probe and
-# auto-restarts `zitadel-api` (ships in dry-run; flip WATCHDOG_DRY_RUN=false
-# after confirming probe authenticates 200). See the manifest header.
+# auto-restarts `zitadel-api` (active; flip WATCHDOG_DRY_RUN=true for
+# observe-only). See the manifest header.
 - cronjob-watchdog-zitadel.yaml
 # PAT for the watchdog probe — synced from GSM `zitadel-watchdog-probe-pat`
 # (provisioned by Pulumi WatchdogProbeComponent) into K8s Secret
