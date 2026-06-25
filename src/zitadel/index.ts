@@ -168,6 +168,9 @@ export interface ZitadelArgs {
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider
+	/** Instance-level OIDC token lifetimes (access 30m, refresh idle 30d,
+	 *  refresh absolute 90d). */
+	public readonly defaultOidcSettings: zitadel.DefaultOidcSettings
 	public readonly adminOrg: zitadel.Org
 	public readonly productOrg: zitadel.Org
 	public readonly project: zitadel.Project
@@ -243,6 +246,27 @@ export class Zitadel {
 			domain,
 			jwtProfileJson,
 		})
+
+		// Instance-level OIDC token lifetimes. Previously unset, so all OIDC
+		// apps in the instance (frontend SPA, admin console) ran on Zitadel's
+		// built-in defaults (access 12h). Pinning these makes the intent durable
+		// and reviewable: a 30m access token shrinks the revocation-relevant
+		// exposure window, while the long refresh window (idle 30d / absolute
+		// 90d, matching the prior defaults) keeps fans signed in across gaps.
+		// All four fields are required inputs in @pulumiverse/zitadel ^0.2.0.
+		// See OpenSpec change `extend-auth-session-lifetime`.
+		this.defaultOidcSettings = new zitadel.DefaultOidcSettings(
+			`${name}-oidc-settings`,
+			{
+				accessTokenLifetime: '0h30m0s',
+				// Keep Zitadel's default — the ID token is refreshed alongside the
+				// access token on silent renew, so there is no need to shorten it.
+				idTokenLifetime: '12h0m0s',
+				refreshTokenExpiration: '2160h0m0s', // 90d (absolute)
+				refreshTokenIdleExpiration: '720h0m0s', // 30d (idle)
+			},
+			{ provider: this.provider },
+		)
 
 		// Admin role org — bootstrap-created (`ZITADEL_FIRSTINSTANCE_ORG_NAME=
 		// admin` in configmap), brought into Pulumi state via a one-time
