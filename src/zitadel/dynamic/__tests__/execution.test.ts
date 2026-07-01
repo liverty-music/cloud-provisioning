@@ -5,9 +5,11 @@ vi.mock('../api-client.js', () => ({
 }))
 
 const apiClient = await import('../api-client.js')
-const { executionFunctionProvider, executionRequestProvider } = await import(
-	'../execution.js'
-)
+const {
+	executionFunctionProvider,
+	executionRequestProvider,
+	executionResponseProvider,
+} = await import('../execution.js')
 
 const mockedCall = vi.mocked(apiClient.zitadelApiCall)
 
@@ -18,6 +20,9 @@ const fnProvider = executionFunctionProvider as Required<
 >
 const reqProvider = executionRequestProvider as Required<
 	typeof executionRequestProvider
+>
+const resProvider = executionResponseProvider as Required<
+	typeof executionResponseProvider
 >
 
 const baseProfile = {
@@ -38,6 +43,13 @@ const baseRequestInputs = {
 	domain: 'auth.example.test',
 	jwtProfileJson: JSON.stringify(baseProfile),
 	method: '/zitadel.user.v2.UserService/AddHumanUser',
+	targetIds: ['tgt-1'],
+}
+
+const baseResponseInputs = {
+	domain: 'auth.example.test',
+	jwtProfileJson: JSON.stringify(baseProfile),
+	method: '/zitadel.session.v2.SessionService/CreateSession',
 	targetIds: ['tgt-1'],
 }
 
@@ -195,6 +207,61 @@ describe('executionRequestProvider.delete', () => {
 			condition: {
 				request: {
 					method: '/zitadel.user.v2.UserService/AddHumanUser',
+				},
+			},
+			targets: [],
+		})
+	})
+})
+
+describe('executionResponseProvider.create', () => {
+	beforeEach(() => {
+		mockedCall.mockReset()
+	})
+
+	it('PUTs /v2/actions/executions with `targets: string[]` and a `response.method` condition', async () => {
+		mockedCall.mockResolvedValueOnce({ statusCode: 200, body: '{}' })
+
+		const result = await resProvider.create(baseResponseInputs)
+
+		const args = lastCallArgs()
+		expect(args.method).toBe('PUT')
+		expect(args.path).toBe('/v2/actions/executions')
+		expect(args.body).toEqual({
+			condition: {
+				response: {
+					method: '/zitadel.session.v2.SessionService/CreateSession',
+				},
+			},
+			targets: ['tgt-1'],
+		})
+		const body = args.body as { targets: unknown[] }
+		expect(typeof body.targets[0]).toBe('string')
+		expect(result.id).toBe(
+			'response:/zitadel.session.v2.SessionService/CreateSession',
+		)
+	})
+})
+
+describe('executionResponseProvider.delete', () => {
+	beforeEach(() => {
+		mockedCall.mockReset()
+	})
+
+	it('clears the binding by sending an empty targets array', async () => {
+		mockedCall.mockResolvedValueOnce({ statusCode: 200, body: '{}' })
+
+		await resProvider.delete(
+			'response:/zitadel.session.v2.SessionService/CreateSession',
+			baseResponseInputs,
+		)
+
+		const args = lastCallArgs()
+		expect(args.method).toBe('PUT')
+		expect(args.body).toEqual({
+			condition: {
+				response: {
+					method: '/zitadel.session.v2.SessionService/CreateSession',
 				},
 			},
 			targets: [],
