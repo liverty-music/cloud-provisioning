@@ -1,6 +1,10 @@
 import * as pulumi from '@pulumi/pulumi'
 import type * as zitadel from '@pulumiverse/zitadel'
-import { ZitadelExecutionFunction, ZitadelTarget } from '../dynamic/index.js'
+import {
+	ZitadelExecutionFunction,
+	ZitadelExecutionResponse,
+	ZitadelTarget,
+} from '../dynamic/index.js'
 
 export interface ActionsV2ComponentArgs {
 	/** Zitadel domain hosting the Management API (e.g. `auth.dev.liverty-music.app`). */
@@ -9,6 +13,9 @@ export interface ActionsV2ComponentArgs {
 	jwtProfileJson: pulumi.Input<string>
 	/** In-cluster URL of the backend `/pre-access-token` webhook handler. */
 	preAccessTokenEndpoint: pulumi.Input<string>
+	/** In-cluster URL of the backend `/create-session` webhook handler (the
+	 *  account.login analytics source). */
+	createSessionEndpoint: pulumi.Input<string>
 	/** Pulumi Zitadel v1 provider — required as a `dependsOn` marker so executions
 	 *  are created after the Management API is reachable via the provider. */
 	provider: zitadel.Provider
@@ -64,6 +71,8 @@ export interface ActionsV2ComponentArgs {
 export class ActionsV2Component extends pulumi.ComponentResource {
 	public readonly preAccessTokenTarget: ZitadelTarget
 	public readonly preAccessTokenExecution: ZitadelExecutionFunction
+	public readonly createSessionTarget: ZitadelTarget
+	public readonly createSessionExecution: ZitadelExecutionResponse
 
 	constructor(
 		name: string,
@@ -72,8 +81,13 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:ActionsV2', name, {}, opts)
 
-		const { domain, jwtProfileJson, preAccessTokenEndpoint, provider } =
-			args
+		const {
+			domain,
+			jwtProfileJson,
+			preAccessTokenEndpoint,
+			createSessionEndpoint,
+			provider,
+		} = args
 
 		// Email-claim injection Target + ExecutionFunction.
 		// REST_CALL waits for the response so the token can be complemented
@@ -110,8 +124,46 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			},
 		)
 
+		// account.login analytics Target + response Execution on CreateSession.
+		// A session is created once per user-initiated login and never by a
+		// silent refresh_token grant, so this hook is login-specific by
+		// construction. PAYLOAD_TYPE_JWT reuses the backend's JWKS validator.
+		// interruptOnError is FALSE: analytics must never block login — if the
+		// webhook fails, Zitadel proceeds with session creation regardless. The
+		// response side fires after CreateSession succeeds, so only successful
+		// logins are recorded.
+		this.createSessionTarget = new ZitadelTarget(
+			'create-session-webhook',
+			{
+				domain,
+				jwtProfileJson,
+				name: 'create-session-webhook',
+				endpoint: createSessionEndpoint,
+				targetType: 'REST_CALL',
+				timeout: '10s',
+				payloadType: 'PAYLOAD_TYPE_JWT',
+				interruptOnError: false,
+			},
+			{ parent: this, dependsOn: [provider] },
+		)
+
+		this.createSessionExecution = new ZitadelExecutionResponse(
+			'create-session-execution',
+			{
+				domain,
+				jwtProfileJson,
+				method: '/zitadel.session.v2.SessionService/CreateSession',
+				targetIds: [this.createSessionTarget.targetId],
+			},
+			{
+				parent: this,
+				dependsOn: [this.createSessionTarget],
+			},
+		)
+
 		this.registerOutputs({
 			preAccessTokenTargetId: this.preAccessTokenTarget.targetId,
+			createSessionTargetId: this.createSessionTarget.targetId,
 		})
 	}
 }
