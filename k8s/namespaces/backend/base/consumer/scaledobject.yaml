@@ -61,3 +61,105 @@ spec:
       consumer: "SALES_PHASE_reminder_due"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # Analytics-forwarding consumers (analytics_consumer.go): each fans one
+  # domain event out to PostHog. Durable name = subject with dots replaced by
+  # underscores; stream = the subject's leading segment (see streams.go).
+  # USER.preferred_language_updated → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "USER_preferred_language_updated"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # ARTIST.followed → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "ARTIST_followed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # ARTIST.unfollowed → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "ARTIST_unfollowed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # NOTIFICATION.subscribed → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "NOTIFICATION"
+      consumer: "NOTIFICATION_subscribed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # NOTIFICATION.unsubscribed → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "NOTIFICATION"
+      consumer: "NOTIFICATION_unsubscribed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # ENTRY.zk_proof_verified → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ENTRY"
+      consumer: "ENTRY_zk_proof_verified"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # ENTRY.zk_proof_rejected → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ENTRY"
+      consumer: "ENTRY_zk_proof_rejected"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # TICKET_JOURNEY.status_changed → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "TICKET_JOURNEY"
+      consumer: "TICKET_JOURNEY_status_changed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # TICKET.mint_completed → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "TICKET"
+      consumer: "TICKET_mint_completed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # TICKET_EMAIL.parsed → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "TICKET_EMAIL"
+      consumer: "TICKET_EMAIL_parsed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # SALES_REMINDER.delivered → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "SALES_REMINDER"
+      consumer: "SALES_REMINDER_delivered"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
