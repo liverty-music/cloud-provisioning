@@ -19,15 +19,6 @@ export interface ZitadelExecutionRequestArgs {
 	targetIds: pulumi.Input<pulumi.Input<string>[]>
 }
 
-export interface ZitadelExecutionResponseArgs {
-	domain: pulumi.Input<string>
-	jwtProfileJson: pulumi.Input<string>
-	/** gRPC method name, e.g. `/zitadel.session.v2.SessionService/CreateSession`. */
-	method: pulumi.Input<string>
-	/** Target IDs invoked in order when the response is produced. */
-	targetIds: pulumi.Input<pulumi.Input<string>[]>
-}
-
 interface FunctionInputs {
 	domain: string
 	jwtProfileJson: string
@@ -36,13 +27,6 @@ interface FunctionInputs {
 }
 
 interface RequestInputs {
-	domain: string
-	jwtProfileJson: string
-	method: string
-	targetIds: string[]
-}
-
-interface ResponseInputs {
 	domain: string
 	jwtProfileJson: string
 	method: string
@@ -147,43 +131,6 @@ export const executionRequestProvider: pulumi.dynamic.ResourceProvider = {
 	},
 }
 
-export const executionResponseProvider: pulumi.dynamic.ResourceProvider = {
-	async create(
-		inputs: ResponseInputs,
-	): Promise<pulumi.dynamic.CreateResult<ResponseInputs>> {
-		await setExecution({
-			inputs,
-			condition: { response: { method: inputs.method } },
-			targetIds: inputs.targetIds,
-		})
-		return {
-			id: `response:${inputs.method}`,
-			outs: inputs,
-		}
-	},
-
-	async update(
-		_id: string,
-		_olds: ResponseInputs,
-		news: ResponseInputs,
-	): Promise<pulumi.dynamic.UpdateResult<ResponseInputs>> {
-		await setExecution({
-			inputs: news,
-			condition: { response: { method: news.method } },
-			targetIds: news.targetIds,
-		})
-		return { outs: news }
-	},
-
-	async delete(_id: string, state: ResponseInputs): Promise<void> {
-		await setExecution({
-			inputs: state,
-			condition: { response: { method: state.method } },
-			targetIds: [],
-		})
-	},
-}
-
 /**
  * ZitadelExecutionFunction binds a Zitadel Actions v2 function (e.g.
  * `preaccesstoken`) to one or more Targets, via the Management REST API.
@@ -210,23 +157,5 @@ export class ZitadelExecutionRequest extends pulumi.dynamic.Resource {
 		opts?: pulumi.CustomResourceOptions,
 	) {
 		super(executionRequestProvider, name, args, opts)
-	}
-}
-
-/**
- * ZitadelExecutionResponse binds a Zitadel Actions v2 response hook (identified
- * by gRPC method, e.g. `/zitadel.session.v2.SessionService/CreateSession`) to
- * one or more Targets, via the Management REST API. The response condition
- * fires after Zitadel has successfully produced the method's response, so it is
- * the correct side for "this call succeeded" analytics (a failed call produces
- * no response and therefore no execution).
- */
-export class ZitadelExecutionResponse extends pulumi.dynamic.Resource {
-	constructor(
-		name: string,
-		args: ZitadelExecutionResponseArgs,
-		opts?: pulumi.CustomResourceOptions,
-	) {
-		super(executionResponseProvider, name, args, opts)
 	}
 }
