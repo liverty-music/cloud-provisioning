@@ -42,16 +42,6 @@ spec:
       consumer: "USER_created"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # ACCOUNT.login → analytics consumer (account.login). Durable name is the
-  # subject with dots replaced by underscores (subscriber DurableCalculator).
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ACCOUNT"
-      consumer: "ACCOUNT_login"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
   # SALES_PHASE.discovered → announcement consumer. Durable name is the subject
   # with dots replaced by underscores (subscriber DurableCalculator).
   - type: nats-jetstream
