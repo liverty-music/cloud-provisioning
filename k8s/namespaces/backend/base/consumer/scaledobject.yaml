@@ -91,6 +91,16 @@ spec:
       consumer: "ARTIST_unfollowed"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # ACCOUNT.login → forward to analytics (account.login, sourced from the
+  # Zitadel session.user.checked event execution).
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ACCOUNT"
+      consumer: "ACCOUNT_login"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   # NOTIFICATION.subscribed → forward to analytics.
   - type: nats-jetstream
     metadata:

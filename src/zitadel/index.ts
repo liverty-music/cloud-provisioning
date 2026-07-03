@@ -21,6 +21,7 @@ import { WatchdogProbeComponent } from './components/watchdog-probe.js'
 import {
 	adminOrgIdMap,
 	BACKEND_WEBHOOK_BASE_URL,
+	LOGIN_EVENT_PATH,
 	PRE_ACCESS_TOKEN_PATH,
 	zitadelDomainMap,
 } from './constants.js'
@@ -415,6 +416,7 @@ export class Zitadel {
 			domain,
 			jwtProfileJson,
 			preAccessTokenEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${PRE_ACCESS_TOKEN_PATH}`,
+			loginEventEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${LOGIN_EVENT_PATH}`,
 			provider: this.provider,
 		})
 

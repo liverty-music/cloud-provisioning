@@ -1,6 +1,10 @@
 import * as pulumi from '@pulumi/pulumi'
 import type * as zitadel from '@pulumiverse/zitadel'
-import { ZitadelExecutionFunction, ZitadelTarget } from '../dynamic/index.js'
+import {
+	ZitadelExecutionEvent,
+	ZitadelExecutionFunction,
+	ZitadelTarget,
+} from '../dynamic/index.js'
 
 export interface ActionsV2ComponentArgs {
 	/** Zitadel domain hosting the Management API (e.g. `auth.dev.liverty-music.app`). */
@@ -9,6 +13,9 @@ export interface ActionsV2ComponentArgs {
 	jwtProfileJson: pulumi.Input<string>
 	/** In-cluster URL of the backend `/pre-access-token` webhook handler. */
 	preAccessTokenEndpoint: pulumi.Input<string>
+	/** In-cluster URL of the backend `/account-login-event` webhook handler —
+	 *  the account.login source, bound to the session.user.checked event. */
+	loginEventEndpoint: pulumi.Input<string>
 	/** Pulumi Zitadel v1 provider — required as a `dependsOn` marker so executions
 	 *  are created after the Management API is reachable via the provider. */
 	provider: zitadel.Provider
@@ -64,6 +71,8 @@ export interface ActionsV2ComponentArgs {
 export class ActionsV2Component extends pulumi.ComponentResource {
 	public readonly preAccessTokenTarget: ZitadelTarget
 	public readonly preAccessTokenExecution: ZitadelExecutionFunction
+	public readonly loginEventTarget: ZitadelTarget
+	public readonly loginEventExecution: ZitadelExecutionEvent
 
 	constructor(
 		name: string,
@@ -72,8 +81,13 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:ActionsV2', name, {}, opts)
 
-		const { domain, jwtProfileJson, preAccessTokenEndpoint, provider } =
-			args
+		const {
+			domain,
+			jwtProfileJson,
+			preAccessTokenEndpoint,
+			loginEventEndpoint,
+			provider,
+		} = args
 
 		// Email-claim injection Target + ExecutionFunction.
 		// REST_CALL waits for the response so the token can be complemented
@@ -110,8 +124,49 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			},
 		)
 
+		// Login-event Target + ExecutionEvent — the account.login source.
+		// REST_CALL with PAYLOAD_TYPE_JWT so the backend verifies the body with
+		// its existing Zitadel JWKS validator (no HMAC secret). `interruptOnError`
+		// is FALSE: analytics must never block login. Unlike the reverted
+		// `response`-on-CreateSession approach, an EVENT execution is
+		// fire-and-forget — Zitadel ignores the webhook response — so it cannot
+		// strip the session response or otherwise break sign-in.
+		this.loginEventTarget = new ZitadelTarget(
+			'login-event-webhook',
+			{
+				domain,
+				jwtProfileJson,
+				name: 'login-event-webhook',
+				endpoint: loginEventEndpoint,
+				targetType: 'REST_CALL',
+				timeout: '10s',
+				payloadType: 'PAYLOAD_TYPE_JWT',
+				interruptOnError: false,
+			},
+			{ parent: this, dependsOn: [provider] },
+		)
+
+		// Bound to `session.user.checked`: stored once per interactive login via
+		// the hosted Login UI, never on a refresh_token grant (which touches only
+		// the oidc_session aggregate) and never on a machine jwt_profile grant.
+		// Event type determined empirically via the Zitadel Events API.
+		this.loginEventExecution = new ZitadelExecutionEvent(
+			'login-event-execution',
+			{
+				domain,
+				jwtProfileJson,
+				eventType: 'session.user.checked',
+				targetIds: [this.loginEventTarget.targetId],
+			},
+			{
+				parent: this,
+				dependsOn: [this.loginEventTarget],
+			},
+		)
+
 		this.registerOutputs({
 			preAccessTokenTargetId: this.preAccessTokenTarget.targetId,
+			loginEventTargetId: this.loginEventTarget.targetId,
 		})
 	}
 }
