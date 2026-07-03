@@ -47,6 +47,9 @@ export const zitadelDomainMap: Record<Environment, string> = {
 export const BACKEND_WEBHOOK_BASE_URL =
 	'http://server-webhook-svc.backend.svc.cluster.local:9090'
 export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
+/** Backend login-event webhook path — the account.login source, bound to the
+ *  Zitadel Actions v2 event execution on `session.user.checked`. */
+export const LOGIN_EVENT_PATH = '/account-login-event'
 
 /**
  * Bootstrap-created `admin` Role Org IDs per environment.

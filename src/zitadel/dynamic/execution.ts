@@ -19,6 +19,17 @@ export interface ZitadelExecutionRequestArgs {
 	targetIds: pulumi.Input<pulumi.Input<string>[]>
 }
 
+export interface ZitadelExecutionEventArgs {
+	domain: pulumi.Input<string>
+	jwtProfileJson: pulumi.Input<string>
+	/** Event type, e.g. `session.user.checked`. Fires after the event is
+	 *  persisted; the execution is fire-and-forget and cannot alter any API
+	 *  request/response. */
+	eventType: pulumi.Input<string>
+	/** Target IDs invoked in order when the event is stored. */
+	targetIds: pulumi.Input<pulumi.Input<string>[]>
+}
+
 interface FunctionInputs {
 	domain: string
 	jwtProfileJson: string
@@ -30,6 +41,13 @@ interface RequestInputs {
 	domain: string
 	jwtProfileJson: string
 	method: string
+	targetIds: string[]
+}
+
+interface EventInputs {
+	domain: string
+	jwtProfileJson: string
+	eventType: string
 	targetIds: string[]
 }
 
@@ -131,6 +149,43 @@ export const executionRequestProvider: pulumi.dynamic.ResourceProvider = {
 	},
 }
 
+export const executionEventProvider: pulumi.dynamic.ResourceProvider = {
+	async create(
+		inputs: EventInputs,
+	): Promise<pulumi.dynamic.CreateResult<EventInputs>> {
+		await setExecution({
+			inputs,
+			condition: { event: { event: inputs.eventType } },
+			targetIds: inputs.targetIds,
+		})
+		return {
+			id: `event:${inputs.eventType}`,
+			outs: inputs,
+		}
+	},
+
+	async update(
+		_id: string,
+		_olds: EventInputs,
+		news: EventInputs,
+	): Promise<pulumi.dynamic.UpdateResult<EventInputs>> {
+		await setExecution({
+			inputs: news,
+			condition: { event: { event: news.eventType } },
+			targetIds: news.targetIds,
+		})
+		return { outs: news }
+	},
+
+	async delete(_id: string, state: EventInputs): Promise<void> {
+		await setExecution({
+			inputs: state,
+			condition: { event: { event: state.eventType } },
+			targetIds: [],
+		})
+	},
+}
+
 /**
  * ZitadelExecutionFunction binds a Zitadel Actions v2 function (e.g.
  * `preaccesstoken`) to one or more Targets, via the Management REST API.
@@ -157,5 +212,22 @@ export class ZitadelExecutionRequest extends pulumi.dynamic.Resource {
 		opts?: pulumi.CustomResourceOptions,
 	) {
 		super(executionRequestProvider, name, args, opts)
+	}
+}
+
+/**
+ * ZitadelExecutionEvent binds a Zitadel Actions v2 event hook (identified by
+ * event type, e.g. `session.user.checked`) to one or more Targets, via the
+ * Management REST API. An event execution is fire-and-forget: it fires after
+ * the event is stored and its webhook response is ignored, so — unlike a
+ * request/response execution — it cannot alter the auth flow or break sign-in.
+ */
+export class ZitadelExecutionEvent extends pulumi.dynamic.Resource {
+	constructor(
+		name: string,
+		args: ZitadelExecutionEventArgs,
+		opts?: pulumi.CustomResourceOptions,
+	) {
+		super(executionEventProvider, name, args, opts)
 	}
 }
