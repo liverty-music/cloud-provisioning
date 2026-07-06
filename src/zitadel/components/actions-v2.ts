@@ -125,8 +125,14 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 		)
 
 		// Login-event Target + ExecutionEvent — the account.login source.
-		// REST_CALL with PAYLOAD_TYPE_JWT so the backend verifies the body with
-		// its existing Zitadel JWKS validator (no HMAC secret). `interruptOnError`
+		// REST_CALL with PAYLOAD_TYPE_JSON (the Zitadel-recommended default):
+		// Zitadel signs each body with an HMAC and the backend verifies the
+		// `ZITADEL-Signature` header with the Target's generated `signingKey`
+		// (captured below and plumbed to the backend via GSM/ESO). PAYLOAD_TYPE_JWT
+		// is NOT used here: an event-execution JWT target requires an active
+		// instance web key, which this instance lacks — it fails with
+		// `Errors.WebKey.NoActive` (whereas the function-based pre-access-token
+		// target signs in the OIDC context and is unaffected). `interruptOnError`
 		// is FALSE: analytics must never block login. Unlike the reverted
 		// `response`-on-CreateSession approach, an EVENT execution is
 		// fire-and-forget — Zitadel ignores the webhook response — so it cannot
@@ -140,7 +146,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 				endpoint: loginEventEndpoint,
 				targetType: 'REST_CALL',
 				timeout: '10s',
-				payloadType: 'PAYLOAD_TYPE_JWT',
+				payloadType: 'PAYLOAD_TYPE_JSON',
 				interruptOnError: false,
 			},
 			{ parent: this, dependsOn: [provider] },
