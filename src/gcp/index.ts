@@ -46,6 +46,13 @@ export interface GcpArgs {
 	 *  Secret via ExternalSecret. `gemini.NewConcertSearcher` REQUIRES this
 	 *  (no Vertex AI fallback as of backend #303). */
 	geminiSearchApiKey?: pulumi.Output<string>
+	/** HMAC signing key Zitadel generated for the login-event Actions v2 Target
+	 *  (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
+	 *  `webhook-login-event-signing-key` and synced into `backend-secrets` as
+	 *  `WEBHOOK_LOGIN_EVENT_SIGNING_KEY`; the login-event webhook handler
+	 *  verifies the `ZITADEL-Signature` header against it. Present only when the
+	 *  Zitadel workload is provisioned. */
+	loginEventSigningKey?: pulumi.Output<string>
 	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
@@ -130,6 +137,7 @@ export class Gcp {
 			fanartTvApiKey,
 			posthogProjectApiKey,
 			geminiSearchApiKey,
+			loginEventSigningKey,
 			blockchainConfig,
 			cloudflareConfig,
 			postmarkConfig,
@@ -415,6 +423,19 @@ export class Gcp {
 								{
 									name: 'gemini-search-api-key',
 									value: geminiSearchApiKey,
+								},
+							]
+						: []),
+					// HMAC signing key for the login-event Actions v2 Target
+					// (PAYLOAD_TYPE_JSON). Zitadel generates it at Target creation;
+					// the login-event webhook handler verifies the ZITADEL-Signature
+					// header against it. Present only when the Zitadel workload is
+					// provisioned (conditional-spread as every other optional secret).
+					...(loginEventSigningKey
+						? [
+								{
+									name: 'webhook-login-event-signing-key',
+									value: pulumi.secret(loginEventSigningKey),
 								},
 							]
 						: []),

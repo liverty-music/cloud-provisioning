@@ -182,6 +182,21 @@ const gcp = new Gcp({
 	zitadelMachineKey,
 	zitadelLoginPat,
 	zitadelWatchdogProbePat,
+	// HMAC signing key Zitadel generated for the login-event Target
+	// (PAYLOAD_TYPE_JSON). Plumbed to the backend as GSM secret
+	// `webhook-login-event-signing-key` so the login-event handler can verify
+	// the `ZITADEL-Signature` header. Present only when the Zitadel workload is
+	// provisioned; JSON targets always return a signingKey.
+	loginEventSigningKey: zitadel?.actionsV2.loginEventTarget.signingKey.apply(
+		(key) => {
+			if (!key) {
+				throw new Error(
+					'login-event Target signingKey missing — expected for PAYLOAD_TYPE_JSON',
+				)
+			}
+			return key
+		},
+	),
 	workloadEnabled,
 	postgresAvailabilityType,
 })
