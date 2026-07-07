@@ -109,9 +109,43 @@ export const targetProvider: pulumi.dynamic.ResourceProvider = {
 		return { id, props: state }
 	},
 
+	// diff controls when a change replaces the Target vs updates it in place.
+	// The `signingKey` is returned ONLY by CreateTarget, so any change that must
+	// (re)establish it has to force a replacement:
+	//   - a `payloadType` change (a JSON target needs an HMAC signingKey the JWT
+	//     target never surfaced), and
+	//   - a recovery case: a JSON target whose state has no captured signingKey
+	//     (an earlier in-place update dropped it) — replace to regenerate it.
+	// pre-access-token (JWT, signingKey already captured, payloadType stable)
+	// never triggers a replacement here.
+	async diff(
+		_id: string,
+		olds: TargetOutputs,
+		news: TargetInputs,
+	): Promise<pulumi.dynamic.DiffResult> {
+		const needsSigningKeyReplace =
+			news.payloadType === 'PAYLOAD_TYPE_JSON' && !olds.signingKey
+		const replaces =
+			olds.payloadType !== news.payloadType || needsSigningKeyReplace
+				? ['payloadType']
+				: []
+		const fields = [
+			'domain',
+			'jwtProfileJson',
+			'name',
+			'endpoint',
+			'targetType',
+			'timeout',
+			'interruptOnError',
+		] as const
+		const changed =
+			replaces.length > 0 || fields.some((k) => olds[k] !== news[k])
+		return { changes: changed, replaces, deleteBeforeReplace: true }
+	},
+
 	async update(
 		id: string,
-		_olds: TargetOutputs,
+		olds: TargetOutputs,
 		news: TargetInputs,
 	): Promise<pulumi.dynamic.UpdateResult<TargetOutputs>> {
 		const profile = JSON.parse(news.jwtProfileJson) as JwtProfile
@@ -141,10 +175,14 @@ export const targetProvider: pulumi.dynamic.ResourceProvider = {
 				`Zitadel UpdateTarget failed (${res.statusCode}): ${res.body}`,
 			)
 		}
+		// UpdateTarget does not return the signingKey; preserve the one captured
+		// at create time so an in-place update never drops it. A change that must
+		// regenerate the signingKey is a replacement (see diff), not an update.
 		return {
 			outs: {
 				...news,
 				targetId: id,
+				signingKey: olds.signingKey,
 			},
 		}
 	},
