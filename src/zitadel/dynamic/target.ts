@@ -131,6 +131,7 @@ export const targetProvider: pulumi.dynamic.ResourceProvider = {
 				: []
 		const fields = [
 			'domain',
+			'jwtProfileJson',
 			'name',
 			'endpoint',
 			'targetType',
