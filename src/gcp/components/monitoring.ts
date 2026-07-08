@@ -45,6 +45,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly alertPolicies: gcp.monitoring.AlertPolicy[]
 	public readonly atlasMigrationAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
+	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
 
 	constructor(
 		name: string,
@@ -263,6 +264,60 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						'5. After fixing the root cause, the operator will automatically retry on the next reconciliation cycle',
 					].join('\n'),
 					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+
+		// Sales-reminder delivery outcome metric.
+		//
+		// Preserves the delivery-reliability visibility (no_subscription / failed
+		// per phase stage) that was previously carried by the removed
+		// `sales_reminder.delivered` product-analytics event. Delivery reach now
+		// lives in PostHog on `notification.delivered` (type = "sales_reminder"),
+		// while the operational failure breakdown belongs here, not in product
+		// analytics.
+		//
+		// salesReminderDeliveryUseCase.DeliverReminder emits one structured
+		// `sales_reminder delivery outcome` log line per terminal outcome (Info
+		// for "delivered", Warn for "no_subscription" / "failed") carrying
+		// `outcome` and `phase_stage` fields. This metric counts those lines,
+		// keyed by both labels so reach and failure rates stay queryable per
+		// stage in Cloud Monitoring. The delivery runs in the backend messaging
+		// consumer, so the filter is scoped to the `backend` namespace.
+		this.salesReminderDeliveryMetric = new gcp.logging.Metric(
+			'log-metric-sales-reminder-delivery-outcomes',
+			{
+				project: projectId,
+				name: 'sales_reminder_delivery_outcomes',
+				description:
+					'Sales-phase push-reminder delivery outcomes (delivered / no_subscription / failed) per reminder stage. Replaces the operational visibility of the removed sales_reminder.delivered analytics event.',
+				filter: pulumi.interpolate`resource.type="k8s_container"
+resource.labels.project_id="${projectId}"
+resource.labels.location="${clusterLocation}"
+resource.labels.cluster_name="${clusterName}"
+resource.labels.namespace_name="backend"
+jsonPayload.msg="sales_reminder delivery outcome"`,
+				metricDescriptor: {
+					metricKind: 'DELTA',
+					valueType: 'INT64',
+					unit: '1',
+					labels: [
+						{
+							key: 'outcome',
+							valueType: 'STRING',
+							description: 'delivered | no_subscription | failed',
+						},
+						{
+							key: 'phase_stage',
+							valueType: 'STRING',
+							description: 'reminder stage, e.g. APPLY_OPEN',
+						},
+					],
+				},
+				labelExtractors: {
+					outcome: 'EXTRACT(jsonPayload.outcome)',
+					phase_stage: 'EXTRACT(jsonPayload.phase_stage)',
 				},
 			},
 			{ parent: this },
