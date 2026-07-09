@@ -41,6 +41,11 @@ on:
         description: 'Source commit SHA (recorded in the inline newTag trailer)'
         required: true
         type: string
+      allow_rollback:
+        description: 'Allow pinning BELOW the current prod pin (intentional rollback). Default false — the no-downgrade guard fails closed.'
+        required: false
+        type: boolean
+        default: false
 
 # Serialize all bumps: a backend and a frontend release can land within
 # seconds of each other. `cancel-in-progress: false` means a queued bump
@@ -87,6 +92,10 @@ jobs:
           COMPONENT: ${{ github.event.client_payload.component || inputs.component }}
           TAG: ${{ github.event.client_payload.tag || inputs.tag }}
           SHA: ${{ github.event.client_payload.sha || inputs.sha }}
+          # Only the manual trigger can request a rollback; the automated
+          # repository_dispatch path carries no such field, so this coalesces to
+          # 'false' there and the no-downgrade guard always fails closed.
+          ALLOW_ROLLBACK: ${{ github.event.client_payload.allow_rollback || inputs.allow_rollback || 'false' }}
         run: |
           set -euo pipefail
           echo "Trigger: ${{ github.event_name }}; component=${COMPONENT} tag=${TAG} sha=${SHA}"
@@ -142,6 +151,7 @@ jobs:
             echo "ar_repo=${AR_REPO}"
             echo "images=${IMAGES}"
             echo "bump_label=${BUMP_LABEL}"
+            echo "allow_rollback=${ALLOW_ROLLBACK}"
           } >> "$GITHUB_OUTPUT"
 
       # Mint a ci-bot installation token. The bump is pushed to `main` AS this
@@ -219,6 +229,60 @@ jobs:
             fi
           done
           echo "All target images exist in prod AR at ${TAG}."
+
+      # ----------------------------------------------------------------------
+      # 1.2b No-downgrade guard — fail-closed when the incoming tag is a LOWER
+      # semver than the current prod pin for this component. The provenance gate
+      # (1.2a) proves the tag's image EXISTS but not that it is newer, so a
+      # release cut from an ancestor commit — or a stale/duplicate dispatch that
+      # lands after a newer release — could otherwise silently roll prod
+      # BACKWARD (see the 2026-07-08 v1.23.1-over-v1.24.0 incident). Equal tags
+      # pass here and are short-circuited by the idempotency guard (1.4).
+      #
+      # The checked-out overlay is authoritative: the `bump-prod-pin` concurrency
+      # group serializes ALL bumps, so any prior bump's commit is already on the
+      # main we just checked out — no post-rebase re-check is needed.
+      #
+      # An intentional rollback must set `allow_rollback=true` on the manual
+      # workflow_dispatch; the automated repository_dispatch path never sets it.
+      # ----------------------------------------------------------------------
+      - name: No-downgrade guard
+        env:
+          OVERLAY: ${{ steps.payload.outputs.overlay }}
+          IMAGES: ${{ steps.payload.outputs.images }}
+          TAG: ${{ steps.payload.outputs.tag }}
+          ALLOW_ROLLBACK: ${{ steps.payload.outputs.allow_rollback }}
+        run: |
+          set -euo pipefail
+          file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
+
+          # True when $1 is a strictly-lower semver than $2. Leading `v` is
+          # stripped so `sort -V` compares the bare X.Y.Z; equal versions are
+          # not "lower".
+          is_lower() {
+            a="${1#v}"; b="${2#v}"
+            [ "${a}" != "${b}" ] && \
+              [ "$(printf '%s\n%s\n' "${a}" "${b}" | sort -V | head -n1)" = "${a}" ]
+          }
+
+          for img in ${IMAGES}; do
+            current="$(IMG="$img" yq '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag' "$file")"
+            # No existing pin to regress against — nothing to guard (first pin).
+            if [ -z "${current}" ] || [ "${current}" = "null" ]; then
+              echo "No current pin for ${img}; skipping downgrade check."
+              continue
+            fi
+            if is_lower "${TAG}" "${current}"; then
+              if [ "${ALLOW_ROLLBACK}" = "true" ]; then
+                echo "::warning::${img}: pinning ${TAG} BELOW current ${current} — permitted by allow_rollback=true."
+              else
+                echo "::error::No-downgrade guard FAILED — ${img} is pinned to ${current} in prod but this bump targets the lower ${TAG}. Refusing to roll prod backward. If this rollback is intentional, re-run via workflow_dispatch with allow_rollback=true."
+                exit 1
+              fi
+            else
+              echo "${img}: ${TAG} >= current ${current} — OK."
+            fi
+          done
 
       # ----------------------------------------------------------------------
       # 1.4 Idempotency guard — if every target newTag already equals the
