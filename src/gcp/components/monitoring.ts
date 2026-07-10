@@ -44,6 +44,7 @@ export interface MonitoringComponentArgs {
 export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly alertPolicies: gcp.monitoring.AlertPolicy[]
 	public readonly atlasMigrationAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly consumerBacklogAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
 
@@ -262,6 +263,77 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						'3. Check the migration pod logs: `kubectl -n atlas-operator logs -l app.kubernetes.io/name=atlas-operator`',
 						'4. If the error is "non-linear" (out-of-order files), see: https://atlasgo.io/versioned/apply#non-linear-error',
 						'5. After fixing the root cause, the operator will automatically retry on the next reconciliation cycle',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+
+		// JetStream Consumer Backlog Stall Alert.
+		//
+		// The 2026-07 incident wedged ALL event consumption for ~1 week
+		// undetected: a mis-configured durable stopped consumption while the pod
+		// stayed Running and emitted no ERROR/poison, so neither the Consumer
+		// ERROR Log nor the Poison Queue alert could fire. Consumer backlog
+		// (num_pending) is the one signal independent of logs, scraped from the
+		// prometheus-nats-exporter sidecar via GMP (see the nats prod overlay
+		// PodMonitoring `nats-jetstream-backlog`).
+		//
+		// The condition uses `min_over_time(...[15m]) > 0`: it fires only when a
+		// consumer's backlog stayed above zero for a full 15-minute window —
+		// i.e. it never drained to zero, so it is stalled. A healthy consumer
+		// (even a bursty low-traffic one) drains to zero between events, so its
+		// 15-minute minimum is zero and it does not alert. This detects a silent
+		// stall regardless of message volume without per-consumer thresholds.
+		//
+		// The `-prefix=nats` exporter arg may or may not prefix the jsz metrics
+		// across exporter versions, so both metric names are queried with `or`;
+		// only the emitted one contributes. Confirm the exact name against the
+		// live /metrics endpoint during prod verification. Threshold/window are
+		// tunable after baseline observation.
+		this.consumerBacklogAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-consumer-backlog-stall',
+			{
+				displayName: 'Consumer JetStream Backlog Stall',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'JetStream consumer backlog not draining for 15m',
+						conditionPrometheusQueryLanguage: {
+							query: 'min_over_time(nats_jetstream_consumer_num_pending[15m]) > 0 or min_over_time(jetstream_consumer_num_pending[15m]) > 0',
+							duration: '300s', // sustain 5m beyond the 15m window
+							evaluationInterval: '60s',
+						},
+					},
+				],
+				alertStrategy: {
+					notificationRateLimit: {
+						period: '43200s', // 12 hours
+					},
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Consumer JetStream Backlog Stall Alert',
+						'',
+						'A backend JetStream consumer stopped draining its backlog: `num_pending` stayed above zero for a full 15-minute window. Events are being published but not consumed.',
+						'',
+						'This is the safety net for the 2026-07 silent-outage class: it fires on backlog metrics alone, independent of ERROR logs or poison messages.',
+						'',
+						'### Alert Labels',
+						'- `stream` / `consumer`: the affected JetStream stream and durable',
+						'- `account`: the NATS account (usually `$G`)',
+						'',
+						'### Triage Steps',
+						'1. Check the consumer pod: `kubectl -n backend get pods -l app=consumer` — is it Running, CrashLooping, or restarting?',
+						'2. Check `/healthz` liveness: a wedged router / unbound durable now reports unhealthy and should have restarted the pod',
+						'3. Inspect the durable: port-forward `nats:4222` and run `nats consumer info <STREAM> <CONSUMER>` — check `push_bound=true` and the delivery/deliver-group config for drift',
+						'4. If a durable is mis-configured (stale deliver group / policy), the startup reconciliation should recreate it on the next restart; force a restart with `kubectl -n backend delete pod -l app=consumer`',
+						'5. Recover lost events by re-publishing from the source (streams retain 7d); `DeliverNew` durables do not replay already-published messages',
 					].join('\n'),
 					mimeType: 'text/markdown',
 				},

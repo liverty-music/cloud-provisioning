@@ -1,0 +1,33 @@
+# PodMonitoring CRD — opts the NATS pods (prometheus-nats-exporter sidecar)
+# into Google Managed Service for Prometheus (GMP) ingestion so the JetStream
+# consumer-backlog stall alert can query num_pending.
+#
+# The 2026-07 incident wedged all event consumption for ~1 week undetected: the
+# pod stayed Running and emitted no ERROR, so no log-based alert could fire.
+# num_pending (backlog) is the one signal that does not depend on logs, so it
+# is scraped here and alerted on in monitoring.ts.
+#
+# Cost is bounded exactly like the backend-server PodMonitoring: a keep-rule
+# limits ingestion to the two consumer-backlog series, and the scrape interval
+# is 60s. Prod-only — dev has no backlog alert.
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: nats-jetstream-backlog
+  namespace: nats
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+      app.kubernetes.io/instance: nats
+  endpoints:
+  - port: prom-metrics
+    interval: 60s
+    metricRelabeling:
+    # Keep only the consumer backlog gauges. The `-prefix=nats` exporter arg
+    # may or may not prefix the jsz metrics depending on the exporter version,
+    # so match both forms; confirm the exact name against the live /metrics
+    # endpoint during prod verification and tighten if desired.
+    - sourceLabels: [__name__]
+      regex: (nats_)?jetstream_consumer_num_pending|(nats_)?jetstream_consumer_num_ack_pending
+      action: keep

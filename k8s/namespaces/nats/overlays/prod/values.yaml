@@ -45,6 +45,30 @@ reloader:
 natsBox:
   enabled: false
 
+# prometheus-nats-exporter sidecar. Exposes JetStream consumer metrics
+# (notably jetstream_consumer_num_pending per account/stream/consumer) on a
+# Prometheus /metrics endpoint (port name: prom-metrics) so Google Managed
+# Prometheus can scrape them and the consumer-backlog stall alert can fire.
+# The chart's default exporter args include `-jsz=all` when JetStream is
+# enabled, so no extra args are needed. Prod-only: dev has no backlog alert
+# and stays lean.
+promExporter:
+  enabled: true
+  merge:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        cpu: 50m
+        memory: 32Mi
+    # GKE Autopilot requires an explicit non-root securityContext.
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+
 service:
   ports:
     monitor:
