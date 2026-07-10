@@ -5,6 +5,13 @@ metadata:
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
+  # Recreate (not RollingUpdate): the consumer owns a single set of JetStream
+  # durables (min=max=1 in prod). A rolling update would briefly run two pods
+  # that both try to bind the same durables; the second silently fails to bind
+  # and the rollout can wedge consumption. Recreate terminates the old pod
+  # before starting the new one so only one pod ever owns the durables.
+  strategy:
+    type: Recreate
   template:
     spec:
       terminationGracePeriodSeconds: 90
