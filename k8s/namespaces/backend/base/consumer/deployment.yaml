@@ -5,13 +5,19 @@ metadata:
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
-  # Recreate (not RollingUpdate): the consumer owns a single set of JetStream
-  # durables (min=max=1 in prod). A rolling update would briefly run two pods
-  # that both try to bind the same durables; the second silently fails to bind
-  # and the rollout can wedge consumption. Recreate terminates the old pod
-  # before starting the new one so only one pod ever owns the durables.
+  # The consumer owns a single set of JetStream durables (min=max=1 in prod). A
+  # default rolling update would briefly run two pods that both try to bind the
+  # same durables; the second silently fails to bind and the rollout can wedge
+  # consumption. maxSurge=0 guarantees the old pod is torn down before the new
+  # one starts, so only one pod ever owns the durables — the same guarantee as
+  # `type: Recreate`, but expressed as RollingUpdate tuning so it applies
+  # in-place (switching type to Recreate leaves the pre-existing `rollingUpdate`
+  # block populated, which the API rejects / silently keeps as RollingUpdate).
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   template:
     spec:
       terminationGracePeriodSeconds: 90

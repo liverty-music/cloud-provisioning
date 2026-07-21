@@ -287,11 +287,12 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 		// 15-minute minimum is zero and it does not alert. This detects a silent
 		// stall regardless of message volume without per-consumer thresholds.
 		//
-		// The `-prefix=nats` exporter arg may or may not prefix the jsz metrics
-		// across exporter versions, so both metric names are queried with `or`;
-		// only the emitted one contributes. Confirm the exact name against the
-		// live /metrics endpoint during prod verification. Threshold/window are
-		// tunable after baseline observation.
+		// Metric name confirmed against the live exporter on prod nats-0: the
+		// prometheus-nats-exporter jsz collector emits `consumer_num_pending`,
+		// which the `-prefix=nats` arg prefixes to `nats_consumer_num_pending`
+		// (no `jetstream_` segment). Per-series labels include `stream_name`,
+		// `consumer_name`, and `account`. Threshold/window are tunable after
+		// baseline observation.
 		this.consumerBacklogAlertPolicy = new gcp.monitoring.AlertPolicy(
 			'alert-consumer-backlog-stall',
 			{
@@ -303,7 +304,7 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						displayName:
 							'JetStream consumer backlog not draining for 15m',
 						conditionPrometheusQueryLanguage: {
-							query: 'min_over_time(nats_jetstream_consumer_num_pending[15m]) > 0 or min_over_time(jetstream_consumer_num_pending[15m]) > 0',
+							query: 'min_over_time(nats_consumer_num_pending[15m]) > 0',
 							duration: '300s', // sustain 5m beyond the 15m window
 							evaluationInterval: '60s',
 						},
@@ -325,7 +326,7 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						'This is the safety net for the 2026-07 silent-outage class: it fires on backlog metrics alone, independent of ERROR logs or poison messages.',
 						'',
 						'### Alert Labels',
-						'- `stream` / `consumer`: the affected JetStream stream and durable',
+						'- `stream_name` / `consumer_name`: the affected JetStream stream and durable',
 						'- `account`: the NATS account (usually `$G`)',
 						'',
 						'### Triage Steps',
