@@ -307,6 +307,12 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 							query: 'min_over_time(nats_consumer_num_pending[15m]) > 0',
 							duration: '300s', // sustain 5m beyond the 15m window
 							evaluationInterval: '60s',
+							// Allow the policy to deploy before the metric has been
+							// ingested. GMP only registers nats_consumer_num_pending
+							// after the exporter is scraped at least once, so without
+							// this a `pulumi up` on a fresh cluster (or before first
+							// scrape) fails metric-existence validation and aborts.
+							disableMetricValidation: true,
 						},
 					},
 				],
