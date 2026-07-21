@@ -317,9 +317,10 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 					},
 				],
 				alertStrategy: {
-					notificationRateLimit: {
-						period: '43200s', // 12 hours
-					},
+					// No notificationRateLimit: the GCP API rejects it on
+					// non-log-based (metric/PromQL) policies ("only log-based
+					// alert policies may specify a notification rate limit").
+					// The sustained 15m+5m condition already prevents flapping.
 					autoClose: '3600s', // 1 hour
 				},
 				notificationChannels,
