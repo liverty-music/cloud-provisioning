@@ -24,10 +24,11 @@ spec:
   - port: prom-metrics
     interval: 60s
     metricRelabeling:
-    # Keep only the consumer backlog gauges. The `-prefix=nats` exporter arg
-    # may or may not prefix the jsz metrics depending on the exporter version,
-    # so match both forms; confirm the exact name against the live /metrics
-    # endpoint during prod verification and tighten if desired.
+    # Keep only the consumer backlog gauges. The prometheus-nats-exporter jsz
+    # collector names these `consumer_num_pending` / `consumer_num_ack_pending`;
+    # the `-prefix=nats` exporter arg prefixes them to `nats_consumer_num_*`
+    # (there is no `jetstream_` segment). Confirmed against the live /metrics
+    # endpoint on prod nats-0.
     - sourceLabels: [__name__]
-      regex: (nats_)?jetstream_consumer_num_pending|(nats_)?jetstream_consumer_num_ack_pending
+      regex: nats_consumer_num_pending|nats_consumer_num_ack_pending
       action: keep
