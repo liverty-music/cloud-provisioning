@@ -226,7 +226,7 @@ images:
     newTag: v1.22.0 # commit 738f5ff4ad25303fb8ba3f5a48c5045978259f62
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
-    newTag: v1.20.0 # commit 5a3057198f0751ec93abf3420f731563a394e150
+    newTag: v1.22.0 # commit 738f5ff4ad25303fb8ba3f5a48c5045978259f62
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
-    newTag: v1.20.0 # commit 5a3057198f0751ec93abf3420f731563a394e150
+    newTag: v1.22.0 # commit 738f5ff4ad25303fb8ba3f5a48c5045978259f62
