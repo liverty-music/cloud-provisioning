@@ -9,13 +9,20 @@ spec:
   maxReplicaCount: 3
   cooldownPeriod: 300
   pollingInterval: 30
+  # Triggers reference the behavior-named JetStream durables the consumer app
+  # creates (durable == deliver group == handler behavior name; see the backend
+  # messaging.behaviorTable). Each trigger's `consumer` MUST exactly match a live
+  # durable, else the HPA reports `<unknown>`. Two subjects have two behaviors
+  # each (ARTIST.created, USER.created) → two durables/triggers (fan-out). Prod
+  # pins min=max=1 so these are inert there, but the base stays complete for dev.
   triggers:
+  # CONCERT stream
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "CONCERT"
-      consumer: "CONCERT_discovered"
+      consumer: "ingest-concert"
       lagThreshold: "10"
       activationLagThreshold: "0"
   - type: nats-jetstream
@@ -23,15 +30,49 @@ spec:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "CONCERT"
-      consumer: "CONCERT_created"
+      consumer: "notify-concert"
       lagThreshold: "10"
+      activationLagThreshold: "0"
+  # ARTIST stream — ARTIST.created fans out to two behaviors.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "resolve-artist-name"
+      lagThreshold: "1"
       activationLagThreshold: "0"
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "ARTIST"
-      consumer: "ARTIST_created"
+      consumer: "resolve-artist-image"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "track-artist-followed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "track-artist-unfollowed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # USER stream — USER.created fans out to two behaviors; login is now a USER event.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "verify-user-email"
       lagThreshold: "1"
       activationLagThreshold: "0"
   - type: nats-jetstream
@@ -39,120 +80,107 @@ spec:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "USER"
-      consumer: "USER_created"
+      consumer: "track-user-created"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # SALES_PHASE.discovered → announcement consumer. Durable name is the subject
-  # with dots replaced by underscores (subscriber DurableCalculator).
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
-      stream: "SALES_PHASE"
-      consumer: "SALES_PHASE_discovered"
+      stream: "USER"
+      consumer: "track-user-logged-in"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # SALES_PHASE.reminder.due → reminder delivery consumer.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "SALES_PHASE"
-      consumer: "SALES_PHASE_reminder_due"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # Analytics-forwarding consumers (analytics_consumer.go): each fans one
-  # domain event out to PostHog. Durable name = subject with dots replaced by
-  # underscores; stream = the subject's leading segment (see streams.go).
-  # ARTIST.followed → forward to analytics.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ARTIST"
-      consumer: "ARTIST_followed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # ARTIST.unfollowed → forward to analytics.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ARTIST"
-      consumer: "ARTIST_unfollowed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # ACCOUNT.login → forward to analytics (account.signin, sourced from the
-  # Zitadel session.user.checked event execution). The NATS transport subject
-  # stays ACCOUNT.login; only the PostHog event name changed to account.signin.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ACCOUNT"
-      consumer: "ACCOUNT_login"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # NOTIFICATION.subscribed → forward to analytics.
+  # NOTIFICATION stream
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "NOTIFICATION"
-      consumer: "NOTIFICATION_subscribed"
+      consumer: "track-notification-subscribed"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # NOTIFICATION.unsubscribed → forward to analytics.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "NOTIFICATION"
-      consumer: "NOTIFICATION_unsubscribed"
+      consumer: "track-notification-unsubscribed"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # ENTRY.zk_proof_verified → forward to analytics.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "NOTIFICATION"
+      consumer: "track-notification-delivered"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # ENTRY stream
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "ENTRY"
-      consumer: "ENTRY_zk_proof_verified"
+      consumer: "track-entry-verified"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # ENTRY.zk_proof_rejected → forward to analytics.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "ENTRY"
-      consumer: "ENTRY_zk_proof_rejected"
+      consumer: "track-entry-rejected"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # TICKET_JOURNEY.status_changed → forward to analytics.
+  # TICKET_JOURNEY / TICKET / TICKET_EMAIL streams
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "TICKET_JOURNEY"
-      consumer: "TICKET_JOURNEY_status_changed"
+      consumer: "track-ticket-journey"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # TICKET.mint_completed → forward to analytics.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "TICKET"
-      consumer: "TICKET_mint_completed"
+      consumer: "track-ticket-mint"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # TICKET_EMAIL.parsed → forward to analytics.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "TICKET_EMAIL"
-      consumer: "TICKET_EMAIL_parsed"
+      consumer: "track-ticket-email"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # SALES_PHASE stream — announcement + reminder (both push).
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "SALES_PHASE"
+      consumer: "notify-sales-phase"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "SALES_PHASE"
+      consumer: "notify-sales-reminder"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # POISON stream — dead-letter logging.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "POISON"
+      consumer: "log-poison"
       lagThreshold: "1"
       activationLagThreshold: "0"
