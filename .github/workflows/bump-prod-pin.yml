@@ -398,16 +398,23 @@ jobs:
           git config user.name "${BOT_SLUG}[bot]"
           git config user.email "${BOT_SLUG}[bot]@users.noreply.github.com"
 
-          configmap="k8s/namespaces/${OVERLAY}/overlays/prod/configmap.yaml"
+          # Build the list of files to add/diff. The frontend configmap is only
+          # written for component=frontend; backend/frontend-admin have no such
+          # file, so including it unconditionally causes `fatal: pathspec` for
+          # non-frontend bumps under `set -euo pipefail`.
+          paths=("$file")
+          if [ "${COMPONENT}" = "frontend" ]; then
+            paths+=("k8s/namespaces/${OVERLAY}/overlays/prod/configmap.yaml")
+          fi
 
           # Defensive: if no net diff (e.g. label/comment already matched),
           # skip the commit rather than create an empty one.
-          if git diff --quiet -- "$file" "$configmap"; then
+          if git diff --quiet -- "${paths[@]}"; then
             echo "No net change after edit; skipping commit."
             exit 0
           fi
 
-          git add "$file" "$configmap"
+          git add "${paths[@]}"
           # Build the commit message in a file to avoid heredoc indentation
           # leaking YAML/shell indent into the body.
           {
