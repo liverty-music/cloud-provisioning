@@ -40,5 +40,6 @@ data:
         "ONE OK ROCK",
         "緑黄色社会"
       ],
-      "logLevel": "info"
+      "logLevel": "info",
+      "releaseVersion": "v1.26.0"
     }
