@@ -28,7 +28,6 @@ data:
       "zitadelClientId": "376175199994839311",
       "zitadelOrgId": "372892288692584603",
       "vapidPublicKey": "BH-m9-6-0-y70MdQG7Lz-htDaz4T_NuYdmcgK5wBEElzXo22AyGs30gvHAtHbWtQBQa4XxySD6ZEaiM9Crwl6Pc",
-      "circuitBaseUrl": "",
       "previewArtistIds": [],
       "previewArtistNames": [],
       "logLevel": "info"

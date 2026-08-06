@@ -13,11 +13,7 @@ import {
 } from './components/network.js'
 import type { PostgresAvailabilityType } from './components/postgres.js'
 import { PostgresComponent } from './components/postgres.js'
-import {
-	type BlockchainConfig,
-	type GcpConfig,
-	ProjectComponent,
-} from './components/project.js'
+import { type GcpConfig, ProjectComponent } from './components/project.js'
 import { WorkloadIdentityComponent } from './components/workload-identity.js'
 import { ZitadelMonitoringComponent } from './components/zitadel-monitoring.js'
 import { RegionNames, Regions } from './region.js'
@@ -53,7 +49,6 @@ export interface GcpArgs {
 	 *  verifies the `ZITADEL-Signature` header against it. Present only when the
 	 *  Zitadel workload is provisioned. */
 	loginEventSigningKey?: pulumi.Output<string>
-	blockchainConfig?: BlockchainConfig
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
 	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
@@ -138,7 +133,6 @@ export class Gcp {
 			posthogProjectApiKey,
 			geminiSearchApiKey,
 			loginEventSigningKey,
-			blockchainConfig,
 			cloudflareConfig,
 			postmarkConfig,
 			zitadelMachineKey,
@@ -338,36 +332,6 @@ export class Gcp {
 								{
 									name: 'lastfm-api-key',
 									value: lastFmApiKey,
-								},
-							]
-						: []),
-					...(blockchainConfig?.deployerPrivateKey
-						? [
-								{
-									name: 'blockchain-deployer-private-key',
-									value: pulumi.secret(
-										blockchainConfig.deployerPrivateKey,
-									),
-								},
-							]
-						: []),
-					...(blockchainConfig?.rpcUrl
-						? [
-								{
-									name: 'blockchain-rpc-url',
-									value: pulumi.secret(
-										blockchainConfig.rpcUrl,
-									),
-								},
-							]
-						: []),
-					...(blockchainConfig?.bundlerApiKey
-						? [
-								{
-									name: 'blockchain-bundler-api-key',
-									value: pulumi.secret(
-										blockchainConfig.bundlerApiKey,
-									),
 								},
 							]
 						: []),

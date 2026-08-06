@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi'
 import type { CloudflareConfig } from './cloudflare/config.js'
 import type { Environment } from './config.js'
-import type { BlockchainConfig, GcpConfig } from './gcp/components/project.js'
+import type { GcpConfig } from './gcp/components/project.js'
 import { Gcp } from './gcp/index.js'
 import {
 	type BufConfig,
@@ -32,9 +32,6 @@ const posthogProjectApiKey = config.getSecret('posthogProjectApiKey')
 // fails fast when the env var is empty, so this secret SHALL be set in every
 // stack where the backend workload runs (dev / prod).
 const geminiSearchApiKey = config.getSecret('geminiSearchApiKey')
-const blockchainConfig = config.getObject('blockchain') as
-	| BlockchainConfig
-	| undefined
 const bufConfig = config.requireObject('buf') as BufConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
@@ -176,7 +173,6 @@ const gcp = new Gcp({
 	fanartTvApiKey,
 	posthogProjectApiKey,
 	geminiSearchApiKey,
-	blockchainConfig,
 	cloudflareConfig,
 	postmarkConfig,
 	zitadelMachineKey,

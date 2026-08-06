@@ -116,38 +116,13 @@ spec:
       consumer: "track-notification-delivered"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # ENTRY stream
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ENTRY"
-      consumer: "track-entry-verified"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ENTRY"
-      consumer: "track-entry-rejected"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # TICKET_JOURNEY / TICKET / TICKET_EMAIL streams
+  # TICKET_JOURNEY / TICKET_EMAIL streams
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "TICKET_JOURNEY"
       consumer: "track-ticket-journey"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "TICKET"
-      consumer: "track-ticket-mint"
       lagThreshold: "1"
       activationLagThreshold: "0"
   - type: nats-jetstream

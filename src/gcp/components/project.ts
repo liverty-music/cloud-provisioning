@@ -3,16 +3,6 @@ import * as pulumi from '@pulumi/pulumi'
 import type { Environment } from '../../config.js'
 import { ApiService } from '../services/api.js'
 
-/** Blockchain (EVM) configuration for smart contract interactions. */
-export interface BlockchainConfig {
-	/** Hex-encoded private key of the deployer EOA (holds MINTER_ROLE on TicketSBT). */
-	deployerPrivateKey?: string
-	/** JSON-RPC endpoint URL for the target EVM chain. */
-	rpcUrl?: string
-	/** ERC-4337 Bundler (Pimlico/Alchemy) API key. */
-	bundlerApiKey?: string
-}
-
 export interface GcpConfig {
 	organizationId: string
 	billingAccount: string
