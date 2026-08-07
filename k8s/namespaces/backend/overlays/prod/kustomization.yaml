@@ -13,8 +13,6 @@ kind: Kustomization
 #
 # Replicas: 1 (per design D8). Resource sizing matches dev exactly.
 #
-# IMPORTANT placeholders (replace before launch):
-#   - TICKET_SBT_ADDRESS (mainnet contract address)
 # Resolved 2026-05-15:
 #   - VAPID_PUBLIC_KEY → prod-specific value derived from the GSM
 #     `vapid-private-key` private scalar (see server/configmap.env note).
