@@ -61,6 +61,10 @@ export interface GcpArgs {
 	 *  Stored in Secret Manager and synced into the `zitadel` namespace via
 	 *  ExternalSecret (`zitadel-watchdog-probe-pat`), mounted into the CronJob. */
 	zitadelWatchdogProbePat?: pulumi.Output<string>
+	/** JWT profile JSON for the organizer-provisioner machine user. Stored in
+	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`) for the
+	 *  backend to provision Organizer tenant orgs at runtime. */
+	zitadelOrganizerProvisionerKey?: pulumi.Output<string>
 	/** Gate for the workload tier (GKE / Cloud SQL / monitoring / GSM
 	 *  Zitadel bootstrap secrets). When false (dev shutdown mode), these
 	 *  resources are not provisioned. See
@@ -138,6 +142,7 @@ export class Gcp {
 			zitadelMachineKey,
 			zitadelLoginPat,
 			zitadelWatchdogProbePat,
+			zitadelOrganizerProvisionerKey,
 			workloadEnabled,
 			postgresAvailabilityType,
 		} = args
@@ -408,6 +413,21 @@ export class Gcp {
 								{
 									name: 'zitadel-machine-key-for-backend-app',
 									value: pulumi.secret(zitadelMachineKey),
+								},
+							]
+						: []),
+					// JWT key for the organizer-provisioner machine user — the
+					// backend reads it to provision Organizer tenant orgs at
+					// runtime. Backend-tier readable (same path as backend-app),
+					// but a distinct GSM secret + Zitadel identity so its blast
+					// radius stays isolated. See OpenSpec change `organizer-tenancy`.
+					...(zitadelOrganizerProvisionerKey
+						? [
+								{
+									name: 'zitadel-machine-key-for-organizer-provisioner',
+									value: pulumi.secret(
+										zitadelOrganizerProvisionerKey,
+									),
 								},
 							]
 						: []),
