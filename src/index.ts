@@ -162,6 +162,7 @@ const zitadel = workloadEnabled
 const zitadelMachineKey = zitadel?.machineKeyDetails
 const zitadelLoginPat = zitadel?.loginClientToken
 const zitadelWatchdogProbePat = zitadel?.watchdogProbeToken
+const zitadelOrganizerProvisionerKey = zitadel?.organizerProvisionerKeyDetails
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
@@ -178,6 +179,7 @@ const gcp = new Gcp({
 	zitadelMachineKey,
 	zitadelLoginPat,
 	zitadelWatchdogProbePat,
+	zitadelOrganizerProvisionerKey,
 	// HMAC signing key Zitadel generated for the login-event Target
 	// (PAYLOAD_TYPE_JSON). Plumbed to the backend as GSM secret
 	// `webhook-login-event-signing-key` so the login-event handler can verify
@@ -378,3 +380,13 @@ export const adminConsoleClientId: string | pulumi.Output<string> =
 	zitadel?.adminConsole.application.clientId ?? DEV_SHUTDOWN_SENTINEL
 export const adminOrgId: string | pulumi.Output<string> =
 	zitadel?.adminOrg.id ?? DEV_SHUTDOWN_SENTINEL
+
+// Organizer console OIDC client_id — the shared client the organizer console
+// SPA will bake into its bundle at build time (consumed by the later
+// `organizer-console` change). The product-org id is already exported above as
+// `productOrgId` (the console authenticates operators in their own tenant org,
+// but the OIDC app is owned by the product org). Same `DEV_SHUTDOWN_SENTINEL`
+// fallback contract as the other Zitadel exports. See OpenSpec change
+// `organizer-tenancy`.
+export const organizerConsoleClientId: string | pulumi.Output<string> =
+	zitadel?.organizerConsole.application.clientId ?? DEV_SHUTDOWN_SENTINEL

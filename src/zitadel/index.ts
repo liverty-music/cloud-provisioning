@@ -16,6 +16,8 @@ import { GoogleAdminIdpComponent } from './components/google-admin-idp.js'
 import { HumanAdminComponent } from './components/human-admin.js'
 import { LoginClientComponent } from './components/login-client.js'
 import { MachineUserComponent } from './components/machine-user.js'
+import { OrganizerConsoleComponent } from './components/organizer-console.js'
+import { OrganizerProvisionerComponent } from './components/organizer-provisioner.js'
 import { SmtpComponent } from './components/smtp.js'
 import { WatchdogProbeComponent } from './components/watchdog-probe.js'
 import {
@@ -72,6 +74,8 @@ export * from './components/google-admin-idp.js'
 export * from './components/human-admin.js'
 export * from './components/login-client.js'
 export * from './components/machine-user.js'
+export * from './components/organizer-console.js'
+export * from './components/organizer-provisioner.js'
 export * from './components/secrets.js'
 export * from './components/smtp.js'
 export * from './components/watchdog-probe.js'
@@ -196,6 +200,18 @@ export class Zitadel {
 
 	/** Watchdog probe machine user + PAT for the self-healing CronJob. */
 	public readonly watchdogProbe: WatchdogProbeComponent
+
+	/** Shared `organizer-console` project (`owner` role + OIDC/API apps) in
+	 *  the product org, the static scaffolding for the Organizer B2B tenancy. */
+	public readonly organizerConsole: OrganizerConsoleComponent
+
+	/** Dedicated `organizer-provisioner` machine user (IAM_ORG_MANAGER) used by
+	 *  the backend to provision Organizer tenant orgs at runtime. */
+	public readonly organizerProvisioner: OrganizerProvisionerComponent
+
+	/** JWT profile JSON for the organizer-provisioner machine user. Store in
+	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`). */
+	public readonly organizerProvisionerKeyDetails: pulumi.Output<string>
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
@@ -325,6 +341,18 @@ export class Zitadel {
 			{ provider: this.provider },
 		)
 
+		// Topology invariant — no third IaC-managed org. Pulumi declares
+		// exactly these two `zitadel.Org` resources (`admin`, `liverty-music`)
+		// and NEVER enumerates the instance's orgs (no `getOrgs` data source, no
+		// import of any other org). Runtime-provisioned Organizer tenant orgs
+		// (one per vetted Organizer, created out-of-band via the Zitadel
+		// Management API by the `organizer-provisioner` machine user) are
+		// therefore invisible to Pulumi state — they are neither reconciled nor
+		// reverted on `pulumi up`, so they are not drift. Adding an org-listing
+		// data source here would break this guarantee. See the
+		// `identity-management` "No third org" scenario and OpenSpec change
+		// `organizer-tenancy`.
+
 		this.project = new zitadel.Project(
 			name,
 			{
@@ -453,6 +481,34 @@ export class Zitadel {
 		})
 
 		this.watchdogProbeToken = this.watchdogProbe.token
+
+		// Organizer B2B tenancy scaffolding — the shared `organizer-console`
+		// project (its `owner` role + OIDC/API apps) owned by the product org.
+		// It is Project-Granted to each Organizer tenant org at runtime (the
+		// grant is NOT IaC-managed). Only the static project/role/apps live
+		// here; per-tenant orgs, grants, and login policy are the runtime
+		// concern of the later `organizer-accounts` change. See OpenSpec change
+		// `organizer-tenancy`.
+		this.organizerConsole = new OrganizerConsoleComponent(name, {
+			env,
+			productOrgId: this.productOrg.id,
+			provider: this.provider,
+		})
+
+		// Dedicated provisioner machine user (IAM_ORG_MANAGER at instance
+		// level) — the credential the backend uses at runtime to create
+		// Organizer tenant orgs and their cross-org Project/User Grants.
+		// Isolated from the single-org `backend-app` user for blast-radius
+		// control. Its JWT key flows to GSM
+		// (`zitadel-machine-key-for-organizer-provisioner`) via the parent
+		// stack, mirroring `machineKeyDetails`.
+		this.organizerProvisioner = new OrganizerProvisionerComponent(name, {
+			orgId: this.productOrg.id,
+			provider: this.provider,
+		})
+
+		this.organizerProvisionerKeyDetails =
+			this.organizerProvisioner.keyDetails
 
 		// Instance-level Google IdP for human admin sign-in. The admin org's
 		// LoginPolicy below references this IdP id; the product org's policy
