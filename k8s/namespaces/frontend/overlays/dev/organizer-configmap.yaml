@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: organizer-app-runtime-config
+data:
+  # Organizer console dev runtime config served at the organizer pod's
+  # /config.json. Same contract as the prod organizer ConfigMap — loaded with
+  # `requireOrgId: false`, so it OMITS a fixed zitadelOrgId (the tenant org is
+  # pinned per session by org-pinned entry).
+  #
+  # zitadelClientId is a PENDING placeholder: the dev Zitadel workload is
+  # intentionally stopped (DEV_SHUTDOWN, workloadEnabled=false), so the dev
+  # organizer-console ApplicationOidc client id is not currently resolvable.
+  # The organizer bootstrap fails closed on a `PENDING_` client id (pointing the
+  # operator here rather than at an opaque IdP `invalid_client`). When the dev
+  # environment is restored, fill this from
+  # `pulumi stack output organizerConsoleClientId --stack dev`.
+  config.json: |
+    {
+      "environment": "dev",
+      "apiBaseUrl": "https://api.organizer.dev.liverty-music.app",
+      "zitadelIssuer": "https://auth.dev.liverty-music.app",
+      "zitadelClientId": "PENDING_PULUMI_UP_ORGANIZER_CLIENT_ID",
+      "vapidPublicKey": "BNg-zJP4IiX11Cz1dghWll0mwBnMV6oeOSSVsYyOK2l8NFAqN9xHFSTS_W3_oXO4k3BlMyYLjkMUE-uA7LABGHo",
+      "previewArtistIds": [],
+      "previewArtistNames": [],
+      "logLevel": "debug"
+    }

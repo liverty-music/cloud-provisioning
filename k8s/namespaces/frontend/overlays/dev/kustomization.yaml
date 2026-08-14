@@ -3,7 +3,12 @@ kind: Kustomization
 
 resources:
 - ../../base
+# Organizer console workload — dev sibling of web/ in the frontend namespace.
+# The Spot VM patch targets `kind: Deployment`, so it applies to the organizer
+# Deployment automatically. See OpenSpec change `organizer-console`.
+- ../../base/organizer
 - configmap.yaml
+- organizer-configmap.yaml
 
 namespace: frontend
 
@@ -34,6 +39,28 @@ patches:
                 cpu: 100m
                 memory: 128Mi
 
+# Right-size the organizer console for dev (match the consumer web sizing).
+- target:
+    kind: Deployment
+    name: organizer-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: organizer-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: caddy
+            resources:
+              requests:
+                cpu: 10m
+                memory: 52Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+
 # Patch HTTPRoute hostname for dev environment
 - target:
     kind: HTTPRoute
@@ -42,3 +69,12 @@ patches:
     - op: add
       path: /spec/hostnames
       value: ["dev.liverty-music.app"]
+
+# Dev organizer HTTPRoute hostname.
+- target:
+    kind: HTTPRoute
+    name: organizer-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["organizer.dev.liverty-music.app"]

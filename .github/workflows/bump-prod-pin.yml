@@ -26,13 +26,14 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: 'Component to bump (backend, frontend, or frontend-admin)'
+        description: 'Component to bump (backend, frontend, frontend-admin, or frontend-organizer)'
         required: true
         type: choice
         options:
           - backend
           - frontend
           - frontend-admin
+          - frontend-organizer
       tag:
         description: 'Release tag to pin (vX.Y.Z)'
         required: true
@@ -101,9 +102,9 @@ jobs:
           echo "Trigger: ${{ github.event_name }}; component=${COMPONENT} tag=${TAG} sha=${SHA}"
 
           case "${COMPONENT}" in
-            backend|frontend|frontend-admin) ;;
+            backend|frontend|frontend-admin|frontend-organizer) ;;
             *)
-              echo "::error::Invalid component '${COMPONENT}' — must be 'backend', 'frontend', or 'frontend-admin'."
+              echo "::error::Invalid component '${COMPONENT}' — must be 'backend', 'frontend', 'frontend-admin', or 'frontend-organizer'."
               exit 1
               ;;
           esac
@@ -121,12 +122,13 @@ jobs:
           # Bare semver (no leading `v`) for the app.kubernetes.io/version label.
           BARE="${TAG#v}"
 
-          # Per-component routing. `frontend-admin` is the admin console image: it
-          # SHARES the `frontend` kustomize overlay + prod-AR repo with the
-          # consumer, but bumps ONLY its own `admin-app` image entry and does NOT
-          # move the consumer's `app.kubernetes.io/version` label — so admin and
-          # consumer pins advance independently within the one overlay. `frontend`
-          # conversely edits only `web-app`, never the admin entry.
+          # Per-component routing. `frontend-admin` / `frontend-organizer` are the
+          # admin / organizer console images: each SHARES the `frontend` kustomize
+          # overlay + prod-AR repo with the consumer, but bumps ONLY its own image
+          # entry (`admin-app` / `organizer-app`) and does NOT move the consumer's
+          # `app.kubernetes.io/version` label — so the consoles and the consumer
+          # pins advance independently within the one overlay. `frontend`
+          # conversely edits only `web-app`, never a console entry.
           case "${COMPONENT}" in
             backend)
               OVERLAY=backend; AR_REPO=backend
@@ -139,6 +141,10 @@ jobs:
             frontend-admin)
               OVERLAY=frontend; AR_REPO=frontend
               IMAGES="admin-app"
+              BUMP_LABEL=false ;;
+            frontend-organizer)
+              OVERLAY=frontend; AR_REPO=frontend
+              IMAGES="organizer-app"
               BUMP_LABEL=false ;;
           esac
 

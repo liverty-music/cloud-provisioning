@@ -14,8 +14,15 @@ resources:
   # the `admin-app` image pin below are both v1.11.0. See OpenSpec change
   # `add-admin-console`.
   - ../../base/admin
+  # Organizer console workload — prod sibling of web/ and admin/ in the frontend
+  # namespace. The Spot VM patch targets `kind: Deployment`, so it applies to the
+  # organizer Deployment automatically; the `app.kubernetes.io/version` label and
+  # the `organizer-app` image pin below track the frontend release. See OpenSpec
+  # change `organizer-console`.
+  - ../../base/organizer
   - configmap.yaml
   - admin-configmap.yaml
+  - organizer-configmap.yaml
 namespace: frontend
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource. Value SHALL be the bare semver without the leading `v`
@@ -73,6 +80,14 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["admin.liverty-music.app"]
+  # Prod organizer HTTPRoute hostname.
+  - target:
+      kind: HTTPRoute
+      name: organizer-route
+    patch: |-
+      - op: add
+        path: /spec/hostnames
+        value: ["organizer.liverty-music.app"]
 # Pin the web-app image to prod Artifact Registry with an immutable
 # semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags` +
 # the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -118,3 +133,11 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-app
     newTag: v1.45.1 # commit e18b9c424a984bad205701d180ab352c68ddd9ae
+  # Organizer console image. First pinned at v1.46.0 — the first frontend release
+  # that built and promoted `organizer-app` to prod AR (the build job
+  # `build-and-push-organizer` shipped with the `organizer-console` change). From
+  # here on, like admin-app, a subsequent consumer pin-bump that rewrites every
+  # newTag resolves because every release promotes organizer-app to prod AR.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-app
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-app
+    newTag: v1.46.0 # commit 0638e32a6aa584b97266e09cf0ba6679c01d5623
