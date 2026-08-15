@@ -32,7 +32,7 @@ export interface OrganizerProvisionerComponentArgs {
  * from `backend-app`. This resolves the design's Open Question on the exact
  * role. See OpenSpec change `organizer-tenancy`, design D3.
  *
- * ## Credential — finite root key (operational tokens are already short-lived)
+ * ## Credential — immutable root key (operational tokens are already short-lived)
  *
  * A JSON MachineKey (JWT profile) is created and exposed as `keyDetails`; the
  * caller stores it in GCP Secret Manager (never logs it). The backend
@@ -43,15 +43,23 @@ export interface OrganizerProvisionerComponentArgs {
  * user — there is no long-lived opaque bearer / PAT stored and nothing bespoke
  * to build.
  *
- * The security delta over the existing `backend-app` "expires 2099" pattern is
- * therefore the **root key's own lifecycle**: because this identity is
- * high-privilege, its key carries a **finite expiry** (not year-2099) so it
- * cannot live forever if leaked. There is no automated rotation yet, so a
- * documented rotation runbook is the compensating control — authored in
- * `organizer-accounts`, where the key is first consumed (design D3). Automated
- * rotation / workload-identity federation is the target end-state. The finite
- * expiry is deliberately comfortable (rotation cadence, not a surprise
- * outage) — rotate before it.
+ * The key itself is **effectively non-expiring** (far-future date), matching the
+ * `backend-app` key. A finite expiry was considered to bound leak exposure, but
+ * Zitadel machine keys (JWT profile) have **no native auto-rotation** and no
+ * keyless (workload-identity-federation) alternative for machine users, so a
+ * finite expiry would force **manual** rotation — a "silent breakage on day N"
+ * outage the moment a rotation is missed. That operational time bomb is strictly
+ * worse than the residual risk of a long-lived key here, which is contained by
+ * three compensating controls:
+ *   1. GCP-layer least privilege — the key's GSM secret grants `secretAccessor`
+ *      to a single dedicated GSA (`admin-console-api`); `backend-app` cannot read
+ *      it. Only the isolated admin workload can load it. (organizer-accounts.)
+ *   2. Operational tokens are already short-lived (30m access tokens via the
+ *      jwt-bearer flow) — the stored root key is never sent to APIs directly.
+ *   3. Instant revocation — if the key leaks, force-replacing this MachineKey
+ *      (a one-line change here) re-mints it and invalidates the old key.
+ * Automated rotation / workload-identity federation remains the target
+ * end-state; adopt it here if and when Zitadel supports it.
  */
 export class OrganizerProvisionerComponent extends pulumi.ComponentResource {
 	public readonly machineUser: zitadel.MachineUser
@@ -105,21 +113,21 @@ export class OrganizerProvisionerComponent extends pulumi.ComponentResource {
 			{ ...resourceOptions, dependsOn: [this.machineUser] },
 		)
 
-		// JSON MachineKey with a FINITE expiry (not year-2099) — see the
+		// JSON MachineKey, effectively non-expiring (far-future) — see the
 		// credential section of the component docstring. The backend
 		// authenticates with this key via the standard jwt-bearer flow (Zitadel
-		// issues short-lived access tokens); the finite root-key expiry bounds
-		// leak exposure and forces eventual rotation (runbook in
-		// organizer-accounts, no automation yet).
+		// issues short-lived access tokens). Zitadel machine keys have no native
+		// rotation, so a finite expiry would force manual rotation (an outage
+		// time bomb); the powerful root key is instead contained by GCP-layer
+		// isolation (sole reader is the admin-console-api GSA) + short-lived
+		// operational tokens + instant force-replace revocation.
 		this.machineKey = new zitadel.MachineKey(
 			'machine-key-for-organizer-provisioner',
 			{
 				orgId,
 				userId: this.machineUser.id,
 				keyType: 'KEY_TYPE_JSON',
-				// ~1 year from this change (2026-08). Rotate before expiry per the
-				// runbook; revisit once automated rotation / WIF lands.
-				expirationDate: '2027-08-13T00:00:00Z',
+				expirationDate: '2099-01-01T00:00:00Z',
 			},
 			{ ...resourceOptions, dependsOn: [this.machineUser] },
 		)

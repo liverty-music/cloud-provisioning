@@ -390,3 +390,11 @@ export const adminOrgId: string | pulumi.Output<string> =
 // `organizer-tenancy`.
 export const organizerConsoleClientId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.application.clientId ?? DEV_SHUTDOWN_SENTINEL
+
+// Organizer console Zitadel project id — the backend admin workload
+// (admin-console-api) needs this to grant each newly provisioned operator org
+// access to the organizer-console project (via a runtime User Grant) during
+// Organizer tenant provisioning. Same `DEV_SHUTDOWN_SENTINEL` fallback contract
+// as the other Zitadel exports. See OpenSpec change `organizer-accounts`.
+export const organizerConsoleProjectId: string | pulumi.Output<string> =
+	zitadel?.organizerConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
