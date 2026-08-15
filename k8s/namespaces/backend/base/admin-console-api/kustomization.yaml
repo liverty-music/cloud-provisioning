@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- serviceaccount.yaml
+- deployment.yaml
+- service.yaml
+- health-check-policy.yaml
+- httproute.yaml
+- external-secret.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+# Sub-base-scoped `app: admin-console-api` label (with selector). This is the
+# selector-isolation boundary: the label only applies to resources in THIS
+# sub-base, so admin-console-api Pods/Service never inherit the `server/`
+# sub-base's `app: server`, and vice versa.
+labels:
+- includeSelectors: true
+  pairs:
+    app: admin-console-api
+
+# Same image as server-app (single binary). Mirrors server/kustomization.yaml so
+# the prod overlay's `images:` rewrite (matching the dev-AR `server` name) also
+# pins this workload to the prod AR + semver tag.
+images:
+- name: server
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
+  newTag: latest

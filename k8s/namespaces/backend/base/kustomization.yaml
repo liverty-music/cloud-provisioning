@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
 - serviceaccount.yaml
 - server
+- admin-console-api
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
 - cronjob/merch-discovery

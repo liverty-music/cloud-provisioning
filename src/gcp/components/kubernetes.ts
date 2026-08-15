@@ -187,6 +187,28 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		// Bind Kubernetes Service Account to Workload Identity
 		iamSvc.bindKubernetesSaUser(backendApp, backendAppSa, namespace, this)
 
+		// 2b. Admin Console API Service Account (admin-console-api)
+		// A dedicated backend admin workload, isolated from the shared backend-app
+		// SA, so that the powerful Zitadel organizer-provisioner key (which confers
+		// IAM_ORG_MANAGER: instance-wide org create + cross-org grants) can be read
+		// by this workload alone. Keeping it off backend-app shrinks the blast
+		// radius if the general application tier is compromised.
+		const adminConsoleApi = 'admin-console-api'
+		const adminConsoleApiSa = iamSvc.createServiceAccount(
+			`liverty-music-${adminConsoleApi}`,
+			adminConsoleApi,
+			'Liverty Music Admin Console API Service Account',
+			'Isolated backend admin workload that provisions Organizer tenants at runtime; sole reader of the IAM_ORG_MANAGER provisioner key',
+			this,
+		)
+		// Bind Kubernetes Service Account to Workload Identity (ns/backend/sa/admin-console-api)
+		iamSvc.bindKubernetesSaUser(
+			adminConsoleApi,
+			adminConsoleApiSa,
+			namespace,
+			this,
+		)
+
 		// External Secrets Operator Service Account
 		// Uses pod identity (ADC): ESO controller pod authenticates directly via its own GCP SA.
 		// This avoids sharing the backend-app SA with the cluster-wide ESO operator.
@@ -232,13 +254,26 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				},
 				{ parent: this },
 			)
+			// Isolate the Zitadel organizer-provisioner key to the dedicated
+			// admin-console-api SA: this key grants IAM_ORG_MANAGER (instance-wide
+			// org create + cross-org grants), so only the backend admin workload —
+			// not the shared backend-app tier — may read it. All other secrets stay
+			// readable by backend-app.
+			const isProvisionerKey =
+				secret.name === 'zitadel-machine-key-for-organizer-provisioner'
+			const appAccessorSa = isProvisionerKey
+				? adminConsoleApiSa
+				: backendAppSa
+			const appAccessorSuffix = isProvisionerKey
+				? 'admin-console-api-accessor'
+				: 'backend-app-accessor'
 			new gcp.secretmanager.SecretIamMember(
-				`${secret.name}-backend-app-accessor`,
+				`${secret.name}-${appAccessorSuffix}`,
 				{
 					secretId: secretResource.secretId,
 					project: project.projectId,
 					role: Roles.SecretManager.SecretAccessor,
-					member: pulumi.interpolate`serviceAccount:${backendAppSa.email}`,
+					member: pulumi.interpolate`serviceAccount:${appAccessorSa.email}`,
 				},
 				{ parent: this },
 			)

@@ -159,3 +159,21 @@ spec:
       consumer: "log-poison"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # ORGANIZER stream — organizer lifecycle analytics (organizer.created,
+  # organizer.artist.associated). See backend messaging.behaviorTable.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORGANIZER"
+      consumer: "analytics-organizer-created"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORGANIZER"
+      consumer: "analytics-organizer-artist-associated"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
