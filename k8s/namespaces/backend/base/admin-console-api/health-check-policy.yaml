@@ -1,7 +1,7 @@
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
-  name: server-admin-policy
+  name: admin-console-api-policy
 spec:
   default:
     config:
@@ -11,4 +11,4 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: server-admin-svc # Referenced via kustomizeconfig.yaml 'nameReference'
+    name: admin-console-api-svc # Referenced via kustomizeconfig.yaml 'nameReference'

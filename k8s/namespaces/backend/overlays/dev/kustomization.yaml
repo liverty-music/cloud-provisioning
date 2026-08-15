@@ -14,6 +14,12 @@ patches:
     kind: ServiceAccount
     name: backend-app
 
+# Bind KSA admin-console-api to its dedicated dev GSA (Workload Identity).
+- path: serviceaccount_admin_console_api_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: admin-console-api
+
 # Global Spot VM patch for all Deployments in dev
 - path: spot-vm_patch.yaml
   target:
@@ -57,6 +63,39 @@ patches:
               limits:
                 cpu: 200m
                 memory: 256Mi
+
+# Reduce replicas to 1 for admin-console-api in dev (low-volume admin traffic).
+- target:
+    kind: Deployment
+    name: admin-console-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: admin-console-api
+    spec:
+      replicas: 1
+
+# Env-specific ORGANIZER_CONSOLE_PROJECT_ID for admin-console-api ONLY (scoped
+# to this Deployment's container env so it never leaks into server-app). Value
+# is the Pulumi stack output `organizerConsoleProjectId` — MUST be filled from
+# the Pulumi output before deploy (dev env intentionally stopped).
+- target:
+    kind: Deployment
+    name: admin-console-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: admin-console-api
+    spec:
+      template:
+        spec:
+          containers:
+          - name: server
+            env:
+            - name: ORGANIZER_CONSOLE_PROJECT_ID
+              value: REPLACE_ME_FROM_PULUMI_ORGANIZER_CONSOLE_PROJECT_ID
 
 - target:
     kind: HTTPRoute

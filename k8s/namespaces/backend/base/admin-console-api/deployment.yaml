@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-console-api
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      # `app: admin-console-api` (with selector) is applied by this sub-base's
+      # own `labels` transformer in kustomization.yaml — it does NOT inherit the
+      # `server/` sub-base's `app: server`. This is the selector-isolation
+      # mechanism: admin-console-api Pods never carry `app: server`, so the
+      # consumer `server-svc` / `server-webhook-svc` (selector `app: server`)
+      # can never route to them, and `admin-console-api-svc` (selector
+      # `app: admin-console-api`) routes ONLY to these Pods.
+    spec:
+      terminationGracePeriodSeconds: 75
+      serviceAccountName: admin-console-api
+      volumes:
+      # Regular backend key from the SHARED backend-secrets — the same binary's
+      # DI initializes the backend-app Zitadel client from it, so it must be
+      # mounted here exactly like server-app.
+      - name: zitadel-machine-key
+        secret:
+          secretName: backend-secrets
+          items:
+          - key: zitadel-machine-key-for-backend-app.json
+            path: zitadel-machine-key-for-backend-app.json
+      # Powerful organizer-provisioner key from the DEDICATED admin-console-secrets
+      # (not co-mingled into backend-secrets that server-app mounts). Presence of
+      # this mount + ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH is what
+      # activates the provisioner in this process (server-app leaves it Noop).
+      - name: zitadel-organizer-provisioner-key
+        secret:
+          secretName: admin-console-secrets
+          items:
+          - key: zitadel-machine-key-for-organizer-provisioner.json
+            path: zitadel-machine-key-for-organizer-provisioner.json
+      containers:
+      - name: server
+        image: server
+        imagePullPolicy: Always
+        ports:
+        # The single backend binary always starts the main (8080), admin (8090),
+        # and webhook (9090) listeners. Declare 8080 so the pod boots healthy on
+        # the main listener, and 8090 (admin) — the ONLY port routed for this
+        # workload via admin-console-api-svc.
+        - containerPort: 8080
+          name: http
+        - containerPort: 8090
+          name: http-admin
+        env:
+        # Activates the organizer provisioner in THIS process only.
+        - name: ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH
+          value: /secrets/zitadel-organizer-provisioner/zitadel-machine-key-for-organizer-provisioner.json
+        # Env-specific Zitadel project the provisioner grants tenant orgs into.
+        # Value is a Pulumi output (organizerConsoleProjectId); set per overlay.
+        - name: ORGANIZER_CONSOLE_PROJECT_ID
+          value: REPLACE_ME_IN_OVERLAY
+        envFrom:
+        - configMapRef:
+            name: server-config
+        - secretRef:
+            name: backend-secrets
+        volumeMounts:
+        - name: zitadel-machine-key
+          mountPath: /secrets/zitadel
+          readOnly: true
+        - name: zitadel-organizer-provisioner-key
+          mountPath: /secrets/zitadel-organizer-provisioner
+          readOnly: true
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
+        readinessProbe:
+          grpc:
+            port: 8090
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          grpc:
+            port: 8090
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi

@@ -1,6 +1,10 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
+  # Name is intentionally KEPT as `server-admin-route` (not renamed to match the
+  # workload) so the existing per-overlay hostname patches — which target
+  # `HTTPRoute name: server-admin-route` — keep applying unchanged. Only the
+  # backend was migrated: backendRefs now point at admin-console-api-svc.
   name: server-admin-route
 spec:
   # Shares the external gateway with the consumer API route; hostnames
@@ -10,5 +14,5 @@ spec:
     namespace: gateway
   rules:
   - backendRefs:
-    - name: server-admin-svc
+    - name: admin-console-api-svc
       port: 80
