@@ -47,6 +47,9 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly consumerBacklogAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
+	public readonly webPushDeliveryFailureMetric: gcp.logging.Metric
+	public readonly webPushDeliveryFailureAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly webPushSubscriptionStarvationAlertPolicy: gcp.monitoring.AlertPolicy
 
 	constructor(
 		name: string,
@@ -410,6 +413,183 @@ jsonPayload.msg="sales_reminder delivery outcome"`,
 			},
 			{ parent: this },
 		)
+
+		// Web Push delivery-failure metric.
+		//
+		// New-concert push notifications silently stopped reaching every follower
+		// for ~2 weeks (2026-07-29 → 2026-08-13) because delivery failures were
+		// recorded only in the database — never as a log, metric, or alert. The
+		// backend now emits one WARNING `notification delivery failed` log line per
+		// failed delivery, carrying a bounded `failure_reason` label (no_subscription
+		// / gone / send_error / list_failed / marshal_failed / cancelled). This
+		// log-based metric counts those lines, keyed by failure_reason.
+		//
+		// Deliberately log-based, not a raw OTEL counter: the OTLP collector drops
+		// some server metrics for cost, and a not-yet-ingested metric 400s the whole
+		// prod `pulumi up`. A log-based metric's descriptor is created with this
+		// resource, so it exists immediately (zero data is fine) and the threshold
+		// alerts below never hit the missing-metric failure mode. The delivery runs
+		// in the backend messaging consumer, so the filter is scoped to `backend`.
+		this.webPushDeliveryFailureMetric = new gcp.logging.Metric(
+			'log-metric-web-push-delivery-failures',
+			{
+				project: projectId,
+				name: 'web_push_delivery_failures',
+				description:
+					'Web Push per-notification delivery failures, keyed by bounded failure_reason. Counts the backend WARNING "notification delivery failed" log so a systemic push outage is detectable without querying the notifications table.',
+				filter: pulumi.interpolate`resource.type="k8s_container"
+resource.labels.project_id="${projectId}"
+resource.labels.location="${clusterLocation}"
+resource.labels.cluster_name="${clusterName}"
+resource.labels.namespace_name="backend"
+severity="WARNING"
+jsonPayload.msg="notification delivery failed"`,
+				metricDescriptor: {
+					metricKind: 'DELTA',
+					valueType: 'INT64',
+					unit: '1',
+					labels: [
+						{
+							key: 'failure_reason',
+							valueType: 'STRING',
+							description:
+								'no_subscription | gone | send_error | list_failed | marshal_failed | cancelled',
+						},
+					],
+				},
+				labelExtractors: {
+					failure_reason: 'EXTRACT(jsonPayload.failure_reason)',
+				},
+			},
+			{ parent: this },
+		)
+
+		// Sustained delivery-failure alert.
+		//
+		// Fires when delivery failures accumulate over a 10-minute window across all
+		// failure reasons. Because the success path is intentionally quiet (it logs
+		// nothing), a predominantly-`delivered` window produces no matching logs and
+		// the metric stays at zero — so healthy delivery never alerts, while a
+		// systemic inability to deliver climbs the counter fast. The threshold
+		// doubles as the minimum-volume guard: it takes a sustained batch of
+		// failures (not one stray `gone`) to trip, avoiding noise at low pre-launch
+		// volume. Threshold/window are tunable operationally; start conservative.
+		this.webPushDeliveryFailureAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-web-push-delivery-failure',
+			{
+				displayName: 'Web Push Delivery Failure Rate',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'Push delivery failures >= 10 per 10m window',
+						conditionThreshold: {
+							filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${this.webPushDeliveryFailureMetric.name}" AND resource.type="k8s_container"`,
+							aggregations: [
+								{
+									alignmentPeriod: '600s', // 10 min
+									perSeriesAligner: 'ALIGN_DELTA',
+									crossSeriesReducer: 'REDUCE_SUM',
+								},
+							],
+							comparison: 'COMPARISON_GT',
+							thresholdValue: 10,
+							duration: '0s',
+							trigger: { count: 1 },
+						},
+					},
+				],
+				alertStrategy: {
+					// The GCP API rejects `notificationRateLimit` on
+					// `conditionThreshold` policies even when the metric is
+					// log-derived; the 10m alignment window is the debounce.
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Web Push Delivery Failure Rate Alert',
+						'',
+						'Web Push notification deliveries are failing at a sustained rate (>= 10 failures in a 10-minute window). Notifications are being generated but not reaching users.',
+						'',
+						'This is the safety net for the 2026-07/08 silent push-outage class: delivery failures used to live only in the DB and went unnoticed for ~2 weeks.',
+						'',
+						'### Alert Labels',
+						'- `failure_reason`: dominant failure category (no_subscription / gone / send_error / list_failed / marshal_failed / cancelled)',
+						'',
+						'### Triage Steps',
+						'1. Break down by reason: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="backend" AND severity="WARNING" AND jsonPayload.msg="notification delivery failed"\' --limit=50` and inspect `failure_reason` / `failure_detail`.',
+						'2. If dominated by `no_subscription`, the `Web Push Subscription Starvation` alert should also fire — clients have lost their subscriptions (see that alert).',
+						'3. If `send_error`, the web-push send path or VAPID config may be broken — check the backend `server`/`consumer` ERROR logs for the underlying send error.',
+						'4. If `gone`, endpoints are being reaped normally; a spike may indicate a mass client churn event.',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(this.webPushDeliveryFailureAlertPolicy)
+
+		// Active-subscription starvation alert.
+		//
+		// A complementary signal to the ratio alert: it fires specifically when
+		// failures are dominated by `no_subscription` — i.e. notifications are being
+		// generated but essentially no active push subscriptions exist to receive
+		// them. This is the exact shape of the original outage (every send
+		// "completed" as a recorded failure with no endpoint), which a pure
+		// send-error alert would miss. Scoped to the `no_subscription` reason label
+		// with a lower threshold so a mass subscription loss is caught even at low
+		// absolute counts.
+		this.webPushSubscriptionStarvationAlertPolicy =
+			new gcp.monitoring.AlertPolicy(
+				'alert-web-push-subscription-starvation',
+				{
+					displayName: 'Web Push Subscription Starvation',
+					project: projectId,
+					combiner: 'OR',
+					conditions: [
+						{
+							displayName:
+								'no_subscription failures >= 5 per 10m window',
+							conditionThreshold: {
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${this.webPushDeliveryFailureMetric.name}" AND resource.type="k8s_container" AND metric.labels.failure_reason="no_subscription"`,
+								aggregations: [
+									{
+										alignmentPeriod: '600s', // 10 min
+										perSeriesAligner: 'ALIGN_DELTA',
+										crossSeriesReducer: 'REDUCE_SUM',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 5,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+					],
+					alertStrategy: {
+						autoClose: '3600s', // 1 hour
+					},
+					notificationChannels,
+					documentation: {
+						content: [
+							'## Web Push Subscription Starvation Alert',
+							'',
+							'Notifications are being generated but deliveries are failing because the targeted recipients have no active push subscription (`failure_reason="no_subscription"`). This indicates a mass subscription loss — the exact shape of the 2026-08 outage where every send "completed" as a recorded failure with no endpoint to deliver to.',
+							'',
+							'### Triage Steps',
+							'1. Confirm the client recovery paths shipped: the Service Worker `pushsubscriptionchange` handler and the main-thread auto re-subscribe should re-register lapsed clients on next app open.',
+							'2. Check whether `push_subscriptions` row count has collapsed (Cloud SQL) — a sudden drop points to a client-side regression (a bad frontend release, VAPID key mismatch, or SW update failure).',
+							'3. Verify the VAPID public key served at `/config.json` matches the backend `VAPID_PRIVATE_KEY` keypair; a mismatch prevents every re-subscribe.',
+							'4. As clients re-subscribe, the count should recover and this alert auto-closes.',
+						].join('\n'),
+						mimeType: 'text/markdown',
+					},
+				},
+				{ parent: this },
+			)
+		this.alertPolicies.push(this.webPushSubscriptionStarvationAlertPolicy)
 
 		this.registerOutputs({
 			alertPolicyCount: this.alertPolicies.length,
