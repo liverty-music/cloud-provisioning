@@ -132,7 +132,7 @@ images:
   # so the tag always resolves. See docs/runbooks/prod-image-tag-pinning.md.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-app
-    newTag: v1.47.0 # commit 1f88147ae04c6c8e5d82f437ce92efd46a4038b0
+    newTag: v1.49.0 # commit 581bc0ed37603cffa9481a40d8e3affb385f5e66
   # Organizer console image. First pinned at v1.46.0 — the first frontend release
   # that built and promoted `organizer-app` to prod AR (the build job
   # `build-and-push-organizer` shipped with the `organizer-console` change). From
