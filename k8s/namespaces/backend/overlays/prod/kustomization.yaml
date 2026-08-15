@@ -101,8 +101,9 @@ patches:
         replicas: 1
   # Env-specific ORGANIZER_CONSOLE_PROJECT_ID for admin-console-api ONLY (scoped
   # to this Deployment's container env so it never leaks into server-app). Value
-  # is the Pulumi stack output `organizerConsoleProjectId` — MUST be filled from
-  # the Pulumi output before deploy.
+  # is the Pulumi stack output `organizerConsoleProjectId` — the id of the shared
+  # organizer-console Zitadel project provisioned by `organizer-tenancy` (stable;
+  # this change only reads it).
   - target:
       kind: Deployment
       name: admin-console-api
@@ -118,7 +119,7 @@ patches:
             - name: server
               env:
               - name: ORGANIZER_CONSOLE_PROJECT_ID
-                value: REPLACE_ME_FROM_PULUMI_ORGANIZER_CONSOLE_PROJECT_ID
+                value: "386069101153353860"
   # Prod HTTPRoute hostname.
   - target:
       kind: HTTPRoute
