@@ -62,6 +62,13 @@ spec:
         # Value is a Pulumi output (organizerConsoleProjectId); set per overlay.
         - name: ORGANIZER_CONSOLE_PROJECT_ID
           value: REPLACE_ME_IN_OVERLAY
+        # Authenticate to Cloud SQL as this workload's OWN IAM DB user, not
+        # backend-app's. An explicit container `env` entry overrides the value
+        # supplied by `envFrom` (server-config, which carries the backend-app
+        # DATABASE_USER) — Kubernetes gives precedence to `env` over `envFrom`
+        # for the same key. Set per overlay to the admin-console-api IAM user.
+        - name: DATABASE_USER
+          value: REPLACE_ME_IN_OVERLAY
         envFrom:
         - configMapRef:
             name: server-config

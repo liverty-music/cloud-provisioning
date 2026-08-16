@@ -59,6 +59,14 @@ export interface PostgresComponentArgs {
 	 */
 	appServiceAccountEmail?: pulumi.Input<string>
 	/**
+	 * GCP Service Account email for the isolated admin-console-api workload.
+	 * When provided, a matching IAM SQL user is created so the admin backend
+	 * (which runs the same binary and connects via the Cloud SQL Go connector
+	 * with Workload Identity IAM auth) authenticates as its OWN IAM DB user
+	 * rather than backend-app's. Only meaningful when `workloadEnabled` is true.
+	 */
+	adminServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * GCP Service Account email for self-hosted Zitadel. When provided, a
 	 * dedicated `zitadel` database and matching IAM SQL user are created so
 	 * Zitadel can connect through Cloud SQL Auth Proxy with IAM authentication.
@@ -111,6 +119,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			pscEndpointIp,
 			dnsZoneName,
 			appServiceAccountEmail,
+			adminServiceAccountEmail,
 			zitadelServiceAccountEmail,
 			iamDatabaseUsers = [],
 			postgresAdminPassword,
@@ -326,6 +335,30 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				},
 				{ parent: this, dependsOn: [instance] },
 			)
+
+			// admin-console-api IAM SQL user — only when the admin SA exists.
+			// The isolated admin workload runs the same backend binary and
+			// connects through the in-process Cloud SQL Go connector with
+			// Workload Identity IAM auth, so it needs its OWN IAM DB user
+			// (admin-console-api@<project>.iam) to log in — it must not reuse
+			// backend-app's user. Same CLOUD_IAM_SERVICE_ACCOUNT pattern +
+			// email-minus-suffix transform as backend-app above.
+			if (adminServiceAccountEmail) {
+				const adminIamUserName = pulumi
+					.output(adminServiceAccountEmail)
+					.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+				new gcp.sql.User(
+					'admin-console-api',
+					{
+						name: adminIamUserName,
+						project: project.projectId,
+						instance: instance.name,
+						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+					},
+					{ parent: this, dependsOn: [instance] },
+				)
+			}
 
 			// Zitadel IAM SQL user — only when the Zitadel SA exists.
 			// Self-hosted Zitadel connects via Cloud SQL Auth Proxy with

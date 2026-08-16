@@ -120,6 +120,11 @@ patches:
               env:
               - name: ORGANIZER_CONSOLE_PROJECT_ID
                 value: "386069101153353860"
+              # Authenticate to Cloud SQL as admin-console-api's OWN IAM DB
+              # user (overrides the backend-app DATABASE_USER from server-config
+              # via envFrom). Matching IAM SQL user provisioned in postgres.ts.
+              - name: DATABASE_USER
+                value: "admin-console-api@liverty-music-prod.iam"
   # Prod HTTPRoute hostname.
   - target:
       kind: HTTPRoute
