@@ -526,6 +526,10 @@ export class Zitadel {
 			adminOrgId: this.adminOrg.id,
 			googleIdpId: this.googleAdminIdp.idp.id,
 			provider: this.provider,
+			// Environment-specific console URL (from the per-env Zitadel domain)
+			// so the admin-org LoginPolicy `defaultRedirectUri` lands on THIS
+			// environment's console — prod no longer redirects to the dev console.
+			consoleUrl: pulumi.interpolate`https://${domain}/ui/console`,
 		})
 
 		// Human admin user (pannpers@pannpers.dev) in the admin org, with
