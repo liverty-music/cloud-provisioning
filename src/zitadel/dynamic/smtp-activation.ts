@@ -55,9 +55,13 @@ interface SmtpActivationOutputs extends SmtpActivationInputs {
  * - `update()` is a no-op. Re-firing `_activate` would be a side effect
  *   without any state change, and there are no other inputs to update.
  * - `delete()` is a no-op. Removing the Pulumi resource record from state
- *   should not deactivate the upstream SMTP — drift handling is explicitly
- *   deferred per `cutover-warning-fixes` design D2.
- * - `read()` is a no-op returning current outputs unchanged.
+ *   should not deactivate the upstream SMTP.
+ * - `read()` is drift-detecting (self-healing): on `pulumi refresh` it queries
+ *   the live SMTP config's activation state and returns an empty `id` when the
+ *   config is missing or not ACTIVE, so a refreshing `up` recreates the resource
+ *   and `create()` re-activates. This closes the silent-outage gap where a
+ *   runtime loss of activation (rebuild/reset/out-of-band deactivation) that
+ *   leaves the Pulumi inputs unchanged would otherwise never be healed.
  */
 export const smtpActivationProvider: pulumi.dynamic.ResourceProvider = {
 	async create(
@@ -156,9 +160,51 @@ export const smtpActivationProvider: pulumi.dynamic.ResourceProvider = {
 		id: string,
 		state: SmtpActivationOutputs,
 	): Promise<pulumi.dynamic.ReadResult<SmtpActivationOutputs>> {
-		// No-op: there is no per-activation GET endpoint. Drift detection
-		// against `SmtpConfig.state == SMTP_CONFIG_ACTIVE` is explicitly
-		// deferred per design D2.
+		// Drift-detecting (self-healing) read. Zitadel v4 can silently drop SMTP
+		// out of the ACTIVE state — an instance rebuild/reset, or an out-of-band
+		// deactivation — WITHOUT changing this resource's Pulumi inputs, so an
+		// input-diff-based reconcile would never notice and the outage is
+		// permanent + invisible (the send API returns success, nothing logs).
+		// `read` runs on `pulumi refresh`: query the live activation state and,
+		// if the config is missing or not ACTIVE, return an empty `id` to signal
+		// the resource no longer exists. Pulumi then recreates it on the next
+		// `up`, and `create()` re-runs `_activate`. If it is ACTIVE, report the
+		// resource up-to-date so a steady-state refresh issues no redundant
+		// activation. (Self-healing therefore requires a refreshing apply:
+		// `pulumi up --refresh` or a refresh-enabled Pulumi Cloud deployment.)
+		const profile = JSON.parse(state.jwtProfileJson) as JwtProfile
+		const search = await zitadelApiCall({
+			domain: state.domain,
+			profile,
+			method: 'POST',
+			path: '/admin/v1/smtp/_search',
+			body: {},
+		})
+		if (search.statusCode < 200 || search.statusCode >= 300) {
+			throw new Error(
+				`Zitadel SearchSmtpConfigs failed during read (${search.statusCode}): ${search.body}`,
+			)
+		}
+		const configs =
+			(
+				JSON.parse(search.body) as {
+					result?: Array<{ id: string; state?: string }>
+				}
+			).result ?? []
+		if (configs.length > 1) {
+			// Same single-config assumption the `create` handler enforces.
+			throw new Error(
+				`Zitadel SearchSmtpConfigs returned ${configs.length} configs; ` +
+					'this provider workaround assumes exactly one SMTP config ' +
+					'per instance. Add a sender-address filter to disambiguate.',
+			)
+		}
+		const liveState = configs.length === 1 ? (configs[0].state ?? '') : ''
+		// Robust against enum-string variants: ACTIVE but not INACTIVE.
+		const isActive = /ACTIVE/.test(liveState) && !/INACTIVE/.test(liveState)
+		if (!isActive) {
+			return { id: '' }
+		}
 		return { id, props: state }
 	},
 }

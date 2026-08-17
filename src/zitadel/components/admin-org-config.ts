@@ -8,10 +8,12 @@ export interface AdminOrgConfigComponentArgs {
 	googleIdpId: pulumi.Input<string>
 	provider: zitadel.Provider
 	/** Per-environment Zitadel Console URL used as the `defaultRedirectUri`
-	 *  fallback when an OIDC AuthN arrives without an explicit redirect.
-	 *  Defaults to the dev URL for backwards compatibility with dev's
-	 *  existing call site; prod passes `https://auth.liverty-music.app/ui/console`. */
-	consoleUrl?: pulumi.Input<string>
+	 *  where a context-less login lands. REQUIRED and environment-specific
+	 *  (`https://<zitadel-domain>/ui/console`) — there is deliberately no
+	 *  default, so no environment can silently inherit another's console (the
+	 *  prod-redirects-to-dev-console defect). Prod passes
+	 *  `https://auth.liverty-music.app/ui/console`; dev passes its own. */
+	consoleUrl: pulumi.Input<string>
 }
 
 /**
@@ -56,12 +58,10 @@ export class AdminOrgConfigComponent extends pulumi.ComponentResource {
 
 		const { adminOrgId, googleIdpId, provider, consoleUrl } = args
 		const resourceOptions = { provider, parent: this }
-		// Default preserves the dev URL so the existing dev call site
-		// (no `consoleUrl` arg passed) produces the same Pulumi state value
-		// as before — no diff on dev. Prod's wrapper passes the prod URL
-		// explicitly.
-		const defaultRedirectUri =
-			consoleUrl ?? 'https://auth.dev.liverty-music.app/ui/console'
+		// Environment-specific console URL, always supplied by the caller from
+		// the per-env Zitadel domain. No hardcoded fallback — a missing value is
+		// a type error, not a silent redirect to another environment's console.
+		const defaultRedirectUri = consoleUrl
 
 		// Shared policy fields. Most lifetimes are the same as the existing
 		// product-org LoginPolicy in `frontend.ts` for consistency. NOT
