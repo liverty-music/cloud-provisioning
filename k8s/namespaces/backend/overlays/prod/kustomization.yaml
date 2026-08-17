@@ -49,6 +49,11 @@ patches:
     target:
       kind: ServiceAccount
       name: admin-console-api
+  # Bind KSA fan-api to its dedicated prod GSA (unify-workload-naming create-new).
+  - path: serviceaccount_fan_api_patch.yaml
+    target:
+      kind: ServiceAccount
+      name: fan-api
   # Global Spot VM patch for all Deployments
   - path: spot-vm_patch.yaml
     target:
@@ -81,6 +86,38 @@ patches:
           spec:
             containers:
             - name: server
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 60Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+  # fan-api — single replica + dev-parity sizing (unify-workload-naming
+  # create-new; matches server-app, which it replaces at cutover).
+  - target:
+      kind: Deployment
+      name: fan-api
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: fan-api
+      spec:
+        replicas: 1
+  - target:
+      kind: Deployment
+      name: fan-api
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: fan-api
+      spec:
+        template:
+          spec:
+            containers:
+            - name: fan-api
               resources:
                 requests:
                   cpu: 10m
@@ -190,6 +227,12 @@ configMapGenerator:
     behavior: merge
     envs:
       - server/configmap.env
+  # fan-api-config: same prod env as server-config but DATABASE_USER points at
+  # the fan-api IAM DB user (unify-workload-naming create-new).
+  - name: fan-api-config
+    behavior: merge
+    envs:
+      - fan-api/configmap.env
   - name: concert-discovery-job-config
     behavior: merge
     envs:
@@ -251,6 +294,12 @@ configMapGenerator:
 images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
+    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
+  # fan-api (unify-workload-naming create-new). Pinned at v1.35.0, the release
+  # that first published backend/fan-api to prod AR. Not yet in the bump-prod-pin
+  # image list (added at cutover), so it stays here until then.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/fan-api
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/fan-api
     newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer

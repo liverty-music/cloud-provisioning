@@ -1,0 +1,13 @@
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: fan-api-policy
+spec:
+  default:
+    timeoutSec: 150
+    connectionDraining:
+      drainingTimeoutSec: 60
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-api-svc # Referenced via kustomizeconfig.yaml 'nameReference'
