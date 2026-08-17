@@ -116,6 +116,8 @@ export class Gcp {
 		| {
 				/** Backend application GCP SA email. */
 				backendAppEmail: pulumi.Output<string>
+				/** Fan API GCP SA email (backend-app successor). */
+				fanApiEmail: pulumi.Output<string>
 				/** Admin Console API GCP SA email. */
 				adminConsoleApiEmail: pulumi.Output<string>
 				/** Self-hosted Zitadel GCP SA email. */
@@ -476,6 +478,7 @@ export class Gcp {
 
 			this.workloadSAs = {
 				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
+				fanApiEmail: kubernetes.fanApiServiceAccountEmail,
 				adminConsoleApiEmail:
 					kubernetes.adminConsoleApiServiceAccountEmail,
 				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
@@ -507,6 +510,7 @@ export class Gcp {
 			appServiceAccountEmail: this.workloadSAs?.backendAppEmail,
 			adminServiceAccountEmail: this.workloadSAs?.adminConsoleApiEmail,
 			zitadelServiceAccountEmail: this.workloadSAs?.zitadelEmail,
+			fanApiServiceAccountEmail: this.workloadSAs?.fanApiEmail,
 			iamDatabaseUsers: cloudSqlUsers,
 			postgresAdminPassword: gcpConfig.postgresAdminPassword
 				? pulumi.secret(gcpConfig.postgresAdminPassword)

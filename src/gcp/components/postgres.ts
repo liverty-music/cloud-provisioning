@@ -73,6 +73,15 @@ export interface PostgresComponentArgs {
 	 */
 	zitadelServiceAccountEmail?: pulumi.Input<string>
 	/**
+	 * GCP Service Account email for the fan-api workload (the `backend-app`
+	 * successor under the audience-tier naming convention). When provided, a
+	 * matching IAM SQL user is created so fan-api authenticates as its OWN IAM DB
+	 * user via the Cloud SQL Go connector with Workload Identity IAM auth. Added
+	 * additively alongside the backend-app user during the migration. Only
+	 * meaningful when `workloadEnabled` is true.
+	 */
+	fanApiServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * Human user emails that require IAM database authentication access.
 	 */
 	iamDatabaseUsers?: string[]
@@ -121,6 +130,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			appServiceAccountEmail,
 			adminServiceAccountEmail,
 			zitadelServiceAccountEmail,
+			fanApiServiceAccountEmail,
 			iamDatabaseUsers = [],
 			postgresAdminPassword,
 		} = args
@@ -383,6 +393,30 @@ export class PostgresComponent extends pulumi.ComponentResource {
 						parent: this,
 						dependsOn: [instance, zitadelDb],
 					},
+				)
+			}
+
+			// fan-api IAM SQL user — only when the fan-api SA exists. The
+			// backend-app successor runs the same backend binary and connects
+			// through the in-process Cloud SQL Go connector with Workload Identity
+			// IAM auth, so it needs its OWN IAM DB user (fan-api@<project>.iam) to
+			// log in. Created additively alongside the backend-app user; the
+			// app-schema grants for this user are applied by a backend grant
+			// migration before DATABASE_USER flips at cutover.
+			if (fanApiServiceAccountEmail) {
+				const fanApiIamUserName = pulumi
+					.output(fanApiServiceAccountEmail)
+					.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+				new gcp.sql.User(
+					'fan-api',
+					{
+						name: fanApiIamUserName,
+						project: project.projectId,
+						instance: instance.name,
+						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+					},
+					{ parent: this, dependsOn: [instance] },
 				)
 			}
 		}
