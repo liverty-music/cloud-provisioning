@@ -20,6 +20,12 @@ patches:
     kind: ServiceAccount
     name: admin-console-api
 
+# Bind KSA fan-api to its dedicated dev GSA (unify-workload-naming create-new).
+- path: serviceaccount_fan_api_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: fan-api
+
 # Global Spot VM patch for all Deployments in dev
 - path: spot-vm_patch.yaml
   target:
@@ -56,6 +62,38 @@ patches:
         spec:
           containers:
           - name: server
+            resources:
+              requests:
+                cpu: 10m
+                memory: 60Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+
+# fan-api: single replica + dev sizing (unify-workload-naming create-new).
+- target:
+    kind: Deployment
+    name: fan-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: fan-api
+    spec:
+      replicas: 1
+- target:
+    kind: Deployment
+    name: fan-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: fan-api
+    spec:
+      template:
+        spec:
+          containers:
+          - name: fan-api
             resources:
               requests:
                 cpu: 10m
@@ -177,6 +215,10 @@ configMapGenerator:
   behavior: merge
   envs:
   - server/configmap.env
+- name: fan-api-config
+  behavior: merge
+  envs:
+  - fan-api/configmap.env
 - name: concert-discovery-job-config
   behavior: merge
   envs:

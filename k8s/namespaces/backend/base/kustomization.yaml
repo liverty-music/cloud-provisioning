@@ -4,6 +4,9 @@ kind: Kustomization
 resources:
 - serviceaccount.yaml
 - server
+# fan-api: create-new successor to `server` (unify-workload-naming). Runs
+# additively alongside server until the fan cutover; no HTTPRoute yet.
+- fan-api
 - admin-console-api
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
