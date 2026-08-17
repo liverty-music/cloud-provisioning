@@ -97,6 +97,12 @@ patches:
             env:
             - name: ORGANIZER_CONSOLE_PROJECT_ID
               value: "DEV_SHUTDOWN_workloadEnabled=false"
+            # Authenticate to Cloud SQL as admin-console-api's OWN IAM DB user
+            # (overrides the backend-app DATABASE_USER from server-config via
+            # envFrom). Dev is intentionally stopped, so this is inert, but kept
+            # coherent with prod and the postgres.ts IAM SQL user.
+            - name: DATABASE_USER
+              value: "admin-console-api@liverty-music-dev.iam"
 
 - target:
     kind: HTTPRoute
