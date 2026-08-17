@@ -35,9 +35,17 @@ export const zitadelDomainMap: Record<Environment, string> = {
  * Actions v2 Targets call.
  *
  * Must stay in sync with:
- *   - `k8s/namespaces/backend/base/server/service-webhook.yaml` (Service name + port)
- *   - `k8s/namespaces/backend/base/server/deployment.yaml` (containerPort 9090)
+ *   - `k8s/namespaces/backend/base/fan-api/service-webhook.yaml` (Service name + port)
+ *   - `k8s/namespaces/backend/base/fan-api/deployment.yaml` (containerPort 9090)
  *   - The backend's webhook listener in `infrastructure/server/webhook.go` (port + paths)
+ *
+ * unify-workload-naming: the webhook is served by the `fan-api` workload
+ * (`fan-api-webhook-svc`), the audience-tier successor to `server-app`. Changing
+ * this endpoint is an IN-PLACE Zitadel Target update (only a `payloadType` change
+ * forces a replace — see `dynamic/target.ts` diff), so the login-event Target
+ * keeps its HMAC `signingKey` and there is no GSM/ESO churn. Repointing this
+ * completes the fan webhook cutover, so `server-webhook-svc` can then be retired
+ * with the rest of the server workload.
  *
  * Path constants are appended by `actions-v2.ts` to form the final
  * Target endpoints. The `:9090` listener has no `authn.Middleware`;
@@ -45,7 +53,7 @@ export const zitadelDomainMap: Record<Environment, string> = {
  * Zitadel JWKS and pins a per-endpoint `aud` claim.
  */
 export const BACKEND_WEBHOOK_BASE_URL =
-	'http://server-webhook-svc.backend.svc.cluster.local:9090'
+	'http://fan-api-webhook-svc.backend.svc.cluster.local:9090'
 export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
 /** Backend login-event webhook path — the account.login source, bound to the
  *  Zitadel Actions v2 event execution on `session.user.checked`. */
