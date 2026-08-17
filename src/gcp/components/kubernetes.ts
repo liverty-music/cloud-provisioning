@@ -213,17 +213,20 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		)
 		// Grant the SAME operational project roles as backend-app: this workload
 		// runs the identical backend binary and connects to Cloud SQL via the
-		// in-process Cloud SQL Go connector using Workload Identity IAM auth, so
-		// it needs `cloudSql.InstanceUser` (cloudsql.instances.get/connect +
-		// login) to authenticate as its own IAM DB user. The other roles mirror
-		// backend-app so the shared binary doesn't crash later on a missing role.
-		// ArtifactRegistry reader is intentionally omitted here (granted above via
-		// the per-registry node/app bindings pattern only where needed).
+		// in-process Cloud SQL Go connector using Workload Identity IAM auth. It
+		// therefore needs BOTH `cloudSql.Client` (cloudsql.instances.connect —
+		// the ephemeral-cert dial) AND `cloudSql.InstanceUser` (instances.get +
+		// login — the IAM DB auth); connect is NOT part of InstanceUser. The other
+		// roles mirror backend-app so the shared binary doesn't crash later on a
+		// missing role. ArtifactRegistry reader is intentionally omitted here
+		// (granted above via the per-registry node/app bindings pattern only where
+		// needed).
 		iamSvc.bindProjectRoles(
 			[
 				Roles.Logging.LogWriter,
 				Roles.Monitoring.MetricWriter,
 				Roles.CloudTrace.Agent,
+				Roles.CloudSql.Client,
 				Roles.CloudSql.InstanceUser,
 				Roles.AiPlatform.User,
 				Roles.ServiceUsage.ServiceUsageConsumer,
