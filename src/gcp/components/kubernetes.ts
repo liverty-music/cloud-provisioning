@@ -62,6 +62,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly subnet: gcp.compute.Subnetwork
 	public readonly nodeServiceAccountEmail: pulumi.Output<string>
 	public readonly backendAppServiceAccountEmail: pulumi.Output<string>
+	/** Fan API GCP SA email — the `fan-api` successor to `backend-app`, exposed so Postgres can create its dedicated IAM SQL user. */
+	public readonly fanApiServiceAccountEmail: pulumi.Output<string>
 	/** Admin Console API GCP SA email — exposed so Postgres can create its dedicated IAM SQL user. */
 	public readonly adminConsoleApiServiceAccountEmail: pulumi.Output<string>
 	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
@@ -189,6 +191,54 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		// Bind Kubernetes Service Account to Workload Identity
 		iamSvc.bindKubernetesSaUser(backendApp, backendAppSa, namespace, this)
 
+		// 2a2. Fan API Service Account (fan-api) — the `<audience>-<tier>`
+		// successor to `backend-app` (unify-workload-naming). Created ADDITIVELY
+		// alongside `backend-app`, which stays live until the fan cutover
+		// completes and the old identity is deleted. It replicates the FULL
+		// backend-app binding set so the shared backend binary does not crash on
+		// a missing role after cutover, and — like admin-console-api — also holds
+		// `cloudSql.Client` (instances.connect) in addition to
+		// `cloudSql.InstanceUser`, because the backend connects via the in-process
+		// Cloud SQL Go connector using Workload Identity IAM auth (connect is NOT
+		// part of InstanceUser). K8s SA name == GCP SA id == `fan-api`.
+		const fanApi = 'fan-api'
+		const fanApiSa = iamSvc.createServiceAccount(
+			`liverty-music-${fanApi}`,
+			fanApi,
+			'Liverty Music Fan API Service Account',
+			'Fan-facing backend API service account (fan-api); successor to backend-app under the audience-tier naming convention',
+			this,
+		)
+		this.fanApiServiceAccountEmail = fanApiSa.email
+
+		// Grant pull access on both registries, mirroring backend-app.
+		for (const [index, registry] of artifactRegistries.entries()) {
+			iamSvc.bindArtifactRegistryReader(
+				`${registryNames[index]}-fan-api`,
+				fanApiSa.email,
+				registry,
+				region,
+				this,
+			)
+		}
+		iamSvc.bindProjectRoles(
+			[
+				Roles.Logging.LogWriter,
+				Roles.Monitoring.MetricWriter,
+				Roles.CloudTrace.Agent,
+				Roles.CloudSql.Client,
+				Roles.CloudSql.InstanceUser,
+				Roles.AiPlatform.User,
+				Roles.ServiceUsage.ServiceUsageConsumer,
+			],
+			fanApi,
+			fanApiSa.email,
+			this,
+		)
+
+		// Bind Kubernetes Service Account (ns/backend/sa/fan-api) to Workload Identity.
+		iamSvc.bindKubernetesSaUser(fanApi, fanApiSa, namespace, this)
+
 		// 2b. Admin Console API Service Account (admin-console-api)
 		// A dedicated backend admin workload, isolated from the shared backend-app
 		// SA, so that the powerful Zitadel organizer-provisioner key (which confers
@@ -304,6 +354,23 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				},
 				{ parent: this },
 			)
+			// fan-api per-secret binding — the backend-app successor reads the
+			// same secrets as backend-app (everything except the isolated
+			// provisioner key). Added ADDITIVELY so both identities can read
+			// during the migration window; the backend-app binding is removed at
+			// delete-old.
+			if (!isProvisionerKey) {
+				new gcp.secretmanager.SecretIamMember(
+					`${secret.name}-fan-api-accessor`,
+					{
+						secretId: secretResource.secretId,
+						project: project.projectId,
+						role: Roles.SecretManager.SecretAccessor,
+						member: pulumi.interpolate`serviceAccount:${fanApiSa.email}`,
+					},
+					{ parent: this },
+				)
+			}
 			// ESO per-secret binding — avoids project-level secretAccessor
 			new gcp.secretmanager.SecretIamMember(
 				`${secret.name}-eso-accessor`,
