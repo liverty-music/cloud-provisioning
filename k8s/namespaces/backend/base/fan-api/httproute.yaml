@@ -1,0 +1,17 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fan-api-route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  rules:
+  # The fan-facing API route (unify-workload-naming). Replaces the old
+  # `server-route` at delete-old: it claims the same env hostname
+  # (api.liverty-music.app / api.dev.liverty-music.app, set per overlay) and
+  # points at fan-api-svc. ArgoCD applies this route before pruning the removed
+  # server-route, and both resolve to fan-api-svc, so the cutover is seamless.
+  - backendRefs:
+    - name: fan-api-svc
+      port: 80
