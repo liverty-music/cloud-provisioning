@@ -140,4 +140,4 @@ images:
   # newTag resolves because every release promotes organizer-app to prod AR.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-app
-    newTag: v1.49.0 # commit 581bc0ed37603cffa9481a40d8e3affb385f5e66
+    newTag: v1.50.0 # commit 824d26e0fba96df10f008dcc8f7fd7a152461ff9
