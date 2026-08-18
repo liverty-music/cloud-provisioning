@@ -66,6 +66,12 @@ patches:
                   cpu: 100m
                   memory: 128Mi
   # Prod HTTPRoute hostname (apex).
+  # unify-workload-naming fan CUTOVER: liverty-music.app is repointed from
+  # web-svc to fan-web-svc (verified Ready + serving the v1.51.0 bundle). This
+  # is an atomic single-field swap on the one existing route (no dual-route-
+  # same-hostname conflict, no routing gap). The route keeps the name web-route
+  # until delete-old, where it is replaced by fan-web-route and web-app is
+  # removed. Rollback until then = revert this backendRef to web-svc.
   - target:
       kind: HTTPRoute
       name: web-route
@@ -73,6 +79,9 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["liverty-music.app"]
+      - op: replace
+        path: /spec/rules/0/backendRefs/0/name
+        value: fan-web-svc
   # Prod admin HTTPRoute hostname.
   - target:
       kind: HTTPRoute
