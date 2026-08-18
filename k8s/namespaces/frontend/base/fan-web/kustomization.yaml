@@ -1,15 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# fan-web: audience-tier successor to `web` (unify-workload-naming, phase 2c
-# create-new). Cloned from base/web ADDITIVELY — the live `web-app` keeps serving
-# liverty-music.app until the fan cutover repoints the route to fan-web-svc and
-# the old workload is deleted. The HTTPRoute is intentionally OMITTED here so the
-# new workload runs detached (claims no Gateway hostname → no route conflict);
-# the route is added at cutover.
+# fan-web: audience-tier successor to `web` (unify-workload-naming). Now the sole
+# consumer-site frontend workload — the old `web` workload is deleted at
+# delete-old and `fan-web-route` (below) owns liverty-music.app.
 resources:
 - deployment.yaml
 - service.yaml
+- httproute.yaml
 
 configurations:
 - kustomizeconfig.yaml

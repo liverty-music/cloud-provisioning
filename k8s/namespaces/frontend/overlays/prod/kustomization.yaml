@@ -20,7 +20,6 @@ resources:
   # the `organizer-app` image pin below track the frontend release. See OpenSpec
   # change `organizer-console`.
   - ../../base/organizer
-  - configmap.yaml
   - fan-web-configmap.yaml
   - admin-configmap.yaml
   - organizer-configmap.yaml
@@ -52,7 +51,7 @@ patches:
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: web-app
+        name: fan-web-app
       spec:
         template:
           spec:
@@ -65,23 +64,15 @@ patches:
                 limits:
                   cpu: 100m
                   memory: 128Mi
-  # Prod HTTPRoute hostname (apex).
-  # unify-workload-naming fan CUTOVER: liverty-music.app is repointed from
-  # web-svc to fan-web-svc (verified Ready + serving the v1.51.0 bundle). This
-  # is an atomic single-field swap on the one existing route (no dual-route-
-  # same-hostname conflict, no routing gap). The route keeps the name web-route
-  # until delete-old, where it is replaced by fan-web-route and web-app is
-  # removed. Rollback until then = revert this backendRef to web-svc.
+  # Prod consumer-site HTTPRoute hostname (apex). fan-web-route replaces the
+  # deleted web-route and owns liverty-music.app -> fan-web-svc.
   - target:
       kind: HTTPRoute
-      name: web-route
+      name: fan-web-route
     patch: |-
       - op: add
         path: /spec/hostnames
         value: ["liverty-music.app"]
-      - op: replace
-        path: /spec/rules/0/backendRefs/0/name
-        value: fan-web-svc
   # Prod admin HTTPRoute hostname.
   - target:
       kind: HTTPRoute
@@ -132,15 +123,9 @@ patches:
 # to main. ArgoCD auto-syncs. No manual pin-bump PR. See
 # docs/runbooks/prod-image-tag-pinning.md (OpenSpec change automate-prod-pin-bump).
 images:
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
-    newTag: v1.48.0 # commit 49232c0e9df6924d0d40dccff67d8075dc9ef9fe
-  # fan-web (unify-workload-naming): the audience-tier successor to web-app.
-  # INERT for now — no Deployment references frontend/fan-web yet, so kustomize
-  # ignores this entry. It exists so the `component:frontend` pin-bump (now
-  # routed to fan-web in bump-prod-pin.yml) has an entry to rewrite; the next
-  # frontend release sets this newTag to the release tag. The fan-web create-new
-  # PR then repoints the web Deployment to this image. Placeholder tag until then.
+  # fan-web (unify-workload-naming): the consumer web bundle, successor to the
+  # deleted web-app. Bumped by the `component:frontend` pin-bump on each frontend
+  # release (routed to fan-web in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
     newTag: v1.51.0 # commit cdcedc2281dea3885486c1ac769e053f5acee359
