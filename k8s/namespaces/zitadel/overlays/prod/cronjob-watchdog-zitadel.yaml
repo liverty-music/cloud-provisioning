@@ -14,10 +14,17 @@
 # That method internally calls `SearchProjectRoles(…, shouldTriggerBulk=true,
 # …)`, triggering `ProjectRoleProjection.Trigger(WithAwaitRunning())` — the
 # exact projection that wedged on 2026-06-23 — as a pure read (no eventstore
-# write, no OIDC auth-request accumulation). Healthy → 200 fast; wedged →
-# hang (curl HTTP 000). If it hangs N/N times WHILE `/debug/healthz` is
-# still 200 (the precise wedge signature), restart `zitadel-api`. With 2
-# prod replicas the rolling restart is non-disruptive.
+# write, no OIDC auth-request accumulation). Healthy → 200 in well under a
+# second. Wedged → the trigger-on-read blocks: the probe either times out
+# (curl HTTP 000) OR returns a slow 5xx/2xx right at the server's internal
+# ~10s deadline. BOTH manifestations are the wedge, so detection is
+# TIME-BASED, not HTTP-code-based: a probe whose total time crosses
+# WATCHDOG_SLOW_SEC (or times out) counts as a hang. (The prior 000-only
+# check silently missed the slow-5xx variant — a 500 returning at ~9.9s,
+# just under the old 10s max-time, was never counted, so real wedges went
+# un-restarted.) If it hangs N/N times WHILE `/debug/healthz` is still 200
+# (the precise wedge signature), restart `zitadel-api`. With 2 prod
+# replicas the rolling restart is non-disruptive.
 #
 # PROBE HOST: public `auth.liverty-music.app` (the Zitadel API domain),
 # consistent with the healthz precondition URL. This exercises the full
@@ -87,7 +94,7 @@ spec:
   # Every minute.
   schedule: "* * * * *"
   timeZone: "Etc/UTC"
-  # A run takes up to ~45s worst case (healthz 5s + 3×10s probes + 2×5s
+  # A run takes up to ~47s worst case (healthz 5s + 3×12s probes + 2×3s
   # sleeps); never overlap the next minute's fire.
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
@@ -137,6 +144,13 @@ spec:
             # PAT file path — mounted from zitadel-watchdog-probe-pat Secret below.
             - name: WATCHDOG_PAT_FILE
               value: /var/run/watchdog/token
+            # Slow-response threshold (whole seconds). A probe whose total
+            # time is >= this is treated as a hang even if it eventually
+            # returns an HTTP status. Healthy ListProjectRoles is <1s; the
+            # wedge blocks on the projection trigger until the server's
+            # internal ~10s deadline. 8s cleanly separates the two.
+            - name: WATCHDOG_SLOW_SEC
+              value: "8"
             command: ["/bin/sh", "-c"]
             args:
             - |
@@ -159,31 +173,50 @@ spec:
               fi
               pat=$(cat "$WATCHDOG_PAT_FILE")
 
-              # Probe `ProjectService/ListProjectRoles` 3× ~5s apart.
+              # Probe `ProjectService/ListProjectRoles` 3× ~3s apart.
               # This method calls SearchProjectRoles(shouldTriggerBulk=true),
               # triggering ProjectRoleProjection — the wedged projection.
-              # HTTP 000 = curl timeout = hang = wedge signal.
-              # 200 = healthy. 401/403 = credential invalid (fail-safe: no restart).
+              #
+              # Detection is TIME-BASED. The wedge blocks the trigger-on-read
+              # and surfaces two ways depending on the race with the server's
+              # internal deadline:
+              #   * curl times out first        → http_code=000
+              #   * server errors just in time  → slow 5xx (or even a slow 2xx)
+              #     returned at ~9-10s
+              # Either way the probe's total time crosses WATCHDOG_SLOW_SEC, so
+              # a hang = (http_code=000 OR time_total >= WATCHDOG_SLOW_SEC).
+              # A fast response (healthy <1s, or a fast transient error) is NOT
+              # a hang — the fail-safe against restarting on unrelated blips.
+              # --max-time 12 (> the ~10s server deadline) lets a slow error be
+              # captured WITH its timing instead of racing to a bare 000.
+              # 401/403 = credential invalid (fail-safe: no restart).
               hangs=0
               i=1
               while [ "$i" -le 3 ]; do
-                code=$(curl -s -o /dev/null -w '%{http_code}' \
-                  --max-time 10 \
+                out=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' \
+                  --max-time 12 \
                   -X POST "$WATCHDOG_PROBE_URL" \
                   -H "Authorization: Bearer $pat" \
                   -H "Content-Type: application/json" \
                   -d "{\"projectId\":\"$WATCHDOG_PROJECT_ID\"}" \
-                  2>/dev/null || echo 000)
-                echo "probe $i/3: ListProjectRoles http_code=$code"
+                  2>/dev/null)
+                [ -z "$out" ] && out="000 12.000"
+                code=${out%% *}
+                ttime=${out##* }
+                # Whole-seconds part of time_total for POSIX integer compare.
+                tsec=${ttime%%.*}
+                [ -z "$tsec" ] && tsec=0
+                echo "probe $i/3: ListProjectRoles http_code=$code time=${ttime}s"
                 if [ "$code" = "401" ] || [ "$code" = "403" ]; then
                   echo "watchdog credential invalid: probe returned $code — no action (detection degraded)."
                   exit 0
                 fi
-                if [ "$code" = "000" ]; then
+                if [ "$code" = "000" ] || [ "$tsec" -ge "$WATCHDOG_SLOW_SEC" ]; then
+                  echo "  → hang (code=$code, ${ttime}s >= ${WATCHDOG_SLOW_SEC}s threshold or timeout)"
                   hangs=$((hangs + 1))
                 fi
                 if [ "$i" -lt 3 ]; then
-                  sleep 5
+                  sleep 3
                 fi
                 i=$((i + 1))
               done
