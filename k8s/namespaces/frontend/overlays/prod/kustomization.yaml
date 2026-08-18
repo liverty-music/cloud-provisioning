@@ -137,6 +137,15 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-app
     newTag: v1.51.0 # commit cdcedc2281dea3885486c1ac769e053f5acee359
+  # admin-console-web (unify-workload-naming): successor to admin-app. INERT for
+  # now — no Deployment references frontend/admin-console-web yet, so kustomize
+  # ignores it. It exists so the `component:frontend-admin` pin-bump (routed to
+  # admin-console-web) has an entry to rewrite; the next frontend release sets
+  # this newTag. The admin-console-web create-new PR then repoints the admin
+  # Deployment to this image. Placeholder tag until then.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-console-web
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-console-web
+    newTag: v1.51.0 # placeholder — bumped by the first admin-console-web release
   # Organizer console image. First pinned at v1.46.0 — the first frontend release
   # that built and promoted `organizer-app` to prod AR (the build job
   # `build-and-push-organizer` shipped with the `organizer-console` change). From
