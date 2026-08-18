@@ -7,7 +7,6 @@ resources:
 # The Spot VM patch targets `kind: Deployment`, so it applies to the organizer
 # Deployment automatically. See OpenSpec change `organizer-console`.
 - ../../base/organizer
-- configmap.yaml
 - fan-web-configmap.yaml
 - organizer-configmap.yaml
 
@@ -62,19 +61,15 @@ patches:
                 cpu: 100m
                 memory: 128Mi
 
-# Patch HTTPRoute hostname for dev environment
-# unify-workload-naming fan cutover: repoint dev.liverty-music.app to fan-web-svc
-# (kept coherent with prod; dev is intentionally stopped so this is inert).
+# Dev consumer-site HTTPRoute hostname. fan-web-route replaces the deleted
+# web-route and owns dev.liverty-music.app (dev is intentionally stopped).
 - target:
     kind: HTTPRoute
-    name: web-route
+    name: fan-web-route
   patch: |-
     - op: add
       path: /spec/hostnames
       value: ["dev.liverty-music.app"]
-    - op: replace
-      path: /spec/rules/0/backendRefs/0/name
-      value: fan-web-svc
 
 # Dev organizer HTTPRoute hostname.
 - target:

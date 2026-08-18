@@ -1,0 +1,18 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  # namePrefix `fan-web-` -> fan-web-route; backendRef `svc` -> fan-web-svc
+  # (kustomizeconfig nameReference). The fan consumer-site route
+  # (unify-workload-naming). Replaces the old `web-route` at delete-old: it
+  # claims the same env hostname (liverty-music.app / dev.liverty-music.app, set
+  # per overlay). ArgoCD applies this before pruning the removed web-route, and
+  # both resolve to fan-web-svc, so the swap is seamless.
+  name: route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  rules:
+  - backendRefs:
+    - name: svc
+      port: 80
