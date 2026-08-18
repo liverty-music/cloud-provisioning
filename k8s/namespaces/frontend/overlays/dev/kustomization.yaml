@@ -8,6 +8,7 @@ resources:
 # Deployment automatically. See OpenSpec change `organizer-console`.
 - ../../base/organizer
 - configmap.yaml
+- fan-web-configmap.yaml
 - organizer-configmap.yaml
 
 namespace: frontend
