@@ -135,8 +135,11 @@ jobs:
               IMAGES="server consumer concert-discovery artist-image-sync merch-discovery"
               BUMP_LABEL=true ;;
             frontend)
+              # unify-workload-naming: the consumer web bundle is now `fan-web`
+              # (successor to `web-app`). Frontend CI builds+retags fan-web, so
+              # the consumer pin-bump targets the fan-web overlay entry.
               OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="web-app"
+              IMAGES="fan-web"
               BUMP_LABEL=true ;;
             frontend-admin)
               OVERLAY=frontend; AR_REPO=frontend

@@ -125,6 +125,15 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/web-app
     newTag: v1.48.0 # commit 49232c0e9df6924d0d40dccff67d8075dc9ef9fe
+  # fan-web (unify-workload-naming): the audience-tier successor to web-app.
+  # INERT for now — no Deployment references frontend/fan-web yet, so kustomize
+  # ignores this entry. It exists so the `component:frontend` pin-bump (now
+  # routed to fan-web in bump-prod-pin.yml) has an entry to rewrite; the next
+  # frontend release sets this newTag to the release tag. The fan-web create-new
+  # PR then repoints the web Deployment to this image. Placeholder tag until then.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
+    newTag: v1.48.0 # placeholder — bumped by the first fan-web release
   # Admin console image. NOTE: until `bump-prod-pin.yml` learns per-component
   # image selection (deferred follow-up), a consumer release's pin-bump rewrites
   # EVERY newTag here, so admin-app tracks the consumer release tag — tolerable
