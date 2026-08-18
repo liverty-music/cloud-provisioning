@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fan-web-runtime-config
+data:
+  config.json: |
+    {
+      "environment": "prod",
+      "apiBaseUrl": "https://api.liverty-music.app",
+      "zitadelIssuer": "https://auth.liverty-music.app",
+      "zitadelClientId": "373015520582107291",
+      "zitadelOrgId": "373015514391249051",
+      "vapidPublicKey": "BH-m9-6-0-y70MdQG7Lz-htDaz4T_NuYdmcgK5wBEElzXo22AyGs30gvHAtHbWtQBQa4XxySD6ZEaiM9Crwl6Pc",
+      "posthogApiHost": "https://eu.i.posthog.com",
+      "posthogProjectKey": "phc_CVzLNs8ys4zeczYv36Td3aYgBhzdnaMKUqKBT7tM8H4Q",
+      "previewArtistIds": [
+        "019e3029-8044-75fc-a662-2ddfce51178e",
+        "019e3029-8044-7603-b047-c713d5183f2c",
+        "019e3029-8044-75f7-ad29-c1748b5a46a6",
+        "019e302a-3ea8-7a7e-b077-8cf6068fdb4b",
+        "019e3029-8044-7600-997d-7d3e09fda531",
+        "019e3029-8044-7615-82a7-6b213a265b3f",
+        "019e3029-8044-763e-81d3-7b73868f10f7",
+        "019e3029-8044-761c-80f7-03302b865e72",
+        "019e3029-8044-75fe-9b06-d3595786cf2e",
+        "019e3029-8044-7638-909e-35a3fc09fe01",
+        "019e3029-f15b-77bc-b0fc-a45df1176f0d"
+      ],
+      "previewArtistNames": [
+        "Mrs. GREEN APPLE",
+        "YOASOBI",
+        "Vaundy",
+        "SUPER BEAVER",
+        "King Gnu",
+        "Official髭男dism",
+        "Creepy Nuts",
+        "Ado",
+        "back number",
+        "ONE OK ROCK",
+        "緑黄色社会"
+      ],
+      "logLevel": "info",
+      "releaseVersion": "v1.51.0"
+    }

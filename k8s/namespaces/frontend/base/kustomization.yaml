@@ -3,5 +3,8 @@ kind: Kustomization
 
 resources:
 - web
+# fan-web: create-new successor to `web` (unify-workload-naming). Runs additively
+# alongside web (detached, no HTTPRoute) until the fan cutover.
+- fan-web
 
 namespace: frontend

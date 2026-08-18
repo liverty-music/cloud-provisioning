@@ -21,6 +21,7 @@ resources:
   # change `organizer-console`.
   - ../../base/organizer
   - configmap.yaml
+  - fan-web-configmap.yaml
   - admin-configmap.yaml
   - organizer-configmap.yaml
 namespace: frontend
