@@ -3,9 +3,11 @@ kind: Kustomization
 
 resources:
 - serviceaccount.yaml
-- server
-# fan-api: create-new successor to `server` (unify-workload-naming). Runs
-# additively alongside server until the fan cutover; no HTTPRoute yet.
+# Shared `backend-secrets` Secret (ESO), relocated out of the deleted `server`
+# workload because consumer + cronjobs + admin-console-api all consume it.
+- backend-secrets-external-secret.yaml
+# fan-api: the fan-facing backend workload (unify-workload-naming), successor to
+# the deleted `server` workload. Owns api.liverty-music.app via fan-api-route.
 - fan-api
 - admin-console-api
 - cronjob/concert-discovery

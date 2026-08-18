@@ -36,41 +36,8 @@ patches:
   target:
     kind: CronJob
 
-# Reduce replicas to 1 for dev
-- target:
-    kind: Deployment
-    name: server-app
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: server-app
-    spec:
-      replicas: 1
-
-# Right-size resources for dev
-- target:
-    kind: Deployment
-    name: server-app
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: server-app
-    spec:
-      template:
-        spec:
-          containers:
-          - name: server
-            resources:
-              requests:
-                cpu: 10m
-                memory: 60Mi
-              limits:
-                cpu: 200m
-                memory: 256Mi
-
-# fan-api: single replica + dev sizing (unify-workload-naming create-new).
+# fan-api: single replica + dev sizing (unify-workload-naming).
+# Replaces the deleted server-app as the fan-facing backend.
 - target:
     kind: Deployment
     name: fan-api
@@ -144,7 +111,7 @@ patches:
 
 - target:
     kind: HTTPRoute
-    name: server-route
+    name: fan-api-route
   patch: |-
     - op: add
       path: /spec/hostnames
@@ -211,10 +178,6 @@ patches:
       maxReplicaCount: 1
 
 configMapGenerator:
-- name: server-config
-  behavior: merge
-  envs:
-  - server/configmap.env
 - name: fan-api-config
   behavior: merge
   envs:

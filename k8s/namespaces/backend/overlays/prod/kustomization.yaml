@@ -61,40 +61,8 @@ patches:
   - path: spot-vm_patch_cronjob.yaml
     target:
       kind: CronJob
-  # Replicas: 1 (per design D8 — single replica during bootstrap)
-  - target:
-      kind: Deployment
-      name: server-app
-    patch: |-
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: server-app
-      spec:
-        replicas: 1
-  # Match dev's resource sizing exactly (design D2)
-  - target:
-      kind: Deployment
-      name: server-app
-    patch: |-
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: server-app
-      spec:
-        template:
-          spec:
-            containers:
-            - name: server
-              resources:
-                requests:
-                  cpu: 10m
-                  memory: 60Mi
-                limits:
-                  cpu: 200m
-                  memory: 256Mi
-  # fan-api — single replica + dev-parity sizing (unify-workload-naming
-  # create-new; matches server-app, which it replaces at cutover).
+  # fan-api — single replica + dev-parity sizing (unify-workload-naming).
+  # Replaces the deleted server-app as the fan-facing backend (design D8/D2).
   - target:
       kind: Deployment
       name: fan-api
@@ -162,10 +130,10 @@ patches:
               # via envFrom). Matching IAM SQL user provisioned in postgres.ts.
               - name: DATABASE_USER
                 value: "admin-console-api@liverty-music-prod.iam"
-  # Prod HTTPRoute hostname.
+  # Prod fan API HTTPRoute hostname (fan-api-route replaces server-route).
   - target:
       kind: HTTPRoute
-      name: server-route
+      name: fan-api-route
     patch: |-
       - op: add
         path: /spec/hostnames
@@ -223,12 +191,8 @@ patches:
         minReplicaCount: 1
         maxReplicaCount: 1
 configMapGenerator:
-  - name: server-config
-    behavior: merge
-    envs:
-      - server/configmap.env
-  # fan-api-config: same prod env as server-config but DATABASE_USER points at
-  # the fan-api IAM DB user (unify-workload-naming create-new).
+  # fan-api-config: prod env for the fan-facing backend; DATABASE_USER points at
+  # the fan-api IAM DB user (unify-workload-naming). Replaces server-config.
   - name: fan-api-config
     behavior: merge
     envs:
