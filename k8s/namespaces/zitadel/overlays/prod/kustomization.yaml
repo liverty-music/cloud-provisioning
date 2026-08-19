@@ -21,14 +21,9 @@ resources:
 # Prod DB grant Job — idempotent ALTER DATABASE OWNER + GRANT scoped to the
 # prod Cloud SQL `zitadel` DB.
 - job-grant-db.yaml
-# Self-healing watchdog (prod-only): detects the projection-trigger wedge
-# (zitadel#10103) via a read-only ListProjectRoles hang probe and
-# auto-restarts `zitadel-api` (active; flip WATCHDOG_DRY_RUN=true for
-# observe-only). See the manifest header.
-- cronjob-watchdog-zitadel.yaml
 # PAT for the watchdog probe — synced from GSM `zitadel-watchdog-probe-pat`
 # (provisioned by Pulumi WatchdogProbeComponent) into K8s Secret
-# `zitadel-watchdog-probe-pat`, mounted into the watchdog CronJob.
+# `zitadel-watchdog-probe-pat`, mounted into the `zitadel-api` pod sidecar.
 - external-secret-watchdog-probe-pat.yaml
 # NOTE: PodMonitoring CRD (previously `podmonitoring.yaml`) was deleted as
 # part of the Helm chart migration. Zitadel v4 has no `/debug/metrics`
@@ -59,3 +54,11 @@ patches:
   target:
     kind: Deployment
     name: zitadel-api-login
+# Add per-pod liveness probe sidecar (`watchdog-probe`) that detects the
+# projection-trigger wedge (zitadel#10103) and lets the kubelet restart
+# only the affected pod, keeping the other replica serving throughout.
+# Replaces the cluster-wide CronJob watchdog (removed above).
+- path: zitadel-api-liveness-sidecar-patch.yaml
+  target:
+    kind: Deployment
+    name: zitadel-api
