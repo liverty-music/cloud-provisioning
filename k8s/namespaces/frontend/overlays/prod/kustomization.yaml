@@ -11,21 +11,15 @@ resources:
   # successor to the deleted `admin` workload. Owns admin.liverty-music.app via
   # admin-console-web-route. Prod-only (no dev environment runs the admin console).
   - ../../base/admin-console-web
-  # Organizer console workload — prod sibling of web/ and admin/ in the frontend
-  # namespace. The Spot VM patch targets `kind: Deployment`, so it applies to the
-  # organizer Deployment automatically; the `app.kubernetes.io/version` label and
-  # the `organizer-app` image pin below track the frontend release. See OpenSpec
-  # change `organizer-console`.
-  - ../../base/organizer
-  # organizer-console-web: successor to organizer/ under the unify-workload-naming
-  # `<audience>-<tier>` convention. organizer-console-web-route now owns
-  # organizer.liverty-music.app (cutover complete — hostname patched below). The
-  # old organizer/ workload still renders but its organizer-route is now detached
-  # (no hostname); delete-old removes it next. Prod-only.
+  # organizer-console-web: the organizer console workload (unify-workload-naming),
+  # successor to the deleted `organizer` workload. Owns organizer.liverty-music.app
+  # via organizer-console-web-route. Prod-only (no dev environment runs the
+  # organizer console). The Spot VM patch targets `kind: Deployment`, so it applies
+  # to this Deployment automatically; the `app.kubernetes.io/version` label and the
+  # `organizer-console-web` image pin below track the frontend release.
   - ../../base/organizer-console-web
   - fan-web-configmap.yaml
   - admin-console-web-configmap.yaml
-  - organizer-configmap.yaml
   - organizer-console-web-configmap.yaml
 namespace: frontend
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
@@ -144,16 +138,8 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-console-web
     newTag: v1.52.0 # commit 6bcfa25076e4c1fb71d1ce69627d91b985d3cf99
-  # Organizer console image. First pinned at v1.46.0 — the first frontend release
-  # that built and promoted `organizer-app` to prod AR (the build job
-  # `build-and-push-organizer` shipped with the `organizer-console` change). From
-  # here on, like admin-app, a subsequent consumer pin-bump that rewrites every
-  # newTag resolves because every release promotes organizer-app to prod AR.
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-app
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-app
-    newTag: v1.52.0 # commit 6bcfa25076e4c1fb71d1ce69627d91b985d3cf99
   # organizer-console-web (unify-workload-naming): successor to organizer-app. Now
-  # ACTIVE — the organizer-console-web-app Deployment (create-new) references it.
+  # ACTIVE — the organizer-console-web-app Deployment references it.
   # Pinned at v1.53.0 (the release that first published organizer-console-web to
   # prod AR). Bumped on each frontend release by the `component:frontend-organizer`
   # pin-bump (routed here in bump-prod-pin.yml).
