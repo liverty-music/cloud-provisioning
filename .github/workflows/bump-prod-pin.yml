@@ -142,8 +142,10 @@ jobs:
               IMAGES="fan-web"
               BUMP_LABEL=true ;;
             frontend-admin)
+              # unify-workload-naming: the admin console bundle is now
+              # `admin-console-web` (successor to `admin-app`).
               OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="admin-app"
+              IMAGES="admin-console-web"
               BUMP_LABEL=false ;;
             frontend-organizer)
               OVERLAY=frontend; AR_REPO=frontend
