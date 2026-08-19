@@ -1,7 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: consumer-app
+  # event-consumer: audience-agnostic JetStream worker (unify-workload-naming),
+  # successor to `consumer-app`. Single cross-domain consumer (design D4); the
+  # `-event-consumer` tier name reserves a future per-entity split. Reuses the
+  # existing `backend/consumer` image (a workload rename does not require an image
+  # rename — see the `images:` transformer in this base's kustomization). The
+  # JetStream durable names are unchanged, so the rename is a pod replace with no
+  # durable churn; events published during the brief gap are retained server-side.
+  name: event-consumer
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
@@ -38,7 +45,7 @@ spec:
           name: health
         envFrom:
         - configMapRef:
-            name: consumer-consumer-config
+            name: event-consumer-config
         - secretRef:
             name: backend-secrets
         volumeMounts:
