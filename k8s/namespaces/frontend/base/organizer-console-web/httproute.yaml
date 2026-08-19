@@ -1,0 +1,18 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  # namePrefix organizer-console-web- -> organizer-console-web-route; backendRef
+  # svc -> organizer-console-web-svc (kustomizeconfig nameReference). The
+  # organizer console route (unify-workload-naming). Successor to organizer-route:
+  # claims the organizer.liverty-music.app hostname (set per overlay at cutover)
+  # -> organizer-console-web-svc.
+  name: route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  rules:
+  - backendRefs:
+    - name: svc
+      port: 80
+  # hostname (organizer.{base-domain}) is patched per overlay at cutover.
