@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# organizer-console-web: the organizer console workload (unify-workload-naming),
+# successor to the `organizer` workload under the `<audience>-<tier>` naming
+# convention. Owns organizer.liverty-music.app via organizer-console-web-route
+# (hostname attached per overlay at cutover). Prod-only (no dev environment runs
+# the organizer console).
+
+resources:
+- deployment.yaml
+- service.yaml
+- httproute.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+namePrefix: organizer-console-web-
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: organizer-console-web
+
+images:
+- name: organizer-console-web
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
+  newTag: latest
