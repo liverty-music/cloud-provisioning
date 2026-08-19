@@ -151,4 +151,4 @@ images:
   # the real pin. Placeholder tag until then.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-console-web
-    newTag: v1.52.0 # placeholder — bumped by the first organizer-console-web release
+    newTag: v1.53.0 # commit 564a27d946290cbfdf7d21661243a0cec64b1ecd
