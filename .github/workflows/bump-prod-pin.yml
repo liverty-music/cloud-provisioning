@@ -148,8 +148,10 @@ jobs:
               IMAGES="admin-console-web"
               BUMP_LABEL=false ;;
             frontend-organizer)
+              # unify-workload-naming: the organizer console bundle is now
+              # `organizer-console-web` (successor to `organizer-app`).
               OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="organizer-app"
+              IMAGES="organizer-console-web"
               BUMP_LABEL=false ;;
           esac
 

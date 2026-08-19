@@ -143,3 +143,12 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-app
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-app
     newTag: v1.52.0 # commit 6bcfa25076e4c1fb71d1ce69627d91b985d3cf99
+  # organizer-console-web (unify-workload-naming): successor to organizer-app.
+  # INERT for now — no Deployment references it yet, so kustomize ignores it. It
+  # exists so the `component:frontend-organizer` pin-bump (routed to
+  # organizer-console-web) has an entry to rewrite; the next frontend release sets
+  # this newTag. The create-new PR then repoints the organizer Deployment + sets
+  # the real pin. Placeholder tag until then.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-console-web
+    newTag: v1.52.0 # placeholder — bumped by the first organizer-console-web release
