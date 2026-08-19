@@ -143,15 +143,15 @@ patches:
     kind: CronJob
     name: sales-phase-discovery-app
 
-# Right-size resources for consumer in dev
+# Right-size resources for event-consumer in dev
 - target:
     kind: Deployment
-    name: consumer-app
+    name: event-consumer
   patch: |-
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: consumer-app
+      name: event-consumer
     spec:
       template:
         spec:
@@ -165,15 +165,15 @@ patches:
                 cpu: 200m
                 memory: 128Mi
 
-# Reduce maxReplicaCount for consumer ScaledObject in dev
+# Reduce maxReplicaCount for event-consumer ScaledObject in dev
 - target:
     kind: ScaledObject
-    name: consumer-app
+    name: event-consumer
   patch: |-
     apiVersion: keda.sh/v1alpha1
     kind: ScaledObject
     metadata:
-      name: consumer-app
+      name: event-consumer
     spec:
       maxReplicaCount: 1
 
@@ -202,7 +202,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/sales-reminders/configmap.env
-- name: consumer-consumer-config
+- name: event-consumer-config
   behavior: merge
   envs:
-  - consumer/configmap.env
+  - event-consumer/configmap.env

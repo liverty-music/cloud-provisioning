@@ -1,10 +1,10 @@
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: consumer-app
+  name: event-consumer
 spec:
   scaleTargetRef:
-    name: consumer-app
+    name: event-consumer
   minReplicaCount: 0
   maxReplicaCount: 3
   cooldownPeriod: 300

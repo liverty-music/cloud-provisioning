@@ -146,15 +146,15 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["api.admin.liverty-music.app"]
-  # Match dev's consumer resource sizing.
+  # Match dev's event-consumer resource sizing.
   - target:
       kind: Deployment
-      name: consumer-app
+      name: event-consumer
     patch: |-
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: consumer-app
+        name: event-consumer
       spec:
         template:
           spec:
@@ -167,10 +167,10 @@ patches:
                 limits:
                   cpu: 200m
                   memory: 128Mi
-  # Consumer ScaledObject — pin to exactly 1 replica (min=max=1).
+  # event-consumer ScaledObject — pin to exactly 1 replica (min=max=1).
   #
   # minReplicaCount MUST be 1 (not 0): the Watermill JetStream push
-  # consumers (durables) are deleted when the consumer Deployment scales to
+  # consumers (durables) are deleted when the event-consumer Deployment scales to
   # zero and no subscriber holds the queue-group interest. A deleted durable
   # has no metric for KEDA's nats-jetstream scaler to read, so KEDA can never
   # scale the consumer back up from 0 — events published while idle (e.g. the
@@ -181,12 +181,12 @@ patches:
   # deadlock. KEDA still scales up to maxReplicas under load.
   - target:
       kind: ScaledObject
-      name: consumer-app
+      name: event-consumer
     patch: |-
       apiVersion: keda.sh/v1alpha1
       kind: ScaledObject
       metadata:
-        name: consumer-app
+        name: event-consumer
       spec:
         minReplicaCount: 1
         maxReplicaCount: 1
@@ -217,10 +217,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - cronjob/sales-reminders/configmap.env
-  - name: consumer-consumer-config
+  - name: event-consumer-config
     behavior: merge
     envs:
-      - consumer/configmap.env
+      - event-consumer/configmap.env
 # Pin all backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,

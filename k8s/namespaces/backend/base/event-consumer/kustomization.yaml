@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- deployment.yaml
+- scaledobject.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: event-consumer
+
+# The workload reuses the existing `backend/consumer` image (unify-workload-naming
+# renames only the Deployment/Service/ScaledObject, not the image repo — decided in
+# impl per tasks.md 5.1). The bare container `image: consumer` is rewritten to the
+# dev-AR form here; the prod overlay last-write-wins to the prod AR + semver pin.
+images:
+- name: consumer
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
+  newTag: latest
+
+configMapGenerator:
+- name: event-consumer-config
+  envs:
+  - configmap.env

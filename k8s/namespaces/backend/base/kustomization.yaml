@@ -15,6 +15,6 @@ resources:
 - cronjob/merch-discovery
 - cronjob/sales-phase-discovery
 - cronjob/sales-reminders
-- consumer
+- event-consumer
 
 namespace: backend
