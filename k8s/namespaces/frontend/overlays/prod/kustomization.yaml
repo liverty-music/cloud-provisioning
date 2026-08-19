@@ -7,15 +7,9 @@ kind: Kustomization
 # Resource sizing matches dev exactly; spot label matches.
 resources:
   - ../../base
-  # Admin console workload — prod sibling of web/ in the frontend namespace
-  # (relocated from the dev overlay: there is no dev environment to run it).
-  # The Spot VM + right-size patches target `kind: Deployment`, so they apply to
-  # the admin Deployment automatically; the `app.kubernetes.io/version` label and
-  # the `admin-app` image pin below are both v1.11.0. See OpenSpec change
-  # `add-admin-console`.
-  - ../../base/admin
-  # admin-console-web: create-new successor to admin (unify-workload-naming).
-  # Runs additively alongside admin-app (detached, no HTTPRoute) until cutover.
+  # admin-console-web: the admin console workload (unify-workload-naming),
+  # successor to the deleted `admin` workload. Owns admin.liverty-music.app via
+  # admin-console-web-route. Prod-only (no dev environment runs the admin console).
   - ../../base/admin-console-web
   # Organizer console workload — prod sibling of web/ and admin/ in the frontend
   # namespace. The Spot VM patch targets `kind: Deployment`, so it applies to the
@@ -24,7 +18,6 @@ resources:
   # change `organizer-console`.
   - ../../base/organizer
   - fan-web-configmap.yaml
-  - admin-configmap.yaml
   - admin-console-web-configmap.yaml
   - organizer-configmap.yaml
 namespace: frontend
@@ -77,23 +70,15 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["liverty-music.app"]
-  # Prod admin HTTPRoute hostname.
+  # Prod admin console HTTPRoute hostname. admin-console-web-route replaces the
+  # deleted admin-route and owns admin.liverty-music.app -> admin-console-web-svc.
   - target:
       kind: HTTPRoute
-      name: admin-route
+      name: admin-console-web-route
     patch: |-
       - op: add
         path: /spec/hostnames
         value: ["admin.liverty-music.app"]
-      # unify-workload-naming admin CUTOVER: repoint admin.liverty-music.app from
-      # admin-svc to admin-console-web-svc (verified Ready + serving the v1.52.0
-      # admin bundle). Atomic single-field swap on the one existing route — no
-      # dual-route conflict, no gap. The route keeps the name admin-route until
-      # delete-old, where it is replaced by admin-console-web-route and admin-app
-      # is removed. Rollback until then = revert this backendRef to admin-svc.
-      - op: replace
-        path: /spec/rules/0/backendRefs/0/name
-        value: admin-console-web-svc
   # Prod organizer HTTPRoute hostname.
   - target:
       kind: HTTPRoute
@@ -141,14 +126,6 @@ images:
   # release (routed to fan-web in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
-    newTag: v1.51.0 # commit cdcedc2281dea3885486c1ac769e053f5acee359
-  # Admin console image. NOTE: until `bump-prod-pin.yml` learns per-component
-  # image selection (deferred follow-up), a consumer release's pin-bump rewrites
-  # EVERY newTag here, so admin-app tracks the consumer release tag — tolerable
-  # because build-and-push-admin promotes admin-app to prod AR on every release,
-  # so the tag always resolves. See docs/runbooks/prod-image-tag-pinning.md.
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-app
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-app
     newTag: v1.51.0 # commit cdcedc2281dea3885486c1ac769e053f5acee359
   # admin-console-web (unify-workload-naming): the admin console bundle, successor
   # to admin-app. Now ACTIVE — the admin-console-web-app Deployment (create-new)
