@@ -18,11 +18,10 @@ resources:
   # change `organizer-console`.
   - ../../base/organizer
   # organizer-console-web: successor to organizer/ under the unify-workload-naming
-  # `<audience>-<tier>` convention. Deployed alongside the old organizer workload
-  # (create-new step): the new Deployment + Service come up healthy while
-  # organizer-route still owns organizer.liverty-music.app. The new
-  # organizer-console-web-route is DETACHED (no hostname) until the cutover step
-  # moves the hostname off organizer-route. Prod-only.
+  # `<audience>-<tier>` convention. organizer-console-web-route now owns
+  # organizer.liverty-music.app (cutover complete — hostname patched below). The
+  # old organizer/ workload still renders but its organizer-route is now detached
+  # (no hostname); delete-old removes it next. Prod-only.
   - ../../base/organizer-console-web
   - fan-web-configmap.yaml
   - admin-console-web-configmap.yaml
@@ -87,10 +86,12 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["admin.liverty-music.app"]
-  # Prod organizer HTTPRoute hostname.
+  # Prod organizer HTTPRoute hostname. unify-workload-naming cutover: the hostname
+  # now attaches to organizer-console-web-route (successor), atomically moving
+  # organizer.liverty-music.app off the old organizer-route -> organizer-console-web-svc.
   - target:
       kind: HTTPRoute
-      name: organizer-route
+      name: organizer-console-web-route
     patch: |-
       - op: add
         path: /spec/hostnames
