@@ -21,10 +21,6 @@ resources:
 # Prod DB grant Job — idempotent ALTER DATABASE OWNER + GRANT scoped to the
 # prod Cloud SQL `zitadel` DB.
 - job-grant-db.yaml
-# PAT for the watchdog probe — synced from GSM `zitadel-watchdog-probe-pat`
-# (provisioned by Pulumi WatchdogProbeComponent) into K8s Secret
-# `zitadel-watchdog-probe-pat`, mounted into the `zitadel-api` pod sidecar.
-- external-secret-watchdog-probe-pat.yaml
 # NOTE: PodMonitoring CRD (previously `podmonitoring.yaml`) was deleted as
 # part of the Helm chart migration. Zitadel v4 has no `/debug/metrics`
 # HTTP scrape endpoint — the path returns 404 on v4.14.0. Observability
@@ -34,7 +30,12 @@ resources:
 # pipeline forwards to Cloud Monitoring; the prior GMP scrape path is
 # entirely replaced by this push model.
 #
-# NOTE: `cronjob-restart-zitadel.yaml` is intentionally NOT imported here.
+# NOTE: `cronjob-watchdog-zitadel.yaml` and `external-secret-watchdog-probe-pat.yaml`
+# (zitadel/zitadel#10103 workaround) were removed. The wedge watchdog was
+# not effective: the CronJob restarted both replicas simultaneously, and the
+# sidecar liveness probe restarted the wrong container. Recovery from the
+# projection-trigger wedge is via `kubectl rollout restart deploy/zitadel-api`
+# until the root cause (failed projection events) is resolved upstream.
 
 patches:
 # Override the Workload Identity GCP SA on the `zitadel` ServiceAccount
@@ -54,11 +55,3 @@ patches:
   target:
     kind: Deployment
     name: zitadel-api-login
-# Add per-pod liveness probe sidecar (`watchdog-probe`) that detects the
-# projection-trigger wedge (zitadel#10103) and lets the kubelet restart
-# only the affected pod, keeping the other replica serving throughout.
-# Replaces the cluster-wide CronJob watchdog (removed above).
-- path: zitadel-api-liveness-sidecar-patch.yaml
-  target:
-    kind: Deployment
-    name: zitadel-api
