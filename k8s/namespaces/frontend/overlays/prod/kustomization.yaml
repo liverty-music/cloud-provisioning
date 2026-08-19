@@ -85,6 +85,15 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["admin.liverty-music.app"]
+      # unify-workload-naming admin CUTOVER: repoint admin.liverty-music.app from
+      # admin-svc to admin-console-web-svc (verified Ready + serving the v1.52.0
+      # admin bundle). Atomic single-field swap on the one existing route — no
+      # dual-route conflict, no gap. The route keeps the name admin-route until
+      # delete-old, where it is replaced by admin-console-web-route and admin-app
+      # is removed. Rollback until then = revert this backendRef to admin-svc.
+      - op: replace
+        path: /spec/rules/0/backendRefs/0/name
+        value: admin-console-web-svc
   # Prod organizer HTTPRoute hostname.
   - target:
       kind: HTTPRoute
