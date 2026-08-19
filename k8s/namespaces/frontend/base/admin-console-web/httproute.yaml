@@ -1,0 +1,16 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  # namePrefix admin-console-web- -> admin-console-web-route; backendRef svc ->
+  # admin-console-web-svc (kustomizeconfig nameReference). The admin console
+  # route (unify-workload-naming). Replaces admin-route at delete-old: claims the
+  # admin.liverty-music.app hostname (set per overlay) -> admin-console-web-svc.
+  name: route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  rules:
+  - backendRefs:
+    - name: svc
+      port: 80
