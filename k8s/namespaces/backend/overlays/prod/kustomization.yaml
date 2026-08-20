@@ -43,7 +43,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.35.0"
+      app.kubernetes.io/version: "1.36.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -271,7 +271,7 @@ images:
   # backend release sets this newTag. Placeholder tag until then.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.35.0 # placeholder — bumped by the first backend/api release
+    newTag: v1.36.0 # commit 7a9e34109e7e40236728020d246a0f620c521b94
   # server + fan-api: retired in the repoint PR. Still pinned here because the live
   # fan-api + admin-console-api workloads render backend/fan-api / backend/server
   # until that PR repoints them to backend/api.
@@ -283,16 +283,16 @@ images:
     newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
+    newTag: v1.36.0 # commit 7a9e34109e7e40236728020d246a0f620c521b94
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
+    newTag: v1.36.0 # commit 7a9e34109e7e40236728020d246a0f620c521b94
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
+    newTag: v1.36.0 # commit 7a9e34109e7e40236728020d246a0f620c521b94
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/merch-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/merch-discovery
-    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
+    newTag: v1.36.0 # commit 7a9e34109e7e40236728020d246a0f620c521b94
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
     newTag: v1.25.0 # commit 54b28aaae129f3195578db4a6ac045725d70464e
