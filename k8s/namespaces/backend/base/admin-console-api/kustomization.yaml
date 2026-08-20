@@ -8,6 +8,10 @@ resources:
 - health-check-policy.yaml
 - httproute.yaml
 - external-secret.yaml
+# create-new (unify-workload-naming): admin-console-api-secrets alongside the old
+# admin-console-secrets; the deployment cuts over to it, then external-secret.yaml
+# is removed.
+- external-secret-api.yaml
 
 configurations:
 - kustomizeconfig.yaml
