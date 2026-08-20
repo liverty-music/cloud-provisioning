@@ -132,7 +132,10 @@ jobs:
           case "${COMPONENT}" in
             backend)
               OVERLAY=backend; AR_REPO=backend
-              IMAGES="server consumer concert-discovery artist-image-sync merch-discovery"
+              # `api` is the shared Connect-RPC image (unify-workload-naming),
+              # successor to `server`/`fan-api`; it pins both the fan-api and
+              # admin-console-api workloads. `consumer` backs event-consumer.
+              IMAGES="api consumer concert-discovery artist-image-sync merch-discovery"
               BUMP_LABEL=true ;;
             frontend)
               # unify-workload-naming: the consumer web bundle is now `fan-web`
