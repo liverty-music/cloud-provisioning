@@ -263,12 +263,21 @@ configMapGenerator:
 # No manual pin-bump PR. See docs/runbooks/prod-image-tag-pinning.md
 # (OpenSpec change automate-prod-pin-bump).
 images:
+  # backend/api: the shared Connect-RPC API image (unify-workload-naming),
+  # audience-neutral successor to `server`/`fan-api`. INERT for now — no workload
+  # references `backend/api` until the repoint PR points fan-api + admin-console-api
+  # at it, so kustomize ignores this entry. It exists so the `component:backend`
+  # pin-bump (bump-prod-pin.yml IMAGES list) has an `api` entry to rewrite; the next
+  # backend release sets this newTag. Placeholder tag until then.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
+    newTag: v1.35.0 # placeholder — bumped by the first backend/api release
+  # server + fan-api: retired in the repoint PR. Still pinned here because the live
+  # fan-api + admin-console-api workloads render backend/fan-api / backend/server
+  # until that PR repoints them to backend/api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
     newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
-  # fan-api (unify-workload-naming create-new). Pinned at v1.35.0, the release
-  # that first published backend/fan-api to prod AR. Not yet in the bump-prod-pin
-  # image list (added at cutover), so it stays here until then.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/fan-api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/fan-api
     newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
