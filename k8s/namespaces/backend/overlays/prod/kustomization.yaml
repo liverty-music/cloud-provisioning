@@ -21,7 +21,14 @@ kind: Kustomization
 resources:
   - ../../base
   - sql-proxy/deployment.yaml
-  - podmonitoring.yaml
+  # NOTE: the `backend-server` PodMonitoring was deleted (unify-workload-naming).
+  # It was mis-specified from the prod bootstrap (2026-05-14): selector
+  # `app: server-app` never matched any pod (the server workload carried
+  # `app: server`), and its `port: metrics` endpoint referenced a container port
+  # that neither `server` nor `fan-api` ever exposed — so it ingested zero series
+  # and fed no AlertPolicy (all prod alerts are log-based or NATS-exporter-based).
+  # Backend observability is the OTLP push model (OpenTelemetry SDK -> in-cluster
+  # collector -> Cloud Monitoring), mirroring the same removal made for Zitadel.
 namespace: backend
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource (Deployment, CronJob, Service, etc.). Value SHALL be the

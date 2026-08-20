@@ -8,9 +8,11 @@ metadata:
 spec:
   project: default
   ignoreDifferences:
+  # event-consumer (unify-workload-naming, was consumer-app): KEDA drives
+  # /spec/replicas, so ArgoCD must ignore replica drift or it flaps OutOfSync.
   - group: apps
     kind: Deployment
-    name: consumer-app
+    name: event-consumer
     jsonPointers:
     - /spec/replicas
   source:
