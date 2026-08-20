@@ -145,4 +145,4 @@ images:
   # pin-bump (routed here in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-console-web
-    newTag: v1.55.0 # commit caa9f9ba811bbaa5c3fd9eb1d02958036e1c2a44
+    newTag: v1.55.1 # commit 52f80a83fef2fddecdf1a43fa9023d7816895bfc
