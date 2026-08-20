@@ -9,8 +9,10 @@ spec:
   applicationRefs:
   - namePattern: backend
     images:
-    - alias: server
-      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server:main
+    - alias: api
+      # backend/api: the shared Connect-RPC image (unify-workload-naming),
+      # successor to backend/server; pulled by fan-api + admin-console-api in dev.
+      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:main
       commonUpdateSettings:
         updateStrategy: digest
         pullSecret: ext:/scripts/auth.sh
@@ -28,8 +30,10 @@ spec:
         pullSecret: ext:/scripts/auth.sh
   - namePattern: frontend
     images:
-    - alias: web-app
-      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/web-app:main
+    - alias: fan-web
+      # frontend/fan-web: the consumer web bundle (unify-workload-naming),
+      # successor to frontend/web-app.
+      imageName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web:main
       commonUpdateSettings:
         updateStrategy: digest
         pullSecret: ext:/scripts/auth.sh

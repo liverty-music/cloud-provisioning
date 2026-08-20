@@ -264,23 +264,15 @@ configMapGenerator:
 # (OpenSpec change automate-prod-pin-bump).
 images:
   # backend/api: the shared Connect-RPC API image (unify-workload-naming),
-  # audience-neutral successor to `server`/`fan-api`. INERT for now — no workload
-  # references `backend/api` until the repoint PR points fan-api + admin-console-api
-  # at it, so kustomize ignores this entry. It exists so the `component:backend`
-  # pin-bump (bump-prod-pin.yml IMAGES list) has an `api` entry to rewrite; the next
-  # backend release sets this newTag. Placeholder tag until then.
+  # audience-neutral successor to `server`/`fan-api`. Now ACTIVE — both the
+  # fan-api and admin-console-api workloads render `image: <base>` rewritten to
+  # backend/api, so this single pin drives both (no version drift). Bumped by the
+  # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
     newTag: v1.36.0 # commit 7a9e34109e7e40236728020d246a0f620c521b94
-  # server + fan-api: retired in the repoint PR. Still pinned here because the live
-  # fan-api + admin-console-api workloads render backend/fan-api / backend/server
-  # until that PR repoints them to backend/api.
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
-    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/fan-api
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/fan-api
-    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
+  # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
+  # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
     newTag: v1.36.0 # commit 7a9e34109e7e40236728020d246a0f620c521b94
