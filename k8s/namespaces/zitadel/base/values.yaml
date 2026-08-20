@@ -145,6 +145,35 @@ zitadel:
     # Chart default (empty/unset) keeps the redirect target at
     # /ui/v2/login/login which matches what the Next.js app serves.
 
+    # Notification processing mode. The chart/upstream DEFAULT is
+    # `LegacyEnabled: true`, which runs notification delivery SYNCHRONOUSLY
+    # inside the `projections.notifications` handler: its reducer calls
+    # `GetNotifyUserByID(ctx, shouldTriggered=true, …)`, which internally runs
+    # `triggerUserProjections(ctx)` → `triggerBatch(UserProjection,
+    # LoginNameProjection)` with `WithAwaitRunning()`. That projection-trigger
+    # await hits the in-process (Go, NOT DB) deadlock of zitadel/zitadel#10103,
+    # so a single notification's user-load times out ("context deadline
+    # exceeded"), the statement fails, the projection position freezes, and
+    # ALL notification email stops.
+    #
+    # Diagnosed in prod 2026-08-20: organizer operator passkey-init emails were
+    # never delivered. The `notifyUserByIDQuery` itself is 2 ms and the user row
+    # exists; Cloud SQL logs (log_lock_waits=on, log_min_duration_statement=1s)
+    # showed ZERO lock waits and ZERO slow queries, and the connection pool sat
+    # idle during the freeze — proving the hang is in-process projection-trigger
+    # (#10103), not a DB / connection / MaxOpenConns issue.
+    #
+    # The parallel (River-worker) mode calls `GetNotifyUserByID(ctx,
+    # shouldTriggered=FALSE, …)` — it does NOT trigger the projection ("we do not
+    # trigger the projection to reduce load on the database" — upstream comment) —
+    # so it avoids the #10103 path entirely, and decouples the send from the
+    # projection with a per-job Timeout (TransactionDuration 10s), MaxAttempts (3),
+    # and MaxTtl (5m). Upstream recommends the parallel mode for Postgres, which we
+    # run. River infrastructure is already active in this instance (executions +
+    # service-ping jobs), so this only routes notification jobs through it.
+    Notifications:
+      LegacyEnabled: false
+
     Log:
       Level: info
       Formatter:
