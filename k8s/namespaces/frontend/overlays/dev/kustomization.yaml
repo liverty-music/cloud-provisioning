@@ -3,12 +3,13 @@ kind: Kustomization
 
 resources:
 - ../../base
-# Organizer console workload — dev sibling of web/ in the frontend namespace.
-# The Spot VM patch targets `kind: Deployment`, so it applies to the organizer
-# Deployment automatically. See OpenSpec change `organizer-console`.
-- ../../base/organizer
+# organizer-console-web: dev sibling of fan-web in the frontend namespace
+# (unify-workload-naming, successor to the deleted `organizer`). The Spot VM
+# patch targets `kind: Deployment`, so it applies to the organizer-console-web
+# Deployment automatically.
+- ../../base/organizer-console-web
 - fan-web-configmap.yaml
-- organizer-configmap.yaml
+- organizer-console-web-configmap.yaml
 
 namespace: frontend
 
@@ -25,7 +26,7 @@ patches:
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: web-app
+      name: fan-web-app
     spec:
       template:
         spec:
@@ -42,12 +43,12 @@ patches:
 # Right-size the organizer console for dev (match the consumer web sizing).
 - target:
     kind: Deployment
-    name: organizer-app
+    name: organizer-console-web-app
   patch: |-
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: organizer-app
+      name: organizer-console-web-app
     spec:
       template:
         spec:
@@ -74,7 +75,7 @@ patches:
 # Dev organizer HTTPRoute hostname.
 - target:
     kind: HTTPRoute
-    name: organizer-route
+    name: organizer-console-web-route
   patch: |-
     - op: add
       path: /spec/hostnames
