@@ -145,10 +145,10 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["api.liverty-music.app"]
-  # Prod admin API HTTPRoute hostname.
+  # Prod admin API HTTPRoute hostname (admin-console-api-route, was server-admin-route).
   - target:
       kind: HTTPRoute
-      name: server-admin-route
+      name: admin-console-api-route
     patch: |-
       - op: add
         path: /spec/hostnames

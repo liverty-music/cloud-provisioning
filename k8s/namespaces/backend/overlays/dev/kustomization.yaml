@@ -119,7 +119,7 @@ patches:
 
 - target:
     kind: HTTPRoute
-    name: server-admin-route
+    name: admin-console-api-route
   patch: |-
     - op: add
       path: /spec/hostnames
