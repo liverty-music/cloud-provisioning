@@ -21,10 +21,13 @@ labels:
   pairs:
     app: admin-console-api
 
-# Same image as server-app (single binary). Mirrors server/kustomization.yaml so
-# the prod overlay's `images:` rewrite (matching the dev-AR `server` name) also
-# pins this workload to the prod AR + semver tag.
+# Shared API-server binary image (unify-workload-naming): admin-console-api pulls
+# the audience-neutral `backend/api`, the same image as fan-api (one Go binary,
+# differentiated by runtime config) — so the two API workloads never drift.
+# Successor to `backend/server`. The bare container `image: server` is the match
+# key rewritten here to the dev-AR form; the prod overlay last-write-wins to the
+# prod AR + semver pin on backend/api.
 images:
 - name: server
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
   newTag: latest

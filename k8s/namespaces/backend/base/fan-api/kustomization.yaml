@@ -22,9 +22,14 @@ labels:
   pairs:
     app: fan-api
 
+# Shared API-server binary image (unify-workload-naming): fan-api pulls the
+# audience-neutral `backend/api`, the successor to `backend/fan-api`/`backend/server`.
+# admin-console-api pulls the SAME image, so the two API workloads never drift.
+# The bare container `image: fan-api` is the match key rewritten to the dev-AR
+# form; the prod overlay last-write-wins to the prod AR + semver pin on backend/api.
 images:
 - name: fan-api
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/fan-api
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
   newTag: latest
 
 configMapGenerator:
