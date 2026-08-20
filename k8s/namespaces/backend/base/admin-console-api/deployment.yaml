@@ -33,13 +33,14 @@ spec:
           items:
           - key: zitadel-machine-key-for-backend-app.json
             path: zitadel-machine-key-for-backend-app.json
-      # Powerful organizer-provisioner key from the DEDICATED admin-console-secrets
-      # (not co-mingled into backend-secrets that server-app mounts). Presence of
-      # this mount + ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH is what
-      # activates the provisioner in this process (server-app leaves it Noop).
+      # Powerful organizer-provisioner key from the DEDICATED admin-console-api-secrets
+      # (not co-mingled into the shared backend-secrets). Presence of this mount +
+      # ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH is what activates the
+      # provisioner in this process. Renamed from admin-console-secrets to match the
+      # workload (unify-workload-naming cutover).
       - name: zitadel-organizer-provisioner-key
         secret:
-          secretName: admin-console-secrets
+          secretName: admin-console-api-secrets
           items:
           - key: zitadel-machine-key-for-organizer-provisioner.json
             path: zitadel-machine-key-for-organizer-provisioner.json

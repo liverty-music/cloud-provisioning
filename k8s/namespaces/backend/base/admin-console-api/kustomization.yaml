@@ -7,10 +7,8 @@ resources:
 - service.yaml
 - health-check-policy.yaml
 - httproute.yaml
-- external-secret.yaml
-# create-new (unify-workload-naming): admin-console-api-secrets alongside the old
-# admin-console-secrets; the deployment cuts over to it, then external-secret.yaml
-# is removed.
+# admin-console-api-secrets (unify-workload-naming): the organizer-provisioner
+# key ExternalSecret, successor to the deleted admin-console-secrets.
 - external-secret-api.yaml
 
 configurations:
