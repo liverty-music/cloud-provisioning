@@ -263,12 +263,12 @@ configMapGenerator:
 # No manual pin-bump PR. See docs/runbooks/prod-image-tag-pinning.md
 # (OpenSpec change automate-prod-pin-bump).
 images:
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/server
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/server
-    newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
-  # fan-api (unify-workload-naming create-new). Pinned at v1.35.0, the release
-  # that first published backend/fan-api to prod AR. Not yet in the bump-prod-pin
-  # image list (added at cutover), so it stays here until then.
+  # backend/fan-api: the shared API-server binary image (unify-workload-naming).
+  # Pins BOTH the fan-api workload and admin-console-api (they run the same Go
+  # binary on different runtime config). The old `backend/server` pin was removed
+  # here — admin-console-api was its last consumer and now renders `backend/fan-api`
+  # too, so both API workloads share one image + tag (no version drift). Pinned at
+  # v1.35.0, the release that first published backend/fan-api to prod AR.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/fan-api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/fan-api
     newTag: v1.35.0 # commit 7b666f4ec95a0ee50e7696735515b5364b13f073
