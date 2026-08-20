@@ -1,11 +1,11 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  # Name is intentionally KEPT as `server-admin-route` (not renamed to match the
-  # workload) so the existing per-overlay hostname patches — which target
-  # `HTTPRoute name: server-admin-route` — keep applying unchanged. Only the
-  # backend was migrated: backendRefs now point at admin-console-api-svc.
-  name: server-admin-route
+  # admin-console-api-route (unify-workload-naming): the admin API route,
+  # successor to server-admin-route. Owns api.admin.liverty-music.app (hostname
+  # patched per overlay) -> admin-console-api-svc. Renamed off the retired
+  # `server` workload name to match its workload (the last old-named route; 7.3).
+  name: admin-console-api-route
 spec:
   # Shares the external gateway with the consumer API route; hostnames
   # (api.admin.{env}) are patched per overlay. Consumer routing is untouched.
