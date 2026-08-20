@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: organizer-app-runtime-config
+  name: organizer-console-web-runtime-config
 data:
   # Organizer console dev runtime config served at the organizer pod's
   # /config.json. Same contract as the prod organizer ConfigMap — loaded with
