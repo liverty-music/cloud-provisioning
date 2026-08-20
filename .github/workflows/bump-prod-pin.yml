@@ -365,7 +365,7 @@ jobs:
           # `frontend-admin` shares the overlay but MUST NOT touch the consumer
           # configmap — the configmap tracks the consumer (web-app) release only.
           if [ "${COMPONENT}" = "frontend" ]; then
-            configmap="k8s/namespaces/${OVERLAY}/overlays/prod/configmap.yaml"
+            configmap="k8s/namespaces/${OVERLAY}/overlays/prod/fan-web-configmap.yaml"
             # Tag format is v[0-9]+\.[0-9]+\.[0-9]+ — safe for sed substitution.
             sed -i "s/\"releaseVersion\": \"[^\"]*\"/\"releaseVersion\": \"${TAG}\"/" "${configmap}"
             echo "----- releaseVersion in ${configmap} -----"
@@ -420,7 +420,7 @@ jobs:
           # non-frontend bumps under `set -euo pipefail`.
           paths=("$file")
           if [ "${COMPONENT}" = "frontend" ]; then
-            paths+=("k8s/namespaces/${OVERLAY}/overlays/prod/configmap.yaml")
+            paths+=("k8s/namespaces/${OVERLAY}/overlays/prod/fan-web-configmap.yaml")
           fi
 
           # Defensive: if no net diff (e.g. label/comment already matched),
