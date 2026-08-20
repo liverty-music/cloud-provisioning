@@ -97,9 +97,13 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 		]
 
 		// Log-Based Alert Policies (one per workload)
+		// appLabel MUST match each workload's live `app` pod label. Renamed by
+		// unify-workload-naming: server->fan-api, consumer->event-consumer (the
+		// cronjob labels are unchanged). A stale appLabel silently orphans the
+		// per-workload ERROR-log alert (the log filter matches no pod).
 		const workloads: Workload[] = [
-			{ displayName: 'Server', appLabel: 'server' },
-			{ displayName: 'Consumer', appLabel: 'consumer' },
+			{ displayName: 'Fan API', appLabel: 'fan-api' },
+			{ displayName: 'Event Consumer', appLabel: 'event-consumer' },
 			{
 				displayName: 'Concert Discovery',
 				appLabel: 'concert-discovery',
@@ -169,13 +173,13 @@ severity="ERROR"`,
 
 		// Poison Queue Accumulation Alert
 		// Fires when the PoisonConsumer logs an ERROR for a dead-lettered message.
-		// This is a secondary safety net: the consumer workload alert above also
-		// fires on any consumer ERROR, but this policy is scoped to poison queue
-		// events specifically to aid triage.
+		// This is a secondary safety net: the event-consumer workload alert above
+		// also fires on any event-consumer ERROR, but this policy is scoped to
+		// poison queue events specifically to aid triage.
 		const poisonQueueAlertPolicy = new gcp.monitoring.AlertPolicy(
 			'alert-poison-queue-message',
 			{
-				displayName: 'Consumer Poison Queue Message',
+				displayName: 'Event Consumer Poison Queue Message',
 				project: projectId,
 				combiner: 'OR',
 				conditions: [
@@ -187,7 +191,7 @@ resource.labels.project_id="${projectId}"
 resource.labels.location="${clusterLocation}"
 resource.labels.cluster_name="${clusterName}"
 resource.labels.namespace_name="backend"
-labels.k8s-pod/app="consumer"
+labels.k8s-pod/app="event-consumer"
 severity="ERROR"
 jsonPayload.msg="message routed to poison queue"`,
 							labelExtractors: {
@@ -348,10 +352,10 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						'- `account`: the NATS account (usually `$G`)',
 						'',
 						'### Triage Steps',
-						'1. Check the consumer pod: `kubectl -n backend get pods -l app=consumer` — is it Running, CrashLooping, or restarting?',
+						'1. Check the event-consumer pod: `kubectl -n backend get pods -l app=event-consumer` — is it Running, CrashLooping, or restarting?',
 						'2. Check `/healthz` liveness: a wedged router / unbound durable now reports unhealthy and should have restarted the pod',
 						'3. Inspect the durable: port-forward `nats:4222` and run `nats consumer info <STREAM> <CONSUMER>` — check `push_bound=true` and the delivery/deliver-group config for drift',
-						'4. If a durable is mis-configured (stale deliver group / policy), the startup reconciliation should recreate it on the next restart; force a restart with `kubectl -n backend delete pod -l app=consumer`',
+						'4. If a durable is mis-configured (stale deliver group / policy), the startup reconciliation should recreate it on the next restart; force a restart with `kubectl -n backend delete pod -l app=event-consumer`',
 						'5. Recover lost events by re-publishing from the source (streams retain 7d); `DeliverNew` durables do not replay already-published messages',
 					].join('\n'),
 					mimeType: 'text/markdown',

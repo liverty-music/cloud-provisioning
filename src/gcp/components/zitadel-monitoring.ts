@@ -217,9 +217,10 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 		// `severity=ERROR` and a payload that mentions the failure class.
 		//
 		// Filter is intentionally broad-then-tight: scoped to the `backend`
-		// namespace + `server` workload (the only place that validates
-		// Zitadel-issued JWTs), then keyword-filtered. False positives are
-		// acceptable in dev — a 10/min threshold is well above steady-state.
+		// namespace + `fan-api` workload (unify-workload-naming: the former
+		// `server`, the only place that validates Zitadel-issued JWTs), then
+		// keyword-filtered. False positives are acceptable in dev — a 10/min
+		// threshold is well above steady-state.
 		this.jwtErrorMetric = new gcp.logging.Metric(
 			'log-metric-backend-jwt-zitadel-errors',
 			{
@@ -230,7 +231,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 				filter: [
 					'resource.type="k8s_container"',
 					'resource.labels.namespace_name="backend"',
-					'labels.k8s-pod/app="server"',
+					'labels.k8s-pod/app="fan-api"',
 					'severity="ERROR"',
 					'(jsonPayload.msg=~"(?i)jwt|jwks|token|authn|invalid token|failed to validate" OR jsonPayload.error=~"(?i)jwks|jwt|zitadel")',
 				].join(' AND '),
@@ -286,7 +287,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 						'',
 						'### Triage Steps',
 						'',
-						'1. Confirm the source — `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="backend" AND labels.k8s-pod/app="server" AND severity="ERROR" AND timestamp >= "<now-15min>"\' --limit=50` to inspect the actual error payload.',
+						'1. Confirm the source — `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="backend" AND labels.k8s-pod/app="fan-api" AND severity="ERROR" AND timestamp >= "<now-15min>"\' --limit=50` to inspect the actual error payload.',
 						'2. Common causes:',
 						'   - **Zitadel API hang** (§18.6 shape): the OIDCService latency alert should also fire. See `cloud-provisioning/docs/runbooks/zitadel-hang.md`.',
 						'   - **JWKS unreachable**: Zitadel API behind the cluster Gateway is failing health checks. `kubectl get pods -n zitadel`.',
