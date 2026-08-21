@@ -35,7 +35,7 @@ namespace: frontend
 #   on the Deployment so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.56.1"
+      app.kubernetes.io/version: "1.56.2"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -129,7 +129,7 @@ images:
   # release (routed to fan-web in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
-    newTag: v1.56.1 # commit b9e1badc90688f3596a7f814cabe698bc8123238
+    newTag: v1.56.2 # commit f02d210c46d44594e479830f1161b96754702ef1
   # admin-console-web (unify-workload-naming): the admin console bundle, successor
   # to admin-app. Now ACTIVE — the admin-console-web-app Deployment (create-new)
   # references it. Pinned at v1.52.0 (the release that first published
