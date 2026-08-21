@@ -4,10 +4,12 @@
 # Prod runs 2 `zitadel-api` replicas (base is single-replica for dev
 # cost-simplicity). A single wedged process (zitadel/zitadel#10103,
 # in-process projection-trigger deadlock) otherwise takes down ALL login
-# because readiness can't detect the wedge; a second replica keeps login
-# serving and makes the self-healing watchdog's rolling restart
-# (cronjob-watchdog-zitadel.yaml) non-disruptive. PDB `minAvailable: 1`
-# (overrides base's 0) keeps one replica up during voluntary disruptions.
+# because neither readiness (/debug/ready) nor liveness (/debug/healthz)
+# detects the wedge — both stay 200 while auth-flow requests hang. Two
+# replicas bound the blast radius: one replica keeps login serving while
+# an operator manually restarts the wedged pod (`kubectl rollout restart
+# deploy/zitadel-api`). PDB `minAvailable: 1` (overrides base's 0) keeps
+# one replica up during voluntary disruptions.
 replicaCount: 2
 pdb:
   minAvailable: 1
