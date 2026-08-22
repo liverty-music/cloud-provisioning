@@ -43,7 +43,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.38.0"
+      app.kubernetes.io/version: "1.39.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -270,21 +270,21 @@ images:
   # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.38.0 # commit 631a21142b9a08c61242f599516dc5932617d523
+    newTag: v1.39.0 # commit bd2a4c07123ae004db38a54fa5b939af90fdeb5e
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.38.0 # commit 631a21142b9a08c61242f599516dc5932617d523
+    newTag: v1.39.0 # commit bd2a4c07123ae004db38a54fa5b939af90fdeb5e
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.38.0 # commit 631a21142b9a08c61242f599516dc5932617d523
+    newTag: v1.39.0 # commit bd2a4c07123ae004db38a54fa5b939af90fdeb5e
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.38.0 # commit 631a21142b9a08c61242f599516dc5932617d523
+    newTag: v1.39.0 # commit bd2a4c07123ae004db38a54fa5b939af90fdeb5e
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/merch-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/merch-discovery
-    newTag: v1.38.0 # commit 631a21142b9a08c61242f599516dc5932617d523
+    newTag: v1.39.0 # commit bd2a4c07123ae004db38a54fa5b939af90fdeb5e
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
     newTag: v1.25.0 # commit 54b28aaae129f3195578db4a6ac045725d70464e
