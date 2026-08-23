@@ -23,6 +23,52 @@ zitadel:
           Username: zitadel@liverty-music-prod.iam
         Admin:
           Username: zitadel@liverty-music-prod.iam
+    # Zitadel v4.15.2+ routes Actions v2 Target calls through a protected
+    # outbound HTTP client whose DenyList blocks all RFC1918 ranges by default
+    # (CVE-2026-55671 SSRF hardening). Our in-cluster webhook
+    # (fan-api-webhook-svc, ClusterIP in the prod Service CIDR 10.30.0.0/20)
+    # is dialed on a private IP, so the default deny breaks the pre-access-token
+    # and account-login-event Targets — which fails /oauth/v2/token with 500 and
+    # blocks every login.
+    #
+    # Setting DenyList REPLACES the built-in default entirely (it does not
+    # merge), so every default entry is re-listed here, changing only the
+    # 10.0.0.0/8 line: it is replaced by the 12 CIDRs covering 10.0.0.0/8 minus
+    # 10.30.0.0/20 (ipaddress.address_exclude), leaving a hole for the Service
+    # CIDR while keeping the rest of 10/8 denied. All other ranges — critically
+    # 169.254.0.0/16 (cloud metadata endpoint) — stay denied.
+    #
+    # This is a permanent, maintained config: upstream request for an AllowList
+    # (zitadel/zitadel#12326) was closed NOT_PLANNED; the CIDR-hole technique is
+    # the maintainer-endorsed solution. Re-review this list against the chart's
+    # cmd/defaults.yaml on every Zitadel version bump so new default protections
+    # are not silently dropped.
+    HTTPClient:
+      DenyList:
+      - localhost
+      - "0.0.0.0/8"       # Unspecified IPv4 / local-routing-trick protection
+      - "10.0.0.0/12"     # 10.0.0.0/8 minus 10.30.0.0/20 (webhook Service CIDR) ↓
+      - "10.16.0.0/13"
+      - "10.24.0.0/14"
+      - "10.28.0.0/15"
+      - "10.30.16.0/20"
+      - "10.30.32.0/19"
+      - "10.30.64.0/18"
+      - "10.30.128.0/17"
+      - "10.31.0.0/16"
+      - "10.32.0.0/11"
+      - "10.64.0.0/10"
+      - "10.128.0.0/9"    # ↑ end of hole-punched 10/8
+      - "100.64.0.0/10"   # Carrier-Grade NAT space
+      - "127.0.0.0/8"     # Loopback (IPv4)
+      - "169.254.0.0/16"  # Link-local — covers cloud metadata 169.254.169.254
+      - "172.16.0.0/12"   # Class B private networks
+      - "192.168.0.0/16"  # Class C private networks
+      - "198.18.0.0/15"   # Benchmark/inter-network testing
+      - "::/128"          # Unspecified IPv6
+      - "::1/128"         # IPv6 loopback
+      - "fc00::/7"        # IPv6 unique local (private equivalent)
+      - "fe80::/10"       # IPv6 link-local (metadata equivalent)
 
   # K8s native sidecars (restartPolicy: Always on initContainers).
   # See ../dev/values.yaml + base/values.yaml for full rationale.
