@@ -98,6 +98,19 @@ make lint-k8s
    `env:` block of `base/values.yaml`** — it hard-codes
    `service.version=vX.Y.Z` and without an explicit bump Cloud Trace
    service maps + alert annotations report the stale prior version.
+
+   **Re-review `HTTPClient.DenyList`** in `overlays/prod/values.yaml`
+   against the target image's `cmd/defaults.yaml`
+   (`https://github.com/zitadel/zitadel/blob/vX.Y.Z/cmd/defaults.yaml`).
+   We override the whole list to punch a CIDR hole for the in-cluster
+   webhook Service CIDR (`10.30.0.0/20`), so the override is pinned to
+   whatever the default was when it was written — a new image that adds
+   default deny entries (e.g. a new metadata range) will NOT be
+   inherited. Diff the two lists and add any new upstream entries to our
+   override. This DenyList only started blocking the webhook at v4.15.2
+   (CVE-2026-55671 SSRF hardening); upstream declined an AllowList
+   (`zitadel/zitadel#12326`, `NOT_PLANNED`), so the override is
+   permanent.
 4. **Render + diff** against the pre-bump rendered output to surface
    chart changes (added/removed manifests, schema migrations,
    default value changes):
