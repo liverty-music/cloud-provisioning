@@ -12,7 +12,7 @@
 fullnameOverride: zitadel-api
 
 image:
-  tag: v4.14.0
+  tag: v4.17.1
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -209,10 +209,11 @@ zitadel:
 # top-level `env`, NOT `zitadel.env`).
 #
 # OpenTelemetry SDK env vars carry forward from the prior
-# `configmap.env`. Zitadel v4.14.0 supports OTEL_* via autoexport
-# (release notes). Without these, Zitadel emits no observability
-# output (v4 has no `/debug/metrics` HTTP scrape endpoint —
-# verified empirically: the path returns 404 on v4.14.0).
+# `configmap.env`. Zitadel v4 (v4.14.0+, incl. the pinned v4.17.1)
+# supports OTEL_* via autoexport (release notes). Without these,
+# Zitadel emits no observability output (v4 has no `/debug/metrics`
+# HTTP scrape endpoint — verified empirically on v4.14.0: the path
+# returns 404).
 #
 # Pushes metrics + traces to the in-cluster OTLP collector; the
 # collector's `metrics` and `traces` pipelines export to Cloud
@@ -229,7 +230,7 @@ env:
 - name: OTEL_LOGS_EXPORTER
   value: none
 - name: OTEL_RESOURCE_ATTRIBUTES
-  value: service.name=zitadel,service.version=v4.14.0
+  value: service.name=zitadel,service.version=v4.17.1
 # 60s push interval matches `zitadel-observability` design D4 — alert
 # evaluation window is also 60s, so each evaluation cycle sees ~1 fresh
 # data point.
@@ -245,7 +246,7 @@ login:
   # HealthCheckPolicy targetRef are wired accordingly.
 
   image:
-    tag: v4.14.0
+    tag: v4.17.1
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -260,8 +261,9 @@ login:
 
   # NOTE: NEXT_PUBLIC_BASE_PATH override (to /ui/v2) was reverted —
   # `NEXT_PUBLIC_*` env vars in Next.js are INLINED AT BUILD TIME, not
-  # runtime. The upstream zitadel-login image at v4.14.0 was built
-  # with the chart-default base path /ui/v2/login baked in; setting
+  # runtime. The upstream zitadel-login image (v4.14.0 through the
+  # pinned v4.17.1) is built with the chart-default base path
+  # /ui/v2/login baked in; setting
   # NEXT_PUBLIC_BASE_PATH=/ui/v2 at runtime is silently ignored by
   # the Next.js binary. Routes still live at /ui/v2/login/*, so our
   # probes at /ui/v2/{healthy,ready} returned 404 and the Pod was

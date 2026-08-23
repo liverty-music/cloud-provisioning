@@ -23,7 +23,8 @@ resources:
 - job-grant-db.yaml
 # NOTE: PodMonitoring CRD (previously `podmonitoring.yaml`) was deleted as
 # part of the Helm chart migration. Zitadel v4 has no `/debug/metrics`
-# HTTP scrape endpoint — the path returns 404 on v4.14.0. Observability
+# HTTP scrape endpoint — the path returned 404 on v4.14.0 (v4 behavior,
+# carried forward to the pinned v4.17.1). Observability
 # is now driven by the OpenTelemetry SDK autoexport via the OTEL_* env
 # vars in `base/values.yaml` (top-level `env:`), which push metrics +
 # traces to the in-cluster OTLP collector. The collector's `metrics`
