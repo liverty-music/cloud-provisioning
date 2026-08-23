@@ -48,10 +48,20 @@ on:
         type: boolean
         default: false
 
-# Serialize all bumps: a backend and a frontend release can land within
-# seconds of each other. `cancel-in-progress: false` means a queued bump
-# waits for the running one rather than being dropped; the fetch-rebase-retry
-# loop around the push handles the (conflict-free, disjoint-file) interleave.
+# Serialize bumps: a backend and a frontend release can dispatch within seconds
+# of each other. `cancel-in-progress: false` protects the RUNNING bump; the
+# fetch-rebase-retry loop around the push absorbs the interleave (backend and
+# frontend touch disjoint overlay files, so the rebase is conflict-free).
+#
+# NOTE on `queue: single` (the default): a concurrency group holds at most one
+# running + one PENDING run — when a third run queues, GitHub cancels the
+# superseded pending one (`cancel-in-progress: false` does NOT prevent this; it
+# only guards the running run). That is safe here because each release now emits
+# a SINGLE dispatch (backend, or frontend covering all its bundles — see
+# batch-frontend-prod-pin-dispatch), so the only concurrent writers are one
+# backend + one frontend release = running-1 + pending-1, never a third. If a
+# third independently-releasing writer is ever added to this group, add
+# `queue: max` (up to 100 FIFO pending) then.
 concurrency:
   group: bump-prod-pin
   cancel-in-progress: false
@@ -122,13 +132,12 @@ jobs:
           # Bare semver (no leading `v`) for the app.kubernetes.io/version label.
           BARE="${TAG#v}"
 
-          # Per-component routing. `frontend-admin` / `frontend-organizer` are the
-          # admin / organizer console images: each SHARES the `frontend` kustomize
-          # overlay + prod-AR repo with the consumer, but bumps ONLY its own image
-          # entry (`admin-app` / `organizer-app`) and does NOT move the consumer's
-          # `app.kubernetes.io/version` label — so the consoles and the consumer
-          # pins advance independently within the one overlay. `frontend`
-          # conversely edits only `web-app`, never a console entry.
+          # Per-component routing. Each component maps to the set of image entries
+          # it pins within its overlay. `backend` and `frontend` each pin all of
+          # their release's images in one dispatch (backend: the api/consumer/…
+          # images; frontend: the three web bundles), with the version label +
+          # config moving in lock-step. The `frontend-admin` / `frontend-organizer`
+          # values are transitional single-image aliases (see below).
           case "${COMPONENT}" in
             backend)
               OVERLAY=backend; AR_REPO=backend
@@ -138,21 +147,26 @@ jobs:
               IMAGES="api consumer concert-discovery artist-image-sync merch-discovery"
               BUMP_LABEL=true ;;
             frontend)
-              # unify-workload-naming: the consumer web bundle is now `fan-web`
-              # (successor to `web-app`). Frontend CI builds+retags fan-web, so
-              # the consumer pin-bump targets the fan-web overlay entry.
+              # One frontend release ships three web bundles from the same tag —
+              # fan-web (consumer), admin-console-web, organizer-console-web — so a
+              # single `frontend` dispatch pins all three in one atomic commit, the
+              # same way `backend` pins its images in one dispatch. The provenance,
+              # no-downgrade, and yq-rewrite loops below all iterate `${IMAGES}`, so
+              # listing the three bundles here is the only change needed. The
+              # version label + fan-web-configmap track the consumer (fan-web).
               OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="fan-web"
+              IMAGES="fan-web admin-console-web organizer-console-web"
               BUMP_LABEL=true ;;
+            # TRANSITIONAL (remove after one release cycle — see batch-frontend-prod-pin-dispatch
+            # tasks 4.4): the `frontend` component above now covers all three bundles,
+            # so the release workflow emits a single `frontend` dispatch. These
+            # per-console component values are retained only so an in-flight old-style
+            # dispatch straddling the deploy is still applied to its own image entry.
             frontend-admin)
-              # unify-workload-naming: the admin console bundle is now
-              # `admin-console-web` (successor to `admin-app`).
               OVERLAY=frontend; AR_REPO=frontend
               IMAGES="admin-console-web"
               BUMP_LABEL=false ;;
             frontend-organizer)
-              # unify-workload-naming: the organizer console bundle is now
-              # `organizer-console-web` (successor to `organizer-app`).
               OVERLAY=frontend; AR_REPO=frontend
               IMAGES="organizer-console-web"
               BUMP_LABEL=false ;;
