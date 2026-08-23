@@ -137,7 +137,7 @@ images:
   # `frontend-admin` pin-bump was dropped by the bump-prod-pin concurrency race.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-console-web
-    newTag: v1.58.2 # commit 3c2ea6f26eceff1ae9eec8123959c015eba4383c
+    newTag: v1.58.3 # commit 583272015334662befe23aaa895bd10b49edd7ba
   # organizer-console-web (unify-workload-naming): successor to organizer-app. Now
   # ACTIVE — the organizer-console-web-app Deployment references it.
   # Pinned at v1.53.0 (the release that first published organizer-console-web to
