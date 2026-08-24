@@ -45,6 +45,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly alertPolicies: gcp.monitoring.AlertPolicy[]
 	public readonly atlasMigrationAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly consumerBacklogAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly goroutineLeakAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
 	public readonly webPushDeliveryFailureMetric: gcp.logging.Metric
@@ -363,6 +364,101 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 			},
 			{ parent: this },
 		)
+
+		// Goroutine Leak Alert.
+		//
+		// Go 1.27 promoted the runtime `goroutineleak` profile to GA: it reports
+		// goroutines permanently blocked on a concurrency primitive (channel op,
+		// sync.Mutex, sync.Cond) with no possibility of becoming runnable. The
+		// backend samples it on a coarse interval and publishes the leaked count
+		// as the OTel gauge `backend_goroutine_leak_count`, tagged with a
+		// `workload` label. This is the additive safety net for the silent-wedge
+		// class (e.g. the 2026-07 consumer outage) that backlog-stall and
+		// liveness signals can miss — it fires on the Go-side-blocked subset that
+		// those signals don't cover, and does NOT replace them.
+		//
+		// Pipeline note: the backend pushes OTLP metrics to the in-cluster
+		// otel-collector, which exports via the `googlecloud` exporter — so this
+		// gauge lands in Cloud Monitoring as
+		// `workload.googleapis.com/backend_goroutine_leak_count` (a standard
+		// custom metric), NOT in Google Managed Prometheus. It therefore uses a
+		// `conditionThreshold` (like the Zitadel db.pool and web-push metric
+		// alerts) rather than the PromQL condition the consumer-backlog alert
+		// uses for its GMP-scraped `nats_consumer_num_pending`. The collector's
+		// drop-filter only excludes `rpc.server.*` / `http.client.*`, so this
+		// metric passes through with no collector change.
+		//
+		// Transient vs sustained: `ALIGN_MIN` over a 10-minute window means the
+		// leaked count must have stayed above zero for the ENTIRE window (it
+		// never cleared) before firing — a momentary blip that clears drops a
+		// sample to zero and resets. `REDUCE_MAX` grouped by `workload` keeps
+		// each workload its own series (so any leaking pod trips it and the
+		// alert names the affected workload), and `autoClose` resolves the
+		// incident once the count returns to zero for the recovery window.
+		this.goroutineLeakAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-goroutine-leak',
+			{
+				displayName: 'Backend Goroutine Leak',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'Leaked goroutines sustained above zero for 10m',
+						conditionThreshold: {
+							filter: 'metric.type="workload.googleapis.com/backend_goroutine_leak_count"',
+							aggregations: [
+								{
+									alignmentPeriod: '600s', // 10-minute sustain window
+									perSeriesAligner: 'ALIGN_MIN',
+									crossSeriesReducer: 'REDUCE_MAX',
+									groupByFields: ['metric.label.workload'],
+								},
+							],
+							comparison: 'COMPARISON_GT',
+							thresholdValue: 0,
+							// The 10m ALIGN_MIN window already encodes the
+							// sustain, so no extra duration is needed.
+							duration: '0s',
+							trigger: { count: 1 },
+						},
+					},
+				],
+				alertStrategy: {
+					// notificationRateLimit is rejected by the GCP API on
+					// threshold (non-log-based) policies; the 10m ALIGN_MIN
+					// window is the debounce.
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Backend Goroutine Leak Alert',
+						'',
+						'A backend workload has one or more goroutines permanently blocked on a concurrency primitive (channel operation, `sync.Mutex`, or `sync.Cond`) with no possibility of becoming runnable — the Go 1.27 `goroutineleak` profile has reported a non-zero count sustained for a full 10-minute window.',
+						'',
+						'This is the additive safety net for the silent-wedge class (e.g. the 2026-07 consumer outage): it catches the Go-side-blocked subset that the `Consumer JetStream Backlog Stall` and liveness signals can miss. It does NOT replace them.',
+						'',
+						'### Alert Labels',
+						'- `workload`: the affected workload, from the OTel gauge attribute (= the pod’s `TELEMETRY_SERVICE_NAME`): `liverty-music-backend` (the fan-api / admin binary) or `liverty-music-consumer` (the event-consumer). Note this is NOT the pod `app` label — see the mapping in triage step 1.',
+						'',
+						'### Known Blind Spots',
+						'- Leaks reachable only via **global variables** are not reported.',
+						'- Goroutines that remain **runnable** (spinning, not blocked on a primitive) are not reported.',
+						'- NATS-internal wedges that do not block a Go goroutine on a primitive are not reported — the `Consumer JetStream Backlog Stall` alert remains the complementary signal for those.',
+						'',
+						'### Triage Steps',
+						'1. Map the `workload` label to the pod `app` label — `liverty-music-backend` → `app=fan-api`, `liverty-music-consumer` → `app=event-consumer` — then find the pod: `kubectl -n backend get pods -l app=<app-label>`.',
+						'2. Pull a full profile with stacks from the internal pprof listener (never exposed publicly): `kubectl -n backend port-forward <pod> 6060:6060` then open `http://localhost:6060/debug/pprof/goroutineleak?debug=2` to see each leaked goroutine and its blocking stack.',
+						'3. Identify the blocking site from the stack (channel receive/send, mutex, cond) and correlate with recent deploys or a stalled dependency.',
+						'4. Restart the wedged pod to recover service while the root cause is fixed: `kubectl -n backend delete pod <pod>`.',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(this.goroutineLeakAlertPolicy)
 
 		// Sales-reminder delivery outcome metric.
 		//
