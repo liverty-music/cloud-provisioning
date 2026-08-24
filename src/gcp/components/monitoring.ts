@@ -406,7 +406,13 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						displayName:
 							'Leaked goroutines sustained above zero for 10m',
 						conditionThreshold: {
-							filter: 'metric.type="workload.googleapis.com/backend_goroutine_leak_count"',
+							// GCP requires a `resource.type` restriction on threshold
+							// filters. The otel-collector `googlecloud` exporter lands
+							// this OTLP gauge on the `generic_node` monitored resource
+							// (confirmed against the live prod time series), so pin it —
+							// omitting it fails at apply time with HTTP 400 even though
+							// `pulumi preview` passes.
+							filter: 'metric.type="workload.googleapis.com/backend_goroutine_leak_count" AND resource.type="generic_node"',
 							aggregations: [
 								{
 									alignmentPeriod: '600s', // 10-minute sustain window
