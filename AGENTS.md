@@ -180,4 +180,9 @@ pulumi stack select staging
 pulumi stack select prod
 ```
 
+## Review criteria (flag violations)
+
+- Environment-specific secrets use `esc env set`, never `pulumi config set --secret` or a hardcoded value.
+- Renaming a lifecycle-sensitive resource (MachineKey, IAM/SA keys) uses `aliases: [{ name: 'old-urn' }]` to avoid replace-delete.
+
 </agent-rules>
