@@ -26,14 +26,12 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: 'Component to bump (backend, frontend, frontend-admin, or frontend-organizer)'
+        description: 'Component to bump (backend or frontend)'
         required: true
         type: choice
         options:
           - backend
           - frontend
-          - frontend-admin
-          - frontend-organizer
       tag:
         description: 'Release tag to pin (vX.Y.Z)'
         required: true
@@ -112,9 +110,9 @@ jobs:
           echo "Trigger: ${{ github.event_name }}; component=${COMPONENT} tag=${TAG} sha=${SHA}"
 
           case "${COMPONENT}" in
-            backend|frontend|frontend-admin|frontend-organizer) ;;
+            backend|frontend) ;;
             *)
-              echo "::error::Invalid component '${COMPONENT}' — must be 'backend', 'frontend', 'frontend-admin', or 'frontend-organizer'."
+              echo "::error::Invalid component '${COMPONENT}' — must be 'backend' or 'frontend'."
               exit 1
               ;;
           esac
@@ -136,8 +134,7 @@ jobs:
           # it pins within its overlay. `backend` and `frontend` each pin all of
           # their release's images in one dispatch (backend: the api/consumer/…
           # images; frontend: the three web bundles), with the version label +
-          # config moving in lock-step. The `frontend-admin` / `frontend-organizer`
-          # values are transitional single-image aliases (see below).
+          # config moving in lock-step.
           case "${COMPONENT}" in
             backend)
               OVERLAY=backend; AR_REPO=backend
@@ -157,19 +154,6 @@ jobs:
               OVERLAY=frontend; AR_REPO=frontend
               IMAGES="fan-web admin-console-web organizer-console-web"
               BUMP_LABEL=true ;;
-            # TRANSITIONAL (remove after one release cycle — see batch-frontend-prod-pin-dispatch
-            # tasks 4.4): the `frontend` component above now covers all three bundles,
-            # so the release workflow emits a single `frontend` dispatch. These
-            # per-console component values are retained only so an in-flight old-style
-            # dispatch straddling the deploy is still applied to its own image entry.
-            frontend-admin)
-              OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="admin-console-web"
-              BUMP_LABEL=false ;;
-            frontend-organizer)
-              OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="organizer-console-web"
-              BUMP_LABEL=false ;;
           esac
 
           {
@@ -329,8 +313,8 @@ jobs:
           set -euo pipefail
           file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
           # Distinct newTag set across ONLY this component's image entries
-          # (matched by the `/<image>` name suffix), so a frontend-admin bump is
-          # idempotent against the admin-app entry alone, not the whole overlay.
+          # (matched by the `/<image>` name suffix), so a backend bump is
+          # idempotent against its own entries alone, not the whole overlay.
           current="$(for img in ${IMAGES}; do IMG="$img" yq '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag' "$file"; done | sort -u)"
           if [ "${current}" = "${TAG}" ]; then
             echo "All target newTag values already equal ${TAG}; nothing to do."
@@ -358,14 +342,14 @@ jobs:
           file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
           # Rewrite newTag + inline `# commit <sha>` trailer for ONLY this
           # component's image entries (matched by the `/<image>` name suffix), so
-          # a frontend bump never touches admin-app and vice versa.
+          # a backend bump never touches the frontend entries and vice versa.
           for img in ${IMAGES}; do
             IMG="$img" TAG="${TAG}" yq -i '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag = strenv(TAG)' "$file"
             IMG="$img" COMMENT="commit ${SHA}" yq -i '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag line_comment = strenv(COMMENT)' "$file"
           done
-          # Bump the app.kubernetes.io/version label only for the primary
-          # component (consumer/backend). `frontend-admin` shares the overlay but
-          # must not move the consumer's version label.
+          # Bump the app.kubernetes.io/version label in lock-step. Both backend
+          # and frontend set BUMP_LABEL=true; the guard is retained so a future
+          # label-agnostic component can opt out without reworking this step.
           if [ "${BUMP_LABEL}" = "true" ]; then
             BARE="${BARE}" yq -i '(.labels[].pairs."app.kubernetes.io/version") = strenv(BARE)' "$file"
           fi
@@ -376,8 +360,8 @@ jobs:
           # inside the prod ConfigMap so the SPA Settings screen shows the correct
           # version immediately after the ArgoCD rollout. The no-downgrade guard
           # (step above) has already passed, so a blocked bump never reaches here.
-          # `frontend-admin` shares the overlay but MUST NOT touch the consumer
-          # configmap — the configmap tracks the consumer (web-app) release only.
+          # The configmap tracks the consumer (fan-web) release only; backend
+          # bumps have no such file.
           if [ "${COMPONENT}" = "frontend" ]; then
             configmap="k8s/namespaces/${OVERLAY}/overlays/prod/fan-web-configmap.yaml"
             # Tag format is v[0-9]+\.[0-9]+\.[0-9]+ — safe for sed substitution.
@@ -429,9 +413,9 @@ jobs:
           git config user.email "${BOT_SLUG}[bot]@users.noreply.github.com"
 
           # Build the list of files to add/diff. The frontend configmap is only
-          # written for component=frontend; backend/frontend-admin have no such
-          # file, so including it unconditionally causes `fatal: pathspec` for
-          # non-frontend bumps under `set -euo pipefail`.
+          # written for component=frontend; a backend bump has no such file, so
+          # including it unconditionally causes `fatal: pathspec` for non-frontend
+          # bumps under `set -euo pipefail`.
           paths=("$file")
           if [ "${COMPONENT}" = "frontend" ]; then
             paths+=("k8s/namespaces/${OVERLAY}/overlays/prod/fan-web-configmap.yaml")

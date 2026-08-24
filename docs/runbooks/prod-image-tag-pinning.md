@@ -64,10 +64,9 @@ side is a single dispatch (it replaced a broken three-dispatch fan-out).
 
 `bump-prod-pin.yml` in `cloud-provisioning` receives the dispatch and, for the named component:
 
-1. Validates the payload (`component ∈ {backend, frontend, frontend-admin, frontend-organizer}` — see the transitional-values note below; `tag` matches `^v[0-9]+\.[0-9]+\.[0-9]+$`) and maps it to the set of image entries it pins:
+1. Validates the payload (`component ∈ {backend, frontend}`; `tag` matches `^v[0-9]+\.[0-9]+\.[0-9]+$`) and maps it to the set of image entries it pins:
    - `backend` → `api consumer concert-discovery artist-image-sync merch-discovery` (5 images), bumps the version label.
    - `frontend` → `fan-web admin-console-web organizer-console-web` (all three bundles), bumps the version label (sourced from fan-web) and the `fan-web-configmap.yaml` `releaseVersion`.
-   - `frontend-admin` → `admin-console-web` only; `frontend-organizer` → `organizer-console-web` only. **Transitional** single-image aliases (do NOT bump the label/configmap) — see below.
 2. **Provenance gate** — `crane manifest` every prod-AR image at `:tag` (5 for backend, 3 for frontend). A missing image **aborts before any edit** (fail-closed), rejecting bogus/stale tags and the silent-downgrade path.
 3. **No-downgrade guard** — for each target image, compares the incoming `tag` against the current pin; a strictly-lower semver **aborts** unless `allow_rollback=true` (manual trigger only). The automated `repository_dispatch` path never sets `allow_rollback`, so it always fails closed on a backward move.
 4. Idempotency — if every target `newTag` already equals `tag`, exits 0 without committing.
@@ -133,14 +132,12 @@ dispatch removes the fan-out, so the only concurrent writers on the
 `bump-prod-pin` group are one backend + one frontend release (running-1 +
 pending-1, never a third) — no eviction.
 
-> **Transitional values.** `bump-prod-pin.yml` still ACCEPTS the legacy
-> `frontend-admin` / `frontend-organizer` component values (each pins only its own
-> single image, no label/configmap change) purely so an old-style dispatch
-> in-flight during the deploy window is not orphaned. The frontend workflow **no
-> longer emits them**; they are marked for removal after one release cycle. To
-> recover a single dropped legacy dispatch, prefer re-dispatching
-> `component: frontend` (re-pins all three atomically) over the per-console
-> aliases.
+> **Historical note.** The original design also exposed per-console
+> `frontend-admin` / `frontend-organizer` component values (each pinning a single
+> bundle). They were retained transitionally for one release cycle after the
+> single-dispatch cutover and **removed** once v1.59.0 validated the collapsed
+> `component: frontend` path (OpenSpec change `batch-frontend-prod-pin-dispatch`
+> task 4.4). The only accepted components are now `backend` and `frontend`.
 
 ## Manual recovery: `workflow_dispatch` fallback (admin-only)
 
@@ -153,12 +150,9 @@ gh workflow run bump-prod-pin.yml --repo liverty-music/cloud-provisioning \
   -f component=backend -f tag=v1.0.1 -f sha=<release-commit-sha>
 ```
 
-The `component` input is a choice of `backend | frontend | frontend-admin |
-frontend-organizer`. For a dropped **frontend** dispatch, use
-`component=frontend` — it re-pins all three bundles atomically. The
-`frontend-admin` / `frontend-organizer` values are transitional single-image
-aliases (see "Frontend: one dispatch, three bundles" above); prefer `frontend`
-over them. An intentional rollback additionally needs `-f allow_rollback=true`
+The `component` input is a choice of `backend | frontend`. For a dropped
+**frontend** dispatch, use `component=frontend` — it re-pins all three bundles
+atomically. An intentional rollback additionally needs `-f allow_rollback=true`
 (the no-downgrade guard fails closed otherwise).
 
 This path is **admin-gated**: `workflow_dispatch` runs bind the `prod-pin`
@@ -460,9 +454,9 @@ prod AR and emits **one** `repository_dispatch` (`component: "frontend"`), and
 (sourced from fan-web) + the fan-web `releaseVersion` **in one atomic commit**.
 See "Frontend: one dispatch, three bundles" above for the full mechanism and the
 concurrency-race history (`batch-frontend-prod-pin-dispatch`) that made batching
-mandatory. The `bump-prod-pin.yml` `frontend-admin` / `frontend-organizer`
-component values remain only as transitional single-image aliases for an
-in-flight legacy dispatch and are slated for removal.
+mandatory. The former per-console `frontend-admin` / `frontend-organizer`
+component values have been removed (task 4.4); `bump-prod-pin.yml` now accepts
+only `backend` and `frontend`.
 
 Structurally, each console's prod release is identical to the fan bundle's: GH
 Release → retag each bundle's dev-AR digest to prod AR → single
