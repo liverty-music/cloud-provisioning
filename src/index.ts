@@ -398,3 +398,15 @@ export const organizerConsoleClientId: string | pulumi.Output<string> =
 // as the other Zitadel exports. See OpenSpec change `organizer-accounts`.
 export const organizerConsoleProjectId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
+
+// GCS bucket name for organizer cover images — surfaced as a stack output so
+// the bucket name can be verified after `pulumi up` and cross-referenced with
+// the `ORGANIZER_COVER_IMAGE_BUCKET` env var injected into the
+// organizer-console-api workload via the `fan-api-config` ConfigMap. The
+// backend constructs the public serving URL as
+// `https://storage.googleapis.com/<bucket>/<object-key>` and persists it on
+// the Series row. Same `DEV_SHUTDOWN_SENTINEL` fallback contract as the other
+// workload-gated outputs (the bucket is only provisioned when
+// `workloadEnabled=true`). See OpenSpec change `organizer-event-authoring`.
+export const organizerCoverImagesBucketName: string | pulumi.Output<string> =
+	gcp.workloadSAs?.organizerCoverImagesBucketName ?? DEV_SHUTDOWN_SENTINEL

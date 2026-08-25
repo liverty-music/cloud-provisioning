@@ -42,6 +42,14 @@ export const Roles = {
 	SecretManager: {
 		SecretAccessor: 'roles/secretmanager.secretAccessor',
 	},
+	Storage: {
+		/** Full control over objects in a specific bucket (create, replace, delete,
+		 *  read). Granted at the bucket level (BucketIamMember), not project-level,
+		 *  to restrict write access to the organizer-cover-images bucket only. */
+		ObjectAdmin: 'roles/storage.objectAdmin',
+		/** Read-only access to objects. Granted to `allUsers` for public serving. */
+		ObjectViewer: 'roles/storage.objectViewer',
+	},
 } as const
 
 type DeepValueOf<T> = T extends object
