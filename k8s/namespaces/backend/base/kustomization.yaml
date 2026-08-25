@@ -10,6 +10,7 @@ resources:
 # the deleted `server` workload. Owns api.liverty-music.app via fan-api-route.
 - fan-api
 - admin-console-api
+- organizer-console-api
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
 - cronjob/sales-phase-discovery

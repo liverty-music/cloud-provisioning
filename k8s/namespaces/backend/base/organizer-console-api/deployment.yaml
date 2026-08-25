@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: organizer-console-api
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      # `app: organizer-console-api` (with selector) is applied by this sub-base's
+      # own `labels` transformer in kustomization.yaml — it does NOT inherit the
+      # `server/` sub-base's `app: server`. This is the selector-isolation
+      # mechanism: organizer-console-api Pods never carry `app: server`, so the
+      # consumer `server-svc` / `server-webhook-svc` (selector `app: server`)
+      # can never route to them, and `organizer-console-api-svc` (selector
+      # `app: organizer-console-api`) routes ONLY to these Pods.
+    spec:
+      terminationGracePeriodSeconds: 75
+      serviceAccountName: organizer-console-api
+      volumes:
+      # Regular backend key from the SHARED backend-secrets — the same binary's
+      # DI initializes the backend-app Zitadel client from it. This Secret is
+      # namespace-shared (consumer + cronjobs + admin + organizer).
+      - name: zitadel-machine-key
+        secret:
+          secretName: backend-secrets
+          items:
+          - key: zitadel-machine-key-for-backend-app.json
+            path: zitadel-machine-key-for-backend-app.json
+      containers:
+      - name: server
+        image: server
+        imagePullPolicy: Always
+        ports:
+        # The single backend binary always starts the main (8080), admin (8090),
+        # organizer (8091), and webhook (9090) listeners. Declare 8080 so the pod
+        # boots healthy on the main listener, and 8091 (organizer) — the ONLY port
+        # routed for this workload via organizer-console-api-svc.
+        - containerPort: 8080
+          name: http
+        - containerPort: 8091
+          name: http-organizer
+        env:
+        # Env-specific organizer-console Zitadel project id. The organizer server's
+        # OrgScopedInterceptor requires this project id to appear in the token `aud`;
+        # an empty value denies every request. Scoped to this Deployment's container
+        # env so it never leaks into the fan/consumer workloads. Value is the Pulumi
+        # stack output `organizerConsoleProjectId`; set per overlay.
+        - name: ORGANIZER_CONSOLE_PROJECT_ID
+          value: REPLACE_ME_IN_OVERLAY
+        # Authenticate to Cloud SQL as this workload's OWN IAM DB user. An explicit
+        # container `env` entry overrides the value supplied by `envFrom`
+        # (fan-api-config, which carries the fan-api DATABASE_USER) — Kubernetes
+        # gives precedence to `env` over `envFrom` for the same key. Set per overlay.
+        - name: DATABASE_USER
+          value: REPLACE_ME_IN_OVERLAY
+        envFrom:
+        # Config: organizer borrows fan-api-config (identical content;
+        # DATABASE_USER overridden above; ORGANIZER_CORS_ALLOWED_ORIGINS supplied
+        # via the overlay merge into fan-api-config).
+        # Secret: the namespace-shared backend-secrets (relocated ExternalSecret).
+        - configMapRef:
+            name: fan-api-config
+        - secretRef:
+            name: backend-secrets
+        volumeMounts:
+        - name: zitadel-machine-key
+          mountPath: /secrets/zitadel
+          readOnly: true
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
+        readinessProbe:
+          grpc:
+            port: 8091
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          grpc:
+            port: 8091
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
