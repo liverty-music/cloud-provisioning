@@ -66,6 +66,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly fanApiServiceAccountEmail: pulumi.Output<string>
 	/** Admin Console API GCP SA email — exposed so Postgres can create its dedicated IAM SQL user. */
 	public readonly adminConsoleApiServiceAccountEmail: pulumi.Output<string>
+	/** Organizer Console API GCP SA email — least-privilege read-only backend workload; exposed so Postgres can create its dedicated IAM SQL user. */
+	public readonly organizerConsoleApiServiceAccountEmail: pulumi.Output<string>
 	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
 	public readonly zitadelServiceAccountEmail: pulumi.Output<string>
 	/** ESO controller's GCP SA email — exposed so callers can grant per-secret accessor bindings. */
@@ -283,6 +285,55 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			],
 			adminConsoleApi,
 			adminConsoleApiSa.email,
+			this,
+		)
+
+		// 2c. Organizer Console API Service Account (organizer-console-api)
+		// A dedicated, least-privilege backend workload serving the organizer
+		// Connect server (read-only surface: Get + ListArtists). Unlike
+		// admin-console-api it holds NO provisioner key (no GSM accessor binding
+		// below) and its Cloud SQL IAM DB user is granted SELECT-only in the app
+		// schema (see the backend grant migration), so its blast radius is a
+		// read-only view of the shared database. Its GCP project roles still mirror
+		// the shared backend binary's operational needs (the same image also boots
+		// the fan/admin listeners), including the Cloud SQL connect + IAM login pair.
+		const organizerConsoleApi = 'organizer-console-api'
+		const organizerConsoleApiSa = iamSvc.createServiceAccount(
+			`liverty-music-${organizerConsoleApi}`,
+			organizerConsoleApi,
+			'Liverty Music Organizer Console API Service Account',
+			'Least-privilege read-only backend organizer workload; authenticates to Cloud SQL as its own SELECT-only IAM DB user',
+			this,
+		)
+		this.organizerConsoleApiServiceAccountEmail =
+			organizerConsoleApiSa.email
+		// Bind Kubernetes Service Account to Workload Identity (ns/backend/sa/organizer-console-api)
+		iamSvc.bindKubernetesSaUser(
+			organizerConsoleApi,
+			organizerConsoleApiSa,
+			namespace,
+			this,
+		)
+		// Same operational project roles as fan-api / admin-console-api: this
+		// workload runs the identical backend binary and connects to Cloud SQL via
+		// the in-process Cloud SQL Go connector using Workload Identity IAM auth. It
+		// therefore needs BOTH `cloudSql.Client` (cloudsql.instances.connect) AND
+		// `cloudSql.InstanceUser` (instances.get + login). The remaining roles
+		// mirror the shared binary so it doesn't crash later on a missing role.
+		// Least privilege at the DB layer is enforced by the SELECT-only grant on
+		// the organizer-console-api IAM DB user, not by these project roles.
+		iamSvc.bindProjectRoles(
+			[
+				Roles.Logging.LogWriter,
+				Roles.Monitoring.MetricWriter,
+				Roles.CloudTrace.Agent,
+				Roles.CloudSql.Client,
+				Roles.CloudSql.InstanceUser,
+				Roles.AiPlatform.User,
+				Roles.ServiceUsage.ServiceUsageConsumer,
+			],
+			organizerConsoleApi,
+			organizerConsoleApiSa.email,
 			this,
 		)
 

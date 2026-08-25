@@ -61,6 +61,12 @@ patches:
     target:
       kind: ServiceAccount
       name: fan-api
+  # Bind KSA organizer-console-api to the admin-console-api prod GSA (reused;
+  # no dedicated organizer GSA in this change).
+  - path: serviceaccount_organizer_console_api_patch.yaml
+    target:
+      kind: ServiceAccount
+      name: organizer-console-api
   # Global Spot VM patch for all Deployments
   - path: spot-vm_patch.yaml
     target:
@@ -137,6 +143,40 @@ patches:
               # via envFrom). Matching IAM SQL user provisioned in postgres.ts.
               - name: DATABASE_USER
                 value: "admin-console-api@liverty-music-prod.iam"
+  # organizer-console-api — single replica (matches admin-console-api sizing).
+  - target:
+      kind: Deployment
+      name: organizer-console-api
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: organizer-console-api
+      spec:
+        replicas: 1
+  # Env-specific ORGANIZER_CONSOLE_PROJECT_ID + own IAM DB user for
+  # organizer-console-api (scoped to this Deployment's container env). The
+  # project id is the shared organizer-console Zitadel project (same value
+  # admin-console-api uses; required in the token `aud`). DATABASE_USER points at
+  # the dedicated organizer-console-api IAM SQL user provisioned in postgres.ts.
+  - target:
+      kind: Deployment
+      name: organizer-console-api
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: organizer-console-api
+      spec:
+        template:
+          spec:
+            containers:
+            - name: server
+              env:
+              - name: ORGANIZER_CONSOLE_PROJECT_ID
+                value: "386069101153353860"
+              - name: DATABASE_USER
+                value: "organizer-console-api@liverty-music-prod.iam"
   # Prod fan API HTTPRoute hostname (fan-api-route replaces server-route).
   - target:
       kind: HTTPRoute
@@ -153,6 +193,14 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["api.admin.liverty-music.app"]
+  # Prod organizer API HTTPRoute hostname (organizer-console-api-route).
+  - target:
+      kind: HTTPRoute
+      name: organizer-console-api-route
+    patch: |-
+      - op: add
+        path: /spec/hostnames
+        value: ["api.organizer.liverty-music.app"]
   # Match dev's event-consumer resource sizing.
   - target:
       kind: Deployment

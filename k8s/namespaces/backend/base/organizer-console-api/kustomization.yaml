@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- serviceaccount.yaml
+- deployment.yaml
+- service.yaml
+- health-check-policy.yaml
+- httproute.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+# Sub-base-scoped `app: organizer-console-api` label (with selector). This is the
+# selector-isolation boundary: the label only applies to resources in THIS
+# sub-base, so organizer-console-api Pods/Service never inherit the `server/`
+# sub-base's `app: server`, and vice versa.
+labels:
+- includeSelectors: true
+  pairs:
+    app: organizer-console-api
+
+# Shared API-server binary image: organizer-console-api pulls the
+# audience-neutral `backend/api`, the same image as fan-api and admin-console-api
+# (one Go binary, differentiated by runtime config) — so the API workloads never
+# drift. The bare container `image: server` is the match key rewritten here to the
+# dev-AR form; the prod overlay last-write-wins to the prod AR + semver pin on
+# backend/api.
+images:
+- name: server
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
+  newTag: latest

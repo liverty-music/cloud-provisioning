@@ -1,0 +1,17 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  # organizer-console-api-route: the organizer API route. Owns
+  # api.organizer.liverty-music.app (hostname patched per overlay) ->
+  # organizer-console-api-svc. Mirrors admin-console-api-route.
+  name: organizer-console-api-route
+spec:
+  # Shares the external gateway with the consumer/admin API routes; hostnames
+  # (api.organizer.{env}) are patched per overlay. Other routing is untouched.
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  rules:
+  - backendRefs:
+    - name: organizer-console-api-svc
+      port: 80

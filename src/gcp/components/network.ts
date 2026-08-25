@@ -360,6 +360,13 @@ const SERVICES: ReadonlyArray<{
 	// a dedicated HTTPRoute on this same shared gateway. See OpenSpec change
 	// `split-admin-rpc-server`.
 	{ name: 'admin-backend-server', subdomain: 'api.admin' },
+	// Organizer API — dev: api.organizer.dev.liverty-music.app,
+	// prod: api.organizer.liverty-music.app. The backend's dedicated organizer
+	// Connect server (third listener in the same image) exposed via the
+	// organizer-console-api workload's organizer-console-api-svc and a dedicated
+	// HTTPRoute on this same shared gateway. See OpenSpec change
+	// `organizer-rpc-server`.
+	{ name: 'organizer-console-api', subdomain: 'api.organizer' },
 	// Organizer console — dev: organizer.dev.liverty-music.app,
 	// prod: organizer.liverty-music.app. A bundle-isolated frontend entry served
 	// by its own k8s Deployment via a dedicated HTTPRoute on this same shared

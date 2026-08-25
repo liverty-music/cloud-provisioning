@@ -26,6 +26,13 @@ patches:
     kind: ServiceAccount
     name: fan-api
 
+# Bind KSA organizer-console-api to the admin-console-api dev GSA (reused;
+# no dedicated organizer GSA in this change).
+- path: serviceaccount_organizer_console_api_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: organizer-console-api
+
 # Global Spot VM patch for all Deployments in dev
 - path: spot-vm_patch.yaml
   target:
@@ -109,6 +116,42 @@ patches:
             - name: DATABASE_USER
               value: "admin-console-api@liverty-music-dev.iam"
 
+# Reduce replicas to 1 for organizer-console-api in dev (low-volume traffic).
+- target:
+    kind: Deployment
+    name: organizer-console-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: organizer-console-api
+    spec:
+      replicas: 1
+
+# Env-specific ORGANIZER_CONSOLE_PROJECT_ID + own IAM DB user for
+# organizer-console-api (scoped to this Deployment's container env). Dev is
+# intentionally stopped, so the project id resolves to the DEV_SHUTDOWN sentinel
+# and the DATABASE_USER is inert, but both are kept coherent with prod and the
+# postgres.ts IAM SQL user.
+- target:
+    kind: Deployment
+    name: organizer-console-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: organizer-console-api
+    spec:
+      template:
+        spec:
+          containers:
+          - name: server
+            env:
+            - name: ORGANIZER_CONSOLE_PROJECT_ID
+              value: "DEV_SHUTDOWN_workloadEnabled=false"
+            - name: DATABASE_USER
+              value: "organizer-console-api@liverty-music-dev.iam"
+
 - target:
     kind: HTTPRoute
     name: fan-api-route
@@ -124,6 +167,14 @@ patches:
     - op: add
       path: /spec/hostnames
       value: ["api.admin.dev.liverty-music.app"]
+
+- target:
+    kind: HTTPRoute
+    name: organizer-console-api-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["api.organizer.dev.liverty-music.app"]
 
 # CronJob: run concert discovery only on Fridays in dev
 - path: cronjob/concert-discovery/schedule_patch.yaml

@@ -67,6 +67,16 @@ export interface PostgresComponentArgs {
 	 */
 	adminServiceAccountEmail?: pulumi.Input<string>
 	/**
+	 * GCP Service Account email for the least-privilege organizer-console-api
+	 * workload. When provided, a matching IAM SQL user is created so the organizer
+	 * backend (which runs the same binary and connects via the Cloud SQL Go
+	 * connector with Workload Identity IAM auth) authenticates as its OWN
+	 * read-only IAM DB user (organizer-console-api@<project>.iam). The SELECT-only
+	 * app-schema grant for this user is applied by a separate backend grant
+	 * migration. Only meaningful when `workloadEnabled` is true.
+	 */
+	organizerServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * GCP Service Account email for self-hosted Zitadel. When provided, a
 	 * dedicated `zitadel` database and matching IAM SQL user are created so
 	 * Zitadel can connect through Cloud SQL Auth Proxy with IAM authentication.
@@ -129,6 +139,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			dnsZoneName,
 			appServiceAccountEmail,
 			adminServiceAccountEmail,
+			organizerServiceAccountEmail,
 			zitadelServiceAccountEmail,
 			fanApiServiceAccountEmail,
 			iamDatabaseUsers = [],
@@ -362,6 +373,33 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					'admin-console-api',
 					{
 						name: adminIamUserName,
+						project: project.projectId,
+						instance: instance.name,
+						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+					},
+					{ parent: this, dependsOn: [instance] },
+				)
+			}
+
+			// organizer-console-api IAM SQL user — only when the organizer SA
+			// exists. The least-privilege read-only organizer workload runs the same
+			// backend binary and connects through the in-process Cloud SQL Go
+			// connector with Workload Identity IAM auth, so it needs its OWN IAM DB
+			// user (organizer-console-api@<project>.iam) to log in — it must not
+			// reuse fan-api's or admin-console-api's user. The gcp.sql.User only
+			// creates the login role; the SELECT-only app-schema grant is applied by
+			// a separate backend grant migration (read-only surface). Same
+			// CLOUD_IAM_SERVICE_ACCOUNT pattern + email-minus-suffix transform as
+			// the users above.
+			if (organizerServiceAccountEmail) {
+				const organizerIamUserName = pulumi
+					.output(organizerServiceAccountEmail)
+					.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+				new gcp.sql.User(
+					'organizer-console-api',
+					{
+						name: organizerIamUserName,
 						project: project.projectId,
 						instance: instance.name,
 						type: 'CLOUD_IAM_SERVICE_ACCOUNT',

@@ -1,0 +1,14 @@
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: organizer-console-api-policy
+spec:
+  default:
+    config:
+      type: GRPC
+      grpcHealthCheck:
+        port: 8091
+  targetRef:
+    group: ""
+    kind: Service
+    name: organizer-console-api-svc # Referenced via kustomizeconfig.yaml 'nameReference'
