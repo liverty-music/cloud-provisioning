@@ -43,11 +43,10 @@ GH Release (backend/frontend)
   → ArgoCD auto-syncs the prod overlay → Pods roll
 ```
 
-Each Release emits **exactly one** dispatch. A backend Release pins its five
-images (`api`, `consumer`, `concert-discovery`, `artist-image-sync`,
-`merch-discovery`) in one atomic commit; a frontend Release pins its three web
-bundles (`fan-web`, `admin-console-web`, `organizer-console-web`) in one atomic
-commit. See "Frontend: one dispatch, three bundles" below for why the frontend
+Each Release emits **exactly one** dispatch. A backend Release pins its four
+images (`api`, `consumer`, `concert-discovery`, `artist-image-sync`) in one
+atomic commit; a frontend Release pins its three web bundles (`fan-web`,
+`admin-console-web`, `organizer-console-web`) in one atomic commit. See "Frontend: one dispatch, three bundles" below for why the frontend
 side is a single dispatch (it replaced a broken three-dispatch fan-out).
 
 ### 1. Build + publish prod image (in `liverty-music/backend` or `liverty-music/frontend`)
@@ -65,9 +64,9 @@ side is a single dispatch (it replaced a broken three-dispatch fan-out).
 `bump-prod-pin.yml` in `cloud-provisioning` receives the dispatch and, for the named component:
 
 1. Validates the payload (`component ∈ {backend, frontend}`; `tag` matches `^v[0-9]+\.[0-9]+\.[0-9]+$`) and maps it to the set of image entries it pins:
-   - `backend` → `api consumer concert-discovery artist-image-sync merch-discovery` (5 images), bumps the version label.
+   - `backend` → `api consumer concert-discovery artist-image-sync` (4 images), bumps the version label.
    - `frontend` → `fan-web admin-console-web organizer-console-web` (all three bundles), bumps the version label (sourced from fan-web) and the `fan-web-configmap.yaml` `releaseVersion`.
-2. **Provenance gate** — `crane manifest` every prod-AR image at `:tag` (5 for backend, 3 for frontend). A missing image **aborts before any edit** (fail-closed), rejecting bogus/stale tags and the silent-downgrade path.
+2. **Provenance gate** — `crane manifest` every prod-AR image at `:tag` (4 for backend, 3 for frontend). A missing image **aborts before any edit** (fail-closed), rejecting bogus/stale tags and the silent-downgrade path.
 3. **No-downgrade guard** — for each target image, compares the incoming `tag` against the current pin; a strictly-lower semver **aborts** unless `allow_rollback=true` (manual trigger only). The automated `repository_dispatch` path never sets `allow_rollback`, so it always fails closed on a backward move.
 4. Idempotency — if every target `newTag` already equals `tag`, exits 0 without committing.
 5. `yq` edit — rewrites every matched `images[].newTag` + its inline `# commit <sha>` trailer and (for the label-bumping components) the `app.kubernetes.io/version` label (bare semver, no `v`) in lock-step. The two-conventions `v`-prefix gotcha is handled in code: `newTag` keeps the `v`, the label strips it. For `frontend`, it also rewrites `releaseVersion` in `fan-web-configmap.yaml` so the SPA Settings screen shows the new version after the rollout.
@@ -118,7 +117,7 @@ organizer-console-web"` and rewrites all three `images[].newTag`, the
 `app.kubernetes.io/version` label (sourced from fan-web), and the
 `fan-web-configmap.yaml` `releaseVersion` **in one atomic commit** (one
 `kustomize build`, one push). This mirrors how `component: "backend"` pins its
-five images in one dispatch.
+four images in one dispatch.
 
 **Why one dispatch and not three (the fixed race — OpenSpec change
 `batch-frontend-prod-pin-dispatch`).** The previous design emitted **three**

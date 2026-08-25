@@ -3,7 +3,7 @@ kind: CronJob
 metadata:
   name: sales-phase-discovery-app
 spec:
-  schedule: "0 12 * * *" # 21:00 JST daily (after merch-discovery 20:00)
+  schedule: "0 12 * * *" # 21:00 JST daily
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

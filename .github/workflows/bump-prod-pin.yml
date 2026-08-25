@@ -141,7 +141,7 @@ jobs:
               # `api` is the shared Connect-RPC image (unify-workload-naming),
               # successor to `server`/`fan-api`; it pins both the fan-api and
               # admin-console-api workloads. `consumer` backs event-consumer.
-              IMAGES="api consumer concert-discovery artist-image-sync merch-discovery"
+              IMAGES="api consumer concert-discovery artist-image-sync"
               BUMP_LABEL=true ;;
             frontend)
               # One frontend release ships three web bundles from the same tag —
