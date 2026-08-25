@@ -43,7 +43,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.43.0"
+      app.kubernetes.io/version: "1.44.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -314,18 +314,18 @@ images:
   # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.43.0 # commit 0603f8d4ab65bd2b9bf8cf7efdc09ecea2809349
+    newTag: v1.44.0 # commit b5b4e5aed715a1a70cc9167929c441c4ddc91e8c
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.43.0 # commit 0603f8d4ab65bd2b9bf8cf7efdc09ecea2809349
+    newTag: v1.44.0 # commit b5b4e5aed715a1a70cc9167929c441c4ddc91e8c
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.43.0 # commit 0603f8d4ab65bd2b9bf8cf7efdc09ecea2809349
+    newTag: v1.44.0 # commit b5b4e5aed715a1a70cc9167929c441c4ddc91e8c
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.43.0 # commit 0603f8d4ab65bd2b9bf8cf7efdc09ecea2809349
+    newTag: v1.44.0 # commit b5b4e5aed715a1a70cc9167929c441c4ddc91e8c
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
     newTag: v1.25.0 # commit 54b28aaae129f3195578db4a6ac045725d70464e
