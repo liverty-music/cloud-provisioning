@@ -113,10 +113,6 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 				displayName: 'Sales Phase Discovery',
 				appLabel: 'sales-phase-discovery',
 			},
-			{
-				displayName: 'Merch Discovery',
-				appLabel: 'merch-discovery',
-			},
 		]
 
 		this.alertPolicies = workloads.map(

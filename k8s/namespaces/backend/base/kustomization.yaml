@@ -12,7 +12,6 @@ resources:
 - admin-console-api
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
-- cronjob/merch-discovery
 - cronjob/sales-phase-discovery
 - cronjob/sales-reminders
 - event-consumer
