@@ -11,7 +11,7 @@ import {
 	NetworkComponent,
 	type PostmarkDnsConfig,
 } from './components/network.js'
-import { OrganizerCoverImagesComponent } from './components/organizer-cover-images.js'
+import { OrganizerMediaComponent } from './components/organizer-media.js'
 import type { PostgresAvailabilityType } from './components/postgres.js'
 import { PostgresComponent } from './components/postgres.js'
 import { type GcpConfig, ProjectComponent } from './components/project.js'
@@ -130,11 +130,12 @@ export class Gcp {
 				/** Cluster subnet ID — required for the PSC consumer
 				 *  endpoint that lives inside this subnet. */
 				subnetId: pulumi.Output<string>
-				/** GCS bucket name for organizer cover images. Injected into
-				 *  fan-api-config ConfigMap as `ORGANIZER_COVER_IMAGE_BUCKET`
-				 *  so the organizer-console-api workload can construct the
-				 *  serving URL (`https://storage.googleapis.com/<bucket>/<key>`). */
-				organizerCoverImagesBucketName: pulumi.Output<string>
+				/** GCS bucket name for organizer-authored media (cover images at
+				 *  MVP). Injected into fan-api-config ConfigMap as
+				 *  `ORGANIZER_MEDIA_BUCKET` so the organizer-console-api workload
+				 *  can construct the serving URL
+				 *  (`https://storage.googleapis.com/<bucket>/<key>`). */
+				organizerMediaBucketName: pulumi.Output<string>
 		  }
 		| undefined
 
@@ -496,8 +497,8 @@ export class Gcp {
 			// Design D7: public-read via `allUsers` IAM + uniform bucket-level
 			// access; backend-write via bucket-scoped `objectAdmin` on the
 			// organizer-console-api GSA (no project-level storage role).
-			const organizerCoverImages = new OrganizerCoverImagesComponent(
-				'organizer-cover-images',
+			const organizerMedia = new OrganizerMediaComponent(
+				'organizer-media',
 				{
 					project: this.project,
 					brandId,
@@ -519,7 +520,7 @@ export class Gcp {
 				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
 				esoEmail: kubernetes.esoServiceAccountEmail,
 				subnetId: kubernetes.subnet.id,
-				organizerCoverImagesBucketName: organizerCoverImages.bucketName,
+				organizerMediaBucketName: organizerMedia.bucketName,
 			}
 		}
 
