@@ -8,6 +8,9 @@ kind: Kustomization
 
 resources:
 - ../../base
+# GMP PodMonitoring for ESO controller status-condition metrics (CP#457
+# detection hardening). Prod-only — dev has no ESO readiness alert.
+- podmonitoring.yaml
 
 patches:
 - path: eso-sa-patch.yaml

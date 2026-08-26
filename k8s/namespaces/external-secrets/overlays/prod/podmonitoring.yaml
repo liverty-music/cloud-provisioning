@@ -1,0 +1,44 @@
+# PodMonitoring CRD — opts the External Secrets Operator (ESO) controller pod
+# into Google Managed Service for Prometheus (GMP) ingestion so the
+# ClusterSecretStore / ExternalSecret readiness alerts can query the ESO
+# controller's status-condition gauges.
+#
+# The 2026-08-24 incident (CP#457) left `ClusterSecretStore google-secret-manager`
+# Ready=False for ~38h, silently stopping ALL secret sync cluster-wide (8/9
+# ExternalSecrets stale), and went undetected because nothing scraped or alerted
+# on ESO health. The controller was rescheduled onto a fresh node and could not
+# acquire its Workload Identity credential at startup; ESO does not self-heal
+# from that state and no signal fired.
+#
+# The `*_status_condition` gauges are the log-independent signal for this class:
+# ESO sets the current `{condition,status}` series to 1, so a not-ready store or
+# secret is `clustersecretstore_status_condition{condition="Ready",status="False"} == 1`.
+# The alert policies live in monitoring.ts (same PromQL pattern as the nats
+# consumer-backlog stall alert).
+#
+# Selector note: only the MAIN controller Deployment (`app.kubernetes.io/name:
+# external-secrets`) emits the store/secret status-condition metrics. The
+# cert-controller and webhook pods carry `-cert-controller` / `-webhook` name
+# labels, so this selector scrapes the controller alone. Cost is bounded by a
+# keep-rule limiting ingestion to the two status-condition metrics at a 60s
+# interval. Prod-only — dev has no ESO readiness alert.
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: external-secrets-status
+  namespace: external-secrets
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: external-secrets
+      app.kubernetes.io/instance: external-secrets
+  endpoints:
+  - port: metrics
+    interval: 60s
+    metricRelabeling:
+    # Keep only the store/secret readiness gauges. Names confirmed against ESO
+    # v0.12.1 source: subsystem `clustersecretstore` / `externalsecret` + metric
+    # `status_condition`, labels `condition` and `status`, current series = 1.
+    - sourceLabels: [__name__]
+      regex: clustersecretstore_status_condition|externalsecret_status_condition
+      action: keep
