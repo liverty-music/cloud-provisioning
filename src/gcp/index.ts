@@ -11,6 +11,7 @@ import {
 	NetworkComponent,
 	type PostmarkDnsConfig,
 } from './components/network.js'
+import { OrganizerCoverImagesComponent } from './components/organizer-cover-images.js'
 import type { PostgresAvailabilityType } from './components/postgres.js'
 import { PostgresComponent } from './components/postgres.js'
 import { type GcpConfig, ProjectComponent } from './components/project.js'
@@ -129,6 +130,11 @@ export class Gcp {
 				/** Cluster subnet ID — required for the PSC consumer
 				 *  endpoint that lives inside this subnet. */
 				subnetId: pulumi.Output<string>
+				/** GCS bucket name for organizer cover images. Injected into
+				 *  fan-api-config ConfigMap as `ORGANIZER_COVER_IMAGE_BUCKET`
+				 *  so the organizer-console-api workload can construct the
+				 *  serving URL (`https://storage.googleapis.com/<bucket>/<key>`). */
+				organizerCoverImagesBucketName: pulumi.Output<string>
 		  }
 		| undefined
 
@@ -478,6 +484,31 @@ export class Gcp {
 				],
 			})
 
+			// 5b. GCS bucket for organizer-uploaded cover images.
+			// Provisioned inside the `workloadEnabled` gate because it grants
+			// a bucket-scoped IAM binding to the organizer-console-api Workload
+			// Identity SA (which only exists when the cluster is up). The bucket
+			// itself could survive a shutdown cycle, but the IAM binding would
+			// become dangling without the SA — so the whole component is gated
+			// here. Consistent with how Postgres PSC endpoint + SQL IAM users
+			// are gated inside KubernetesComponent.
+			//
+			// Design D7: public-read via `allUsers` IAM + uniform bucket-level
+			// access; backend-write via bucket-scoped `objectAdmin` on the
+			// organizer-console-api GSA (no project-level storage role).
+			const organizerCoverImages = new OrganizerCoverImagesComponent(
+				'organizer-cover-images',
+				{
+					project: this.project,
+					brandId,
+					environment,
+					location: Regions.Osaka,
+					organizerConsoleApiSaEmail:
+						kubernetes.organizerConsoleApiServiceAccountEmail,
+					workloadEnabled,
+				},
+			)
+
 			this.workloadSAs = {
 				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
 				fanApiEmail: kubernetes.fanApiServiceAccountEmail,
@@ -488,6 +519,7 @@ export class Gcp {
 				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
 				esoEmail: kubernetes.esoServiceAccountEmail,
 				subnetId: kubernetes.subnet.id,
+				organizerCoverImagesBucketName: organizerCoverImages.bucketName,
 			}
 		}
 
