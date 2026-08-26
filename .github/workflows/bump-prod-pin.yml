@@ -141,7 +141,13 @@ jobs:
               # `api` is the shared Connect-RPC image (unify-workload-naming),
               # successor to `server`/`fan-api`; it pins both the fan-api and
               # admin-console-api workloads. `consumer` backs event-consumer.
-              IMAGES="api consumer concert-discovery artist-image-sync"
+              # sales-phase-discovery / sales-reminders are the CronJob images:
+              # they MUST be listed here too or they stay frozen while the rest
+              # advance, and schema-drift (e.g. a dropped column) then breaks the
+              # stale image at runtime. The backend release retag matrix already
+              # publishes all six under the release tag, so a single dispatch pins
+              # them in lock-step.
+              IMAGES="api consumer concert-discovery artist-image-sync sales-phase-discovery sales-reminders"
               BUMP_LABEL=true ;;
             frontend)
               # One frontend release ships three web bundles from the same tag —
