@@ -46,6 +46,8 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly atlasMigrationAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly consumerBacklogAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly goroutineLeakAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly clusterSecretStoreNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly externalSecretNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
 	public readonly webPushDeliveryFailureMetric: gcp.logging.Metric
@@ -461,6 +463,133 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 			{ parent: this },
 		)
 		this.alertPolicies.push(this.goroutineLeakAlertPolicy)
+
+		// ClusterSecretStore not-ready alert (CP#457 detection hardening).
+		//
+		// The 2026-08-24 incident left `ClusterSecretStore google-secret-manager`
+		// Ready=False for ~38h, silently stopping ALL secret sync cluster-wide
+		// (8/9 ExternalSecrets stale). The ESO controller was rescheduled onto a
+		// fresh node, could not acquire its Workload Identity credential at
+		// startup, and does not self-heal from that state — yet nothing paged.
+		//
+		// The External Secrets Operator publishes per-store status-condition
+		// gauges. Confirmed against ESO v0.12.1 source (cssmetrics.go): the metric
+		// is `clustersecretstore_status_condition` with labels `condition` and
+		// `status`, and the CURRENT `{condition,status}` series is set to 1. So a
+		// not-ready store is exactly
+		// `clustersecretstore_status_condition{condition="Ready",status="False"} == 1`.
+		// The ESO controller pod is scraped into GMP by the `external-secrets-status`
+		// PodMonitoring (external-secrets prod overlay), the same GMP → PromQL
+		// path as the nats consumer-backlog alert above.
+		//
+		// A 10-minute sustain (`duration`) debounces the brief not-ready blips a
+		// normal controller restart / reconcile produces, while still firing
+		// ~228x sooner than the 38h silent window. This is the top-priority
+		// signal: a not-ready ClusterSecretStore halts secret sync cluster-wide.
+		this.clusterSecretStoreNotReadyAlertPolicy =
+			new gcp.monitoring.AlertPolicy(
+				'alert-clustersecretstore-not-ready',
+				{
+					displayName: 'ClusterSecretStore Not Ready',
+					project: projectId,
+					combiner: 'OR',
+					conditions: [
+						{
+							displayName:
+								'ClusterSecretStore Ready=False sustained for 10m',
+							conditionPrometheusQueryLanguage: {
+								query: 'clustersecretstore_status_condition{condition="Ready",status="False"} == 1',
+								duration: '600s', // sustain 10m to debounce restart/reconcile blips
+								evaluationInterval: '60s',
+								// GMP only registers the metric after the ESO
+								// controller is scraped at least once; without this
+								// a fresh-cluster `pulumi up` (or pre-first-scrape)
+								// fails metric-existence validation and aborts.
+								disableMetricValidation: true,
+							},
+						},
+					],
+					alertStrategy: {
+						// notificationRateLimit is rejected by the GCP API on
+						// PromQL (non-log-based) policies; the 10m sustain debounces.
+						autoClose: '3600s', // 1 hour
+					},
+					notificationChannels,
+					documentation: {
+						content: [
+							'## ClusterSecretStore Not Ready Alert',
+							'',
+							'An ESO `ClusterSecretStore` has been `Ready=False` for a sustained 10-minute window. While a store is not ready, every `ExternalSecret` bound to it stops syncing — secret rotation and newly-added keys never propagate cluster-wide.',
+							'',
+							'This is the safety net for the 2026-08-24 silent-outage class (CP#457): the store was `Ready=False` for ~38h, undetected, because nothing scraped or alerted on ESO health. Running pods kept working on last-synced (stale) values, so there were no crashes — but no rotation landed.',
+							'',
+							'### Likely Cause',
+							'- The ESO controller pod lost its Workload Identity credential (e.g. rescheduled onto a fresh node with a metadata-server startup race). IAM is usually correct — this is a pod/node-scoped auth failure ESO does not self-heal from.',
+							'',
+							'### Triage Steps',
+							'1. Confirm: `kubectl get clustersecretstore google-secret-manager -o jsonpath=\'{.status.conditions[?(@.type=="Ready")].status}\'` → expect `False`, message `could not find default credentials`.',
+							'2. Recover: `kubectl rollout restart deployment external-secrets -n external-secrets` — a new pod on a healthy node re-acquires WI and the store returns to `Ready=True`.',
+							'3. Verify: `kubectl get externalsecrets -A` (all `Ready=True`).',
+							'4. Restart any workload whose secret changed while the store was down — `envFrom` does NOT hot-reload, so the pod keeps the stale value until restarted: `kubectl rollout restart deploy/<name> -n <ns>`.',
+						].join('\n'),
+						mimeType: 'text/markdown',
+					},
+				},
+				{ parent: this },
+			)
+		this.alertPolicies.push(this.clusterSecretStoreNotReadyAlertPolicy)
+
+		// ExternalSecret not-ready alert (CP#457 detection hardening).
+		//
+		// Complementary, finer-grained net to the store alert above: it fires on
+		// an individual `ExternalSecret` stuck `Ready=False` even when the store
+		// itself is healthy (e.g. a single missing/renamed secret key, a
+		// per-secret provider error). Metric confirmed against ESO v0.12.1 source
+		// (esmetrics.go): `externalsecret_status_condition` with labels
+		// `condition` / `status` (plus `name` / `namespace`), current series = 1.
+		//
+		// A slightly longer 15-minute sustain absorbs the transient not-ready an
+		// ExternalSecret shows mid-resync, so only a genuinely stuck secret pages.
+		this.externalSecretNotReadyAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-externalsecret-not-ready',
+			{
+				displayName: 'ExternalSecret Not Ready',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'ExternalSecret Ready=False sustained for 15m',
+						conditionPrometheusQueryLanguage: {
+							query: 'externalsecret_status_condition{condition="Ready",status="False"} == 1',
+							duration: '900s', // sustain 15m — absorb mid-resync blips
+							evaluationInterval: '60s',
+							disableMetricValidation: true,
+						},
+					},
+				],
+				alertStrategy: {
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## ExternalSecret Not Ready Alert',
+						'',
+						'An individual `ExternalSecret` has been `Ready=False` for a sustained 15-minute window — its Kubernetes Secret is no longer being synced from the provider. This fires even when the `ClusterSecretStore` is healthy, catching per-secret failures (a missing/renamed Secret Manager key, a provider-side permission error) that the store-level alert would miss.',
+						'',
+						'### Triage Steps',
+						'1. Find the affected secret: `kubectl get externalsecrets -A` and look for `STATUS` != `SecretSynced`.',
+						'2. Inspect it: `kubectl describe externalsecret <name> -n <ns>` — the condition message names the failure (e.g. `could not get secret data from provider`).',
+						'3. If MANY ExternalSecrets are not ready at once, this is a store-wide outage — see the `ClusterSecretStore Not Ready` alert and its runbook (`rollout restart deployment external-secrets`).',
+						'4. If only ONE is failing, the cause is usually that specific secret: confirm the referenced Secret Manager key exists and the ESO GSA has `roles/secretmanager.secretAccessor` on it.',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(this.externalSecretNotReadyAlertPolicy)
 
 		// Sales-reminder delivery outcome metric.
 		//
