@@ -3,7 +3,7 @@ import * as pulumi from '@pulumi/pulumi'
 import type { Environment } from '../../config.js'
 import { Roles } from '../services/iam.js'
 
-export interface OrganizerCoverImagesArgs {
+export interface OrganizerMediaArgs {
 	/** GCP project that owns the bucket. */
 	project: gcp.organizations.Project
 	/** Short brand identifier used in naming (e.g. `liverty-music`). */
@@ -28,8 +28,27 @@ export interface OrganizerCoverImagesArgs {
 }
 
 /**
- * OrganizerCoverImagesComponent provisions a GCS bucket for organizer-uploaded
- * cover images (one per Series at MVP).
+ * OrganizerMediaComponent provisions a single GCS bucket for organizer-authored
+ * media. The MVP stores one cover image per Series; the bucket is deliberately
+ * NOT named "cover-images" so future authoring media (image galleries, organizer
+ * logos, and similar) live in the same bucket under distinct object-key
+ * prefixes rather than needing new buckets.
+ *
+ * Object key layout (owned by the backend, documented here for operators):
+ *   `<entity>/<entityId>/<purpose>/<contentHash>.<ext>`
+ *     - MVP cover:      `series/<seriesId>/cover/<sha256>.<ext>`
+ *     - future gallery: `series/<seriesId>/gallery/<sha256>.<ext>`
+ *     - future logo:    `organizer/<organizerId>/logo/<sha256>.<ext>`
+ *   Content-addressed filenames (sha256 of the bytes) make each object
+ *   immutable: a replaced image gets a NEW key, so the served URL changes and
+ *   caches never go stale. The backend writes objects with
+ *   `Cache-Control: public, max-age=31536000, immutable` and deletes the prior
+ *   object on replace / on series cancel (GCS has no reliable orphan signal for
+ *   a lifecycle rule, so cleanup is application-driven). A content hash also
+ *   satisfies the enumeration-resistance naming guidance. Object-key volume here
+ *   is far below the ~1,000 writes/s hotspot threshold, so the semi-sequential
+ *   `series/<uuidv7>/` prefix is fine and the browsable layout is preferred over
+ *   a randomized prefix.
  *
  * Serving model:
  *   - Backend validates type/size, then writes the object directly to the
@@ -37,9 +56,13 @@ export interface OrganizerCoverImagesArgs {
  *     browser PUT — so no CORS config is required for writes).
  *   - Objects are served publicly via
  *     `https://storage.googleapis.com/<bucket>/<object>`.
- *   - The bucket name is surfaced as the `bucketName` output and injected
- *     into the `fan-api-config` ConfigMap as `ORGANIZER_COVER_IMAGE_BUCKET`
- *     so the organizer-console-api workload can construct the serving URL.
+ *   - Public read is acceptable because MVP media backs PUBLIC concerts (already
+ *     public information). If/when private or UNLISTED media ships, that media
+ *     should move to signed URLs rather than `allUsers` (per GCS guidance for
+ *     access-controlled user media) — do NOT make private media public here.
+ *   - The bucket name is surfaced as the `bucketName` output and injected into
+ *     the `fan-api-config` ConfigMap as `ORGANIZER_MEDIA_BUCKET` so the
+ *     organizer-console-api workload can construct the serving URL.
  *
  * IAM:
  *   - `roles/storage.objectAdmin` → organizer-console-api GSA (bucket-scoped).
@@ -47,28 +70,22 @@ export interface OrganizerCoverImagesArgs {
  *
  * CORS:
  *   Not configured. Uploads are server-side (backend RPC → GCS write); the
- *   frontend never issues a cross-origin PUT directly to the bucket. The
- *   public serving URL is consumed by `<img>` tags, which are same-origin
- *   from the browser's perspective (CORS does not apply to `<img>` src). If
- *   a future change introduces direct browser upload or XHR fetch of objects,
- *   add a CORS block at that time.
+ *   frontend never issues a cross-origin PUT directly to the bucket. The public
+ *   serving URL is consumed by `<img>` tags, which are not subject to CORS. If a
+ *   future change introduces direct browser upload or XHR fetch of objects, add
+ *   a CORS block at that time.
  */
-export class OrganizerCoverImagesComponent extends pulumi.ComponentResource {
+export class OrganizerMediaComponent extends pulumi.ComponentResource {
 	/** GCS bucket name — stable after creation; suitable for persisting in
 	 *  the database as the base URL prefix for served objects. */
 	public readonly bucketName: pulumi.Output<string>
 
 	constructor(
 		name: string,
-		args: OrganizerCoverImagesArgs,
+		args: OrganizerMediaArgs,
 		opts?: pulumi.ComponentResourceOptions,
 	) {
-		super(
-			'gcp:liverty-music:OrganizerCoverImagesComponent',
-			name,
-			args,
-			opts,
-		)
+		super('gcp:liverty-music:OrganizerMediaComponent', name, args, opts)
 
 		const {
 			project,
@@ -79,13 +96,13 @@ export class OrganizerCoverImagesComponent extends pulumi.ComponentResource {
 		} = args
 
 		// Bucket name must be globally unique across all GCP projects.
-		// Pattern: `<brandId>-<environment>-organizer-cover-images`
-		// Example (prod): `liverty-music-prod-organizer-cover-images`
-		// Example (dev):  `liverty-music-dev-organizer-cover-images`
-		const bucketName = `${brandId}-${environment}-organizer-cover-images`
+		// Pattern: `<brandId>-<environment>-organizer-media`
+		// Example (prod): `liverty-music-prod-organizer-media`
+		// Example (dev):  `liverty-music-dev-organizer-media`
+		const bucketName = `${brandId}-${environment}-organizer-media`
 
 		const bucket = new gcp.storage.Bucket(
-			'organizer-cover-images',
+			'organizer-media',
 			{
 				name: bucketName,
 				project: project.projectId,
@@ -98,10 +115,10 @@ export class OrganizerCoverImagesComponent extends pulumi.ComponentResource {
 				// Standard storage class: media assets are served frequently and
 				// are not archivable. Nearline/Coldline would add retrieval fees.
 				storageClass: 'STANDARD',
-				// Soft delete: disabled. Cover image objects are replaced in-place
-				// when an organizer re-uploads; retaining deleted versions adds
-				// storage cost with no recovery value at MVP (the source of truth
-				// is the organizer upload, not GCS history).
+				// Soft delete: disabled. Objects are content-addressed and replaced
+				// by writing a new key (the backend deletes the prior key), so GCS
+				// version history has no recovery value at MVP and would only add
+				// storage cost.
 				softDeletePolicy: {
 					retentionDurationSeconds: 0,
 				},
@@ -115,9 +132,10 @@ export class OrganizerCoverImagesComponent extends pulumi.ComponentResource {
 		// Public read — all objects are publicly accessible via the stable
 		// HTTPS URL `https://storage.googleapis.com/<bucket>/<object>`.
 		// `allUsers` is the GCP convention for unauthenticated public access.
-		// Requires uniform bucket-level access (set above).
+		// Requires uniform bucket-level access (set above). MVP media backs
+		// PUBLIC concerts; private/UNLISTED media must use signed URLs instead.
 		new gcp.storage.BucketIAMMember(
-			'organizer-cover-images-public-read',
+			'organizer-media-public-read',
 			{
 				bucket: bucket.name,
 				role: Roles.Storage.ObjectViewer,
@@ -128,10 +146,10 @@ export class OrganizerCoverImagesComponent extends pulumi.ComponentResource {
 
 		// Backend write — organizer-console-api GSA gets full object control
 		// on THIS bucket only (bucket-scoped binding, not project-level).
-		// `objectAdmin` covers create + replace + delete + get; the backend
-		// may need to replace a previously uploaded cover image.
+		// `objectAdmin` covers create + get + delete; the backend replaces a
+		// cover by writing a new content-addressed key and deleting the old one.
 		new gcp.storage.BucketIAMMember(
-			'organizer-cover-images-backend-write',
+			'organizer-media-backend-write',
 			{
 				bucket: bucket.name,
 				role: Roles.Storage.ObjectAdmin,
