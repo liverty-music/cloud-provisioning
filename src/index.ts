@@ -399,14 +399,23 @@ export const organizerConsoleClientId: string | pulumi.Output<string> =
 export const organizerConsoleProjectId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
 
-// GCS bucket name for organizer cover images — surfaced as a stack output so
-// the bucket name can be verified after `pulumi up` and cross-referenced with
-// the `ORGANIZER_MEDIA_BUCKET` env var injected into the
+// PRIVATE GCS bucket name for organizer cover images — surfaced as a stack
+// output so the bucket name can be verified after `pulumi up` and
+// cross-referenced with the `ORGANIZER_MEDIA_BUCKET` env var injected into the
 // organizer-console-api workload via the `fan-api-config` ConfigMap. The
-// backend constructs the public serving URL as
-// `https://storage.googleapis.com/<bucket>/<object-key>` and persists it on
-// the Series row. Same `DEV_SHUTDOWN_SENTINEL` fallback contract as the other
-// workload-gated outputs (the bucket is only provisioned when
-// `workloadEnabled=true`). See OpenSpec change `organizer-event-authoring`.
+// bucket is served through an external HTTPS LB + Cloud CDN (see
+// `organizerMediaCdnBaseUrl`), NOT via `storage.googleapis.com` (the org's
+// Domain Restricted Sharing rejects `allUsers`). The backend composes the
+// served URL as `{ORGANIZER_MEDIA_CDN_BASE}/cdn/{organizer_id}/{media_id}`.
+// Same `DEV_SHUTDOWN_SENTINEL` fallback contract as the other workload-gated
+// outputs (the bucket is only provisioned when `workloadEnabled=true`). See
+// OpenSpec change `organizer-event-authoring`.
 export const organizerMediaBucketName: string | pulumi.Output<string> =
 	gcp.workloadSAs?.organizerMediaBucketName ?? DEV_SHUTDOWN_SENTINEL
+
+// Public Cloud CDN serving base URL for organizer media
+// (`https://media.<publicDomain>`), injected into the organizer-console-api
+// workload as `ORGANIZER_MEDIA_CDN_BASE`. Same workload gate + sentinel
+// fallback as `organizerMediaBucketName`.
+export const organizerMediaCdnBaseUrl: string | pulumi.Output<string> =
+	gcp.workloadSAs?.organizerMediaCdnBaseUrl ?? DEV_SHUTDOWN_SENTINEL

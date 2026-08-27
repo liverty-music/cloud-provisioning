@@ -47,7 +47,10 @@ export const Roles = {
 		 *  read). Granted at the bucket level (BucketIamMember), not project-level,
 		 *  to restrict write access to the organizer-media bucket only. */
 		ObjectAdmin: 'roles/storage.objectAdmin',
-		/** Read-only access to objects. Granted to `allUsers` for public serving. */
+		/** Read-only access to objects. Granted to the Cloud CDN private-origin
+		 *  service account (`service-<PROJECT_NUMBER>@https-lb.iam.gserviceaccount.com`)
+		 *  so Cloud CDN can read the private organizer-media bucket. Never granted to
+		 *  `allUsers` — Domain Restricted Sharing would reject that binding. */
 		ObjectViewer: 'roles/storage.objectViewer',
 	},
 } as const
