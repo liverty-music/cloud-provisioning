@@ -248,7 +248,6 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
-		const tld = 'liverty-music.app'
 		const protectInProd = environment === 'prod'
 
 		// Shared Gateway resources: one CertificateMap and one static IP
@@ -375,6 +374,9 @@ const SERVICES: ReadonlyArray<{
 	{ name: 'organizer-app', subdomain: 'organizer' },
 ]
 
+/** The single Cloudflare-authoritative zone for all public DNS. */
+export const tld = 'liverty-music.app'
+
 /**
  * Resolve a service's full hostname FQDN based on env and subdomain.
  *
@@ -385,7 +387,7 @@ const SERVICES: ReadonlyArray<{
  *   `subdomain === ''` (the prod web app sits at the registrar apex
  *   `liverty-music.app`).
  */
-function buildHostname(
+export function buildHostname(
 	environment: Environment,
 	subdomain: string,
 	tld: string,
@@ -405,7 +407,7 @@ function buildHostname(
  * - **prod**: `<subdomain>` or `@` (Cloudflare's convention for the
  *   zone apex) for the apex-serving service.
  */
-function buildCloudflareRecordName(
+export function buildCloudflareRecordName(
 	environment: Environment,
 	subdomain: string,
 ): string {

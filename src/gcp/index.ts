@@ -130,12 +130,17 @@ export class Gcp {
 				/** Cluster subnet ID — required for the PSC consumer
 				 *  endpoint that lives inside this subnet. */
 				subnetId: pulumi.Output<string>
-				/** GCS bucket name for organizer-authored media (cover images at
-				 *  MVP). Injected into fan-api-config ConfigMap as
-				 *  `ORGANIZER_MEDIA_BUCKET` so the organizer-console-api workload
-				 *  can construct the serving URL
-				 *  (`https://storage.googleapis.com/<bucket>/<key>`). */
+				/** PRIVATE GCS bucket name for organizer-authored media (cover
+				 *  images at MVP). Injected into fan-api-config ConfigMap as
+				 *  `ORGANIZER_MEDIA_BUCKET`; the backend writes objects here but
+				 *  serves them via Cloud CDN (see `organizerMediaCdnBaseUrl`),
+				 *  never via `storage.googleapis.com`. */
 				organizerMediaBucketName: pulumi.Output<string>
+				/** Public Cloud CDN serving base URL (`https://media.<publicDomain>`)
+				 *  for organizer media. Injected into fan-api-config ConfigMap as
+				 *  `ORGANIZER_MEDIA_CDN_BASE`; the backend composes object URLs as
+				 *  `{base}/cdn/{organizer_id}/{media_id}`. */
+				organizerMediaCdnBaseUrl: pulumi.Output<string>
 		  }
 		| undefined
 
@@ -494,9 +499,15 @@ export class Gcp {
 			// here. Consistent with how Postgres PSC endpoint + SQL IAM users
 			// are gated inside KubernetesComponent.
 			//
-			// Design D7: public-read via `allUsers` IAM + uniform bucket-level
-			// access; backend-write via bucket-scoped `objectAdmin` on the
-			// organizer-console-api GSA (no project-level storage role).
+			// Design D7: the bucket is PRIVATE (DRS rejects `allUsers`) and is
+			// served through an external HTTPS LB + Cloud CDN backend bucket.
+			// Read access is granted to the Cloud CDN private-origin service
+			// account (a real org member → DRS-safe), not `allUsers`;
+			// backend-write via bucket-scoped `objectAdmin` on the
+			// organizer-console-api GSA (no project-level storage role). The
+			// component also wires the `media.<publicDomain>` LB + Cert Manager
+			// cert (DNS-01 via Cloudflare) + Cloudflare DNS, so it needs the
+			// Cloudflare provider config.
 			const organizerMedia = new OrganizerMediaComponent(
 				'organizer-media',
 				{
@@ -506,7 +517,7 @@ export class Gcp {
 					location: Regions.Osaka,
 					organizerConsoleApiSaEmail:
 						kubernetes.organizerConsoleApiServiceAccountEmail,
-					workloadEnabled,
+					cloudflareConfig,
 				},
 			)
 
@@ -521,6 +532,7 @@ export class Gcp {
 				esoEmail: kubernetes.esoServiceAccountEmail,
 				subnetId: kubernetes.subnet.id,
 				organizerMediaBucketName: organizerMedia.bucketName,
+				organizerMediaCdnBaseUrl: organizerMedia.cdnBaseUrl,
 			}
 		}
 
