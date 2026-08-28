@@ -532,14 +532,33 @@ export class Gcp {
 			// BEFORE the cache-fill `objectViewer` grant it unblocks (Pulumi orders
 			// by dependency graph, not source order).
 			//
+			// The Pulumi deployer SA (`pulumi-cloud`, see WorkloadIdentityComponent)
+			// holds only project Owner + folder Viewer; `roles/owner` includes NO
+			// `orgpolicy.*` permissions, so the deployer cannot set the override
+			// below (this is why the earlier apply would also fail on permission
+			// once the API issue is fixed). Grant it `orgpolicy.policyAdmin` on the
+			// project so it can apply the override; the deployer is project Owner, so
+			// it can create this self-binding. The member is built from the SA's
+			// deterministic email (`pulumi-cloud@<projectId>`) to avoid a backward
+			// reference to WorkloadIdentityComponent, which is constructed later.
+			const deployerOrgPolicyAdmin = new gcp.projects.IAMMember(
+				'pulumi-cloud-x-orgpolicy-policy-admin',
+				{
+					project: this.project.projectId,
+					role: 'roles/orgpolicy.policyAdmin',
+					member: pulumi.interpolate`serviceAccount:pulumi-cloud@${this.project.projectId}.iam.gserviceaccount.com`,
+				},
+				{ parent: this.project },
+			)
+
 			// Uses the v1 `projects.OrganizationPolicy` (Resource Manager API,
 			// `cloudresourcemanager.googleapis.com`, already enabled in project.ts)
 			// rather than the v2 `orgpolicy.Policy` (which needs the separate
 			// `orgpolicy.googleapis.com` API that is NOT enabled here — the cause of
-			// the earlier failed apply). Applying still requires the Pulumi deployer
-			// to hold org-policy set permission (`roles/orgpolicy.policyAdmin` at the
-			// project/folder/org); if it does not, grant it once or set the override
-			// out-of-band via `gcloud org-policies set-policy`.
+			// the earlier failed apply). `dependsOn` the policyAdmin grant above so
+			// the deployer has permission before the override is applied. (On a very
+			// first apply, IAM propagation of the grant can lag a few seconds; if the
+			// override then fails on permission, a re-run succeeds.)
 			const drsOverride = new gcp.projects.OrganizationPolicy(
 				'allow-all-policy-member-domains',
 				{
@@ -548,7 +567,7 @@ export class Gcp {
 					// Override the inherited DRS enforcement: allow all members.
 					listPolicy: { allow: { all: true } },
 				},
-				{ parent: this.project },
+				{ parent: this.project, dependsOn: [deployerOrgPolicyAdmin] },
 			)
 
 			const organizerMedia = new OrganizerMediaComponent(
