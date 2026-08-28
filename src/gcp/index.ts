@@ -532,19 +532,21 @@ export class Gcp {
 			// BEFORE the cache-fill `objectViewer` grant it unblocks (Pulumi orders
 			// by dependency graph, not source order).
 			//
-			// Applying this requires the Pulumi deployer to hold
-			// `roles/orgpolicy.policyAdmin` on the project (or above); otherwise set
-			// it once out-of-band via `gcloud org-policies set-policy` (see PR) and
-			// it imports cleanly on the next preview.
-			const drsOverride = new gcp.orgpolicy.Policy(
+			// Uses the v1 `projects.OrganizationPolicy` (Resource Manager API,
+			// `cloudresourcemanager.googleapis.com`, already enabled in project.ts)
+			// rather than the v2 `orgpolicy.Policy` (which needs the separate
+			// `orgpolicy.googleapis.com` API that is NOT enabled here — the cause of
+			// the earlier failed apply). Applying still requires the Pulumi deployer
+			// to hold org-policy set permission (`roles/orgpolicy.policyAdmin` at the
+			// project/folder/org); if it does not, grant it once or set the override
+			// out-of-band via `gcloud org-policies set-policy`.
+			const drsOverride = new gcp.projects.OrganizationPolicy(
 				'allow-all-policy-member-domains',
 				{
-					parent: pulumi.interpolate`projects/${this.project.projectId}`,
-					name: pulumi.interpolate`projects/${this.project.projectId}/policies/iam.allowedPolicyMemberDomains`,
-					spec: {
-						// Override the inherited DRS enforcement: allow all members.
-						rules: [{ allowAll: 'true' }],
-					},
+					project: this.project.projectId,
+					constraint: 'iam.allowedPolicyMemberDomains',
+					// Override the inherited DRS enforcement: allow all members.
+					listPolicy: { allow: { all: true } },
 				},
 				{ parent: this.project },
 			)
