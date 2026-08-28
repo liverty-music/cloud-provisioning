@@ -208,10 +208,14 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 		// the Google-managed service account
 		// `service-<PROJECT_NUMBER>@https-lb.iam.gserviceaccount.com`. This SA is
 		// owned by Google (not the org's customer), so the org's Domain Restricted
-		// Sharing policy REJECTS this grant (`Error 412`) unless DRS is relaxed —
-		// see the prod DRS override in `gcp/index.ts`. The bucket itself stays
-		// PRIVATE (no `allUsers`); only this cache-fill SA is granted read. The SA
-		// only exists after a BackendBucket exists, hence `dependsOn: [backendBucket]`.
+		// Sharing policy REJECTS this grant (`Error 412`) unless DRS is relaxed.
+		// The DRS override is set out-of-band, once, by an org admin
+		// (`gcloud org-policies set-policy` allowAll on this project) — it is NOT
+		// managed in Pulumi because org-policy admin is an org/folder-level
+		// permission the deployer neither holds nor can self-grant. The bucket
+		// itself stays PRIVATE (no `allUsers`); only this cache-fill SA is granted
+		// read. The SA only exists after a BackendBucket exists, hence
+		// `dependsOn: [backendBucket]`.
 		// https://docs.cloud.google.com/cdn/docs/setting-up-cdn-with-bucket
 		new gcp.storage.BucketIAMMember(
 			'organizer-media-cdn-read',

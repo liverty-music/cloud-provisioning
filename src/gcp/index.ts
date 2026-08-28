@@ -508,68 +508,15 @@ export class Gcp {
 			// component also wires the `media.<publicDomain>` LB + Cert Manager
 			// cert (DNS-01 via Cloudflare) + Cloudflare DNS, so it needs the
 			// Cloudflare provider config.
-			// Domain Restricted Sharing (DRS) override.
-			//
-			// The organization enforces `iam.allowedPolicyMemberDomains` (DRS) on
-			// all projects (inherited from the org/folder), which rejects any IAM
-			// principal outside the org's own customer — including the
-			// Google-managed Cloud CDN cache-fill service agent
-			// (`service-<num>@https-lb.iam.gserviceaccount.com`). A private-origin
-			// Cloud CDN backend bucket MUST grant that agent `objectViewer`, so
-			// serving public organizer media through Cloud CDN is otherwise blocked
-			// by DRS (verified in prod: `Error 412 ... do not belong to a permitted
-			// customer`).
-			//
-			// Decision: for a product of this scale, carving out a dedicated
-			// public-assets project solely to preserve DRS is over-engineering. We
-			// deliberately override the inherited DRS enforcement (allow all
-			// members). The media bucket itself stays PRIVATE (no `allUsers`); only
-			// the CDN cache-fill SA is granted read.
-			//
-			// Scoped to the `workloadEnabled` gate so a shut-down environment does
-			// NOT relax DRS with no CDN bucket present to justify it, and passed as
-			// `dependsOn` to OrganizerMediaComponent so the override is applied
-			// BEFORE the cache-fill `objectViewer` grant it unblocks (Pulumi orders
-			// by dependency graph, not source order).
-			//
-			// The Pulumi deployer SA (`pulumi-cloud`, see WorkloadIdentityComponent)
-			// holds only project Owner + folder Viewer; `roles/owner` includes NO
-			// `orgpolicy.*` permissions, so the deployer cannot set the override
-			// below (this is why the earlier apply would also fail on permission
-			// once the API issue is fixed). Grant it `orgpolicy.policyAdmin` on the
-			// project so it can apply the override; the deployer is project Owner, so
-			// it can create this self-binding. The member is built from the SA's
-			// deterministic email (`pulumi-cloud@<projectId>`) to avoid a backward
-			// reference to WorkloadIdentityComponent, which is constructed later.
-			const deployerOrgPolicyAdmin = new gcp.projects.IAMMember(
-				'pulumi-cloud-x-orgpolicy-policy-admin',
-				{
-					project: this.project.projectId,
-					role: 'roles/orgpolicy.policyAdmin',
-					member: pulumi.interpolate`serviceAccount:pulumi-cloud@${this.project.projectId}.iam.gserviceaccount.com`,
-				},
-				{ parent: this.project },
-			)
-
-			// Uses the v1 `projects.OrganizationPolicy` (Resource Manager API,
-			// `cloudresourcemanager.googleapis.com`, already enabled in project.ts)
-			// rather than the v2 `orgpolicy.Policy` (which needs the separate
-			// `orgpolicy.googleapis.com` API that is NOT enabled here — the cause of
-			// the earlier failed apply). `dependsOn` the policyAdmin grant above so
-			// the deployer has permission before the override is applied. (On a very
-			// first apply, IAM propagation of the grant can lag a few seconds; if the
-			// override then fails on permission, a re-run succeeds.)
-			const drsOverride = new gcp.projects.OrganizationPolicy(
-				'allow-all-policy-member-domains',
-				{
-					project: this.project.projectId,
-					constraint: 'iam.allowedPolicyMemberDomains',
-					// Override the inherited DRS enforcement: allow all members.
-					listPolicy: { allow: { all: true } },
-				},
-				{ parent: this.project, dependsOn: [deployerOrgPolicyAdmin] },
-			)
-
+			// NOTE on Domain Restricted Sharing (DRS): the org enforces
+			// `iam.allowedPolicyMemberDomains`, which rejects the Cloud CDN
+			// cache-fill service agent grant below (`Error 412`). The DRS override
+			// that unblocks it is NOT managed here — org-policy management requires
+			// org/folder-level permission the Pulumi deployer (project Owner + folder
+			// Viewer) neither has nor can self-grant (`roles/orgpolicy.policyAdmin`
+			// is not project-bindable). It is set out-of-band, once, by an org admin
+			// (`gcloud org-policies set-policy` allowAll on this project). Once DRS is
+			// relaxed, the component's cache-fill `objectViewer` grant applies.
 			const organizerMedia = new OrganizerMediaComponent(
 				'organizer-media',
 				{
@@ -581,7 +528,6 @@ export class Gcp {
 						kubernetes.organizerConsoleApiServiceAccountEmail,
 					cloudflareConfig,
 				},
-				{ dependsOn: [drsOverride] },
 			)
 
 			this.workloadSAs = {
