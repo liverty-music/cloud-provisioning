@@ -178,42 +178,6 @@ export class Gcp {
 		this.project = projectBasis.project
 		this.projectId = this.project.projectId
 
-		// Domain Restricted Sharing (DRS) override — every environment.
-		//
-		// The organization enforces `iam.allowedPolicyMemberDomains` (DRS) on all
-		// projects (inherited from the org/folder), which rejects any IAM principal
-		// outside the org's own customer — including the Google-managed Cloud CDN
-		// cache-fill service agent (`service-<num>@https-lb.iam.gserviceaccount.com`).
-		// A private-origin Cloud CDN backend bucket MUST grant that agent
-		// `objectViewer`, so serving public organizer media through Cloud CDN is
-		// otherwise blocked by DRS in EVERY environment (verified in prod:
-		// `Error 412 ... do not belong to a permitted customer`).
-		//
-		// Decision: for a product of this scale, carving out a dedicated
-		// public-assets project solely to preserve DRS is over-engineering. We
-		// deliberately override the inherited DRS enforcement on each project
-		// (allow all members). The media bucket itself stays PRIVATE (no
-		// `allUsers`); only the CDN cache-fill SA is granted read — the override
-		// simply lets that one legitimate, Google-managed grant succeed.
-		//
-		// Applying this requires the Pulumi deployer principal to hold
-		// `roles/orgpolicy.policyAdmin` on the project (or above). If it does not,
-		// set the override once out-of-band (see the PR description for the exact
-		// `gcloud org-policies set-policy` command) and this resource will import
-		// cleanly on the next preview.
-		new gcp.orgpolicy.Policy(
-			'allow-all-policy-member-domains',
-			{
-				parent: pulumi.interpolate`projects/${this.project.projectId}`,
-				name: pulumi.interpolate`projects/${this.project.projectId}/policies/iam.allowedPolicyMemberDomains`,
-				spec: {
-					// Override the inherited DRS enforcement: allow all members.
-					rules: [{ allowAll: 'true' }],
-				},
-			},
-			{ parent: this.project },
-		)
-
 		// 2. Identity Management (GSA + Workload Identity)
 		// 3. Network (VPC, Subnets, NAT) - Osaka
 		const network = new NetworkComponent('network', {
@@ -544,6 +508,47 @@ export class Gcp {
 			// component also wires the `media.<publicDomain>` LB + Cert Manager
 			// cert (DNS-01 via Cloudflare) + Cloudflare DNS, so it needs the
 			// Cloudflare provider config.
+			// Domain Restricted Sharing (DRS) override.
+			//
+			// The organization enforces `iam.allowedPolicyMemberDomains` (DRS) on
+			// all projects (inherited from the org/folder), which rejects any IAM
+			// principal outside the org's own customer — including the
+			// Google-managed Cloud CDN cache-fill service agent
+			// (`service-<num>@https-lb.iam.gserviceaccount.com`). A private-origin
+			// Cloud CDN backend bucket MUST grant that agent `objectViewer`, so
+			// serving public organizer media through Cloud CDN is otherwise blocked
+			// by DRS (verified in prod: `Error 412 ... do not belong to a permitted
+			// customer`).
+			//
+			// Decision: for a product of this scale, carving out a dedicated
+			// public-assets project solely to preserve DRS is over-engineering. We
+			// deliberately override the inherited DRS enforcement (allow all
+			// members). The media bucket itself stays PRIVATE (no `allUsers`); only
+			// the CDN cache-fill SA is granted read.
+			//
+			// Scoped to the `workloadEnabled` gate so a shut-down environment does
+			// NOT relax DRS with no CDN bucket present to justify it, and passed as
+			// `dependsOn` to OrganizerMediaComponent so the override is applied
+			// BEFORE the cache-fill `objectViewer` grant it unblocks (Pulumi orders
+			// by dependency graph, not source order).
+			//
+			// Applying this requires the Pulumi deployer to hold
+			// `roles/orgpolicy.policyAdmin` on the project (or above); otherwise set
+			// it once out-of-band via `gcloud org-policies set-policy` (see PR) and
+			// it imports cleanly on the next preview.
+			const drsOverride = new gcp.orgpolicy.Policy(
+				'allow-all-policy-member-domains',
+				{
+					parent: pulumi.interpolate`projects/${this.project.projectId}`,
+					name: pulumi.interpolate`projects/${this.project.projectId}/policies/iam.allowedPolicyMemberDomains`,
+					spec: {
+						// Override the inherited DRS enforcement: allow all members.
+						rules: [{ allowAll: 'true' }],
+					},
+				},
+				{ parent: this.project },
+			)
+
 			const organizerMedia = new OrganizerMediaComponent(
 				'organizer-media',
 				{
@@ -555,6 +560,7 @@ export class Gcp {
 						kubernetes.organizerConsoleApiServiceAccountEmail,
 					cloudflareConfig,
 				},
+				{ dependsOn: [drsOverride] },
 			)
 
 			this.workloadSAs = {
