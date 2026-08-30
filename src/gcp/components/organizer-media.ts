@@ -26,6 +26,12 @@ export interface OrganizerMediaArgs {
 	 *  Receives `roles/storage.objectAdmin` on THIS bucket only (not
 	 *  project-level), following least-privilege design D7. */
 	organizerConsoleApiSaEmail: pulumi.Input<string>
+	/** GCP Service Account email for the media-processor workload. Receives
+	 *  `roles/storage.objectAdmin` bucket-scoped on BOTH the private originals
+	 *  bucket (`organizer-media-internal`, to read uploaded originals) and the
+	 *  served bucket (`organizer-media`, to write processed variants under
+	 *  `cdn/{org}/{mediaId}/{variant}.webp`). No project-level storage role. */
+	mediaProcessorSaEmail: pulumi.Input<string>
 	/** Cloudflare provider config (API token + zone id). Reused to create the
 	 *  `media.<publicDomain>` A record and the ACME DNS-01 challenge CNAME in
 	 *  the single Cloudflare-authoritative zone (`liverty-music.app`), matching
@@ -95,11 +101,15 @@ export interface OrganizerMediaArgs {
  *     (DNS-only) so the managed cert can provision and TLS terminates at the LB.
  *
  * CORS:
- *   Not configured. Uploads are server-side (backend RPC → GCS write); the
- *   frontend never issues a cross-origin PUT directly to the bucket. The CDN
- *   serving URL is consumed by `<img>` tags, which are not subject to CORS. If a
- *   future change introduces direct browser upload or XHR fetch of objects, add
- *   a CORS block at that time.
+ *   - The NEW PRIVATE originals bucket (`organizer-media-internal`) has a CORS
+ *     `PUT` rule allowing the organizer Web App origins to upload originals via
+ *     a V4 signed URL (browser direct-upload). This bucket has NO LB/CDN, so
+ *     its objects are unreachable except by IAM-authenticated readers.
+ *   - The served bucket (`organizer-media`, this one) still has NO CORS: it is
+ *     read via Cloud CDN over the external HTTPS LB and consumed by `<img>`
+ *     tags (not subject to CORS), and writes to it are server-side (the
+ *     media-processor workload writes processed variants using Workload
+ *     Identity credentials, no browser PUT).
  */
 export class OrganizerMediaComponent extends pulumi.ComponentResource {
 	/** GCS bucket name — stable after creation. */
@@ -122,6 +132,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 			environment,
 			location,
 			organizerConsoleApiSaEmail,
+			mediaProcessorSaEmail,
 			cloudflareConfig,
 		} = args
 
@@ -179,6 +190,87 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				bucket: bucket.name,
 				role: Roles.Storage.ObjectAdmin,
 				member: pulumi.interpolate`serviceAccount:${organizerConsoleApiSaEmail}`,
+			},
+			{ parent: this },
+		)
+
+		// PRIVATE originals bucket (`organizer-media-internal`). Holds uploaded
+		// originals at key `{org}/{mediaId}`. Deliberately SEPARATE from the
+		// served bucket — the served bucket's URL map routes `defaultService` to
+		// the bucket, so any prefix there would be publicly CDN-served. This
+		// bucket has NO LB/BackendBucket/URLMap/Cloudflare record, so its objects
+		// are unreachable via CDN and only reachable by IAM-authenticated readers.
+		// It is the CORS `PUT` target for browser direct-upload via a V4 signed URL.
+		const internalBucket = new gcp.storage.Bucket(
+			'organizer-media-internal',
+			{
+				name: `${brandId}-${environment}-organizer-media-internal`,
+				project: project.projectId,
+				location,
+				// Uniform bucket-level access — disables per-object ACLs so that
+				// only IAM bindings control access.
+				uniformBucketLevelAccess: true,
+				// Standard storage class: originals are read shortly after upload
+				// by the media-processor, then retained; Nearline/Coldline would
+				// add retrieval fees for the immediate processing read.
+				storageClass: 'STANDARD',
+				// Soft delete: disabled. A replaced image gets a new `mediaId` key,
+				// so GCS version history has no recovery value and would only add
+				// storage cost.
+				softDeletePolicy: {
+					retentionDurationSeconds: 0,
+				},
+				// CORS: allow browser direct-upload via a V4 signed URL. The
+				// organizer Web App issues a cross-origin `PUT` straight to this
+				// bucket. Origins are the organizer console Web App origins (dev
+				// additionally allows localhost + the dev hostname). The
+				// `x-goog-content-length-range` header is what the signed URL uses
+				// to bound the uploaded object size server-side.
+				cors: [
+					{
+						methods: ['PUT'],
+						origins:
+							environment === 'dev'
+								? [
+										'https://organizer.liverty-music.app',
+										'http://localhost:9100',
+										'https://organizer.dev.liverty-music.app',
+									]
+								: ['https://organizer.liverty-music.app'],
+						responseHeaders: [
+							'Content-Type',
+							'x-goog-content-length-range',
+						],
+						maxAgeSeconds: 3600,
+					},
+				],
+			},
+			{ parent: this },
+		)
+
+		// media-processor read/write on the PRIVATE originals bucket — reads the
+		// uploaded original at `{org}/{mediaId}`. `objectAdmin` (not just viewer)
+		// so it can also delete a processed original if the pipeline chooses to.
+		// Bucket-scoped binding only; no project-level storage role.
+		new gcp.storage.BucketIAMMember(
+			'organizer-media-internal-processor-write',
+			{
+				bucket: internalBucket.name,
+				role: Roles.Storage.ObjectAdmin,
+				member: pulumi.interpolate`serviceAccount:${mediaProcessorSaEmail}`,
+			},
+			{ parent: this },
+		)
+
+		// media-processor write on the SERVED bucket — writes processed variants
+		// at `cdn/{org}/{mediaId}/{variant}.webp`. Bucket-scoped binding only;
+		// no project-level storage role.
+		new gcp.storage.BucketIAMMember(
+			'organizer-media-processor-write',
+			{
+				bucket: bucket.name,
+				role: Roles.Storage.ObjectAdmin,
+				member: pulumi.interpolate`serviceAccount:${mediaProcessorSaEmail}`,
 			},
 			{ parent: this },
 		)

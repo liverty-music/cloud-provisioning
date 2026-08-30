@@ -68,6 +68,10 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly adminConsoleApiServiceAccountEmail: pulumi.Output<string>
 	/** Organizer Console API GCP SA email — least-privilege read-only backend workload; exposed so Postgres can create its dedicated IAM SQL user. */
 	public readonly organizerConsoleApiServiceAccountEmail: pulumi.Output<string>
+	/** Media Processor GCP SA email — the KEDA-scaled worker that reads uploaded
+	 *  originals and writes processed variants; exposed so OrganizerMediaComponent
+	 *  can grant it bucket-scoped storage.objectAdmin on both media buckets. */
+	public readonly mediaProcessorServiceAccountEmail: pulumi.Output<string>
 	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
 	public readonly zitadelServiceAccountEmail: pulumi.Output<string>
 	/** ESO controller's GCP SA email — exposed so callers can grant per-secret accessor bindings. */
@@ -141,8 +145,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		)
 
 		// Grant permission to pull from Artifact Registries
-		// Registry order: [backend, frontend]
-		const registryNames = ['backend', 'frontend']
+		// Registry order: [backend, frontend, media-processor]
+		const registryNames = ['backend', 'frontend', 'media-processor']
 		for (const [index, registry] of artifactRegistries.entries()) {
 			iamSvc.bindArtifactRegistryReader(
 				`${registryNames[index]}-gke-node`,
@@ -166,7 +170,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		this.backendAppServiceAccountEmail = backendAppSa.email
 
 		// Grant permission to pull from Artifact Registries
-		// Registry order: [backend, frontend]
+		// Registry order: [backend, frontend, media-processor]
 		for (const [index, registry] of artifactRegistries.entries()) {
 			iamSvc.bindArtifactRegistryReader(
 				`${registryNames[index]}-app`,
@@ -334,6 +338,56 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			],
 			organizerConsoleApi,
 			organizerConsoleApiSa.email,
+			this,
+		)
+
+		// 2d. Media Processor Service Account (media-processor)
+		// The KEDA-scaled worker (ScaledJob) that consumes `media.uploaded`
+		// events, reads the uploaded original from the PRIVATE originals bucket,
+		// transcodes it with libvips, and writes processed variants to the served
+		// bucket. It does NOT talk to Cloud SQL, so it is granted NEITHER
+		// `cloudSql.Client` NOR `cloudSql.InstanceUser` — a deliberately smaller
+		// role set than the fan/admin/organizer API workloads. Bucket access is
+		// granted separately as bucket-scoped `storage.objectAdmin` bindings in
+		// OrganizerMediaComponent (least privilege — no project-level storage
+		// role). K8s SA name == GCP SA id == `media-processor`.
+		const mediaProcessor = 'media-processor'
+		const mediaProcessorSa = iamSvc.createServiceAccount(
+			`liverty-music-${mediaProcessor}`,
+			mediaProcessor,
+			'Liverty Music Media Processor Service Account',
+			'KEDA-scaled media transcoding worker; reads uploaded originals and writes processed variants (no Cloud SQL access)',
+			this,
+		)
+		this.mediaProcessorServiceAccountEmail = mediaProcessorSa.email
+		// Grant pull access on both registries, mirroring the API workloads.
+		for (const [index, registry] of artifactRegistries.entries()) {
+			iamSvc.bindArtifactRegistryReader(
+				`${registryNames[index]}-media-processor`,
+				mediaProcessorSa.email,
+				registry,
+				region,
+				this,
+			)
+		}
+		// Minimal operational project roles — logging/metrics/trace + service
+		// usage. No Cloud SQL (this workload never connects to the database).
+		iamSvc.bindProjectRoles(
+			[
+				Roles.Logging.LogWriter,
+				Roles.Monitoring.MetricWriter,
+				Roles.CloudTrace.Agent,
+				Roles.ServiceUsage.ServiceUsageConsumer,
+			],
+			mediaProcessor,
+			mediaProcessorSa.email,
+			this,
+		)
+		// Bind Kubernetes Service Account (ns/backend/sa/media-processor) to Workload Identity.
+		iamSvc.bindKubernetesSaUser(
+			mediaProcessor,
+			mediaProcessorSa,
+			namespace,
 			this,
 		)
 

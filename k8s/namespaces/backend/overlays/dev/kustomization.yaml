@@ -33,6 +33,12 @@ patches:
     kind: ServiceAccount
     name: organizer-console-api
 
+# Bind KSA media-processor to its dedicated dev GSA (Workload Identity).
+- path: serviceaccount_media_processor_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: media-processor
+
 # Global Spot VM patch for all Deployments in dev
 - path: spot-vm_patch.yaml
   target:
@@ -222,6 +228,37 @@ patches:
     spec:
       maxReplicaCount: 1
 
+# media-processor ScaledJob in dev: spot nodeSelector + right-sized resources +
+# maxReplicaCount 1. The global spot-vm_patch targets only Deployment/CronJob
+# kinds, so the ScaledJob's pod template needs the Spot nodeSelector applied
+# explicitly here. libvips still needs real memory even in dev, so the limits
+# stay meaningful (a too-small limit OOM-kills the transcode).
+#
+# These use JSON6902 path ops, NOT a strategic-merge patch: ScaledJob is a CRD,
+# so Kustomize has no merge-key for the nested `containers` list and a
+# strategic-merge `containers: [{name, resources}]` REPLACES the base container
+# (dropping image/envFrom). Path ops surgically set fields on container [0].
+- target:
+    kind: ScaledJob
+    name: media-processor
+  patch: |-
+    - op: replace
+      path: /spec/maxReplicaCount
+      value: 1
+    - op: add
+      path: /spec/jobTargetRef/template/spec/nodeSelector
+      value:
+        cloud.google.com/gke-spot: "true"
+    - op: replace
+      path: /spec/jobTargetRef/template/spec/containers/0/resources
+      value:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
 configMapGenerator:
 - name: fan-api-config
   behavior: merge
@@ -247,3 +284,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - event-consumer/configmap.env
+- name: media-processor-config
+  behavior: merge
+  envs:
+  - media-processor/configmap.env
