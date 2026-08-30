@@ -366,6 +366,6 @@ images:
   # NOTE: the media-processor image does not exist yet at this tag — it is built
   # once the backend Dockerfile target ships; the ScaledJob scales from 0 and
   # creates no Job (hence no image pull) until MEDIA.uploaded events arrive.
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/media-processor/media-processor
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/media-processor/media-processor
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-processor
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/media-processor
     newTag: v1.48.1 # commit 6065745e83c192a5ab817d4438ee90c9b858d6cf

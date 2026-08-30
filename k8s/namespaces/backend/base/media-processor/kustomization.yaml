@@ -15,7 +15,7 @@ labels:
 # event-consumer base's image transformer.
 images:
 - name: media-processor
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/media-processor/media-processor
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-processor
   newTag: latest
 
 configMapGenerator:

@@ -225,25 +225,12 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
-		// Media Processor Docker repository — holds the `media-processor` image
-		// (the KEDA-scaled libvips transcoding worker). Mirrors the backend/frontend
-		// repos exactly (same immutableTags-on-non-dev policy, Osaka location,
-		// DOCKER format). Kept as its own repo (not a folder under `backend`)
-		// because the media pipeline ships from a distinct build.
-		const mediaProcessorArtifactRegistry =
-			new gcp.artifactregistry.Repository(
-				'media-processor',
-				{
-					repositoryId: 'media-processor',
-					location: Regions.Osaka,
-					format: 'DOCKER',
-					project: this.project.projectId,
-					description:
-						'Docker repository for the media-processor worker',
-					dockerConfig,
-				},
-				{ parent: this.project },
-			)
+		// The `media-processor` image ships from the backend build into the
+		// SHARED `backend` Artifact Registry repo (as `backend/media-processor`),
+		// exactly like the other backend binaries (consumer, concert-discovery,
+		// …) — the backend deploy workflow pushes all targets to one repo. No
+		// dedicated repo, prod-CI reader, or workload AR-reader binding is needed
+		// beyond what the `backend` repo already provides.
 
 		// 4.1. Cross-project AR reader for the prod CI service account.
 		//
@@ -315,21 +302,6 @@ export class Gcp {
 				// release at the digest-resolve step.
 				{ parent: this.project, protect: true },
 			)
-
-			new gcp.artifactregistry.RepositoryIamMember(
-				'prod-ci-media-processor-ar-reader',
-				{
-					repository: mediaProcessorArtifactRegistry.name,
-					location: this.region,
-					project: this.project.projectId,
-					role: 'roles/artifactregistry.reader',
-					member: PROD_CI_SA_EMAIL,
-				},
-				// protect: true — same critical-path rationale: the prod
-				// media-processor release retags the dev-AR digest, so
-				// losing this binding breaks the digest-resolve step.
-				{ parent: this.project, protect: true },
-			)
 		}
 
 		// 4.5. Cloud KMS — etcd CMEK key for the prod GKE cluster.
@@ -383,7 +355,6 @@ export class Gcp {
 				artifactRegistries: [
 					backendArtifactRegistry,
 					frontendArtifactRegistry,
-					mediaProcessorArtifactRegistry,
 				],
 				secrets: [
 					...(lastFmApiKey
