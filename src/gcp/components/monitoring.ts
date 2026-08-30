@@ -115,6 +115,15 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 				displayName: 'Sales Phase Discovery',
 				appLabel: 'sales-phase-discovery',
 			},
+			// media-processor logs ERROR only for genuine system failures (GCS/DB
+			// write, libvips-internal); invalid/unsafe uploads are user error and
+			// log WARN, so this alert stays incident-only. Queue backlog for its
+			// `media_uploaded` durable is already covered by the unfiltered
+			// Consumer JetStream Backlog Stall policy below.
+			{
+				displayName: 'Media Processor',
+				appLabel: 'media-processor',
+			},
 		]
 
 		this.alertPolicies = workloads.map(

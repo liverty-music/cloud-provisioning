@@ -67,6 +67,11 @@ patches:
     target:
       kind: ServiceAccount
       name: organizer-console-api
+  # Bind KSA media-processor to its dedicated prod GSA (Workload Identity).
+  - path: serviceaccount_media_processor_patch.yaml
+    target:
+      kind: ServiceAccount
+      name: media-processor
   # Global Spot VM patch for all Deployments
   - path: spot-vm_patch.yaml
     target:
@@ -245,6 +250,26 @@ patches:
       spec:
         minReplicaCount: 1
         maxReplicaCount: 1
+  # media-processor ScaledJob — cap concurrency at 1 Job in prod (serialize
+  # transcodes to keep node-pool memory pressure bounded at launch volume).
+  #
+  # NOTE (deviation from the event-consumer "min=max=1" pin): a ScaledJob is a
+  # batch primitive, so minReplicaCount stays at its default 0 (scale-to-zero).
+  # Unlike the event-consumer ScaledObject — whose min MUST be 1 to hold its
+  # JetStream durables open — the media-processor's `media_uploaded` durable is
+  # server-side and NOT torn down when no Job runs, so nothing is lost while
+  # idle. Pinning min=1 here would keep an idle Job resident forever, which
+  # defeats the batch design. Only maxReplicaCount is pinned.
+  - target:
+      kind: ScaledJob
+      name: media-processor
+    patch: |-
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledJob
+      metadata:
+        name: media-processor
+      spec:
+        maxReplicaCount: 1
 configMapGenerator:
   # fan-api-config: prod env for the fan-facing backend; DATABASE_USER points at
   # the fan-api IAM DB user (unify-workload-naming). Replaces server-config.
@@ -272,6 +297,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - event-consumer/configmap.env
+  - name: media-processor-config
+    behavior: merge
+    envs:
+      - media-processor/configmap.env
 # Pin all backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -331,4 +360,12 @@ images:
     newTag: v1.48.1 # commit 6065745e83c192a5ab817d4438ee90c9b858d6cf
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
+    newTag: v1.48.1 # commit 6065745e83c192a5ab817d4438ee90c9b858d6cf
+  # media-processor: shipped from its own AR repo (not backend/). Pinned to the
+  # prod AR + semver tag; the bump-prod-pin workflow keeps this in lock-step.
+  # NOTE: the media-processor image does not exist yet at this tag — it is built
+  # once the backend Dockerfile target ships; the ScaledJob scales from 0 and
+  # creates no Job (hence no image pull) until MEDIA.uploaded events arrive.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/media-processor/media-processor
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/media-processor/media-processor
     newTag: v1.48.1 # commit 6065745e83c192a5ab817d4438ee90c9b858d6cf
