@@ -22,3 +22,9 @@ configMapGenerator:
 - name: media-processor-config
   envs:
   - configmap.env
+
+# Propagate the configMapGenerator name-hash suffix into the ScaledJob (a CRD),
+# which the built-in nameReference transformer does not cover — see
+# kustomizeconfig.yaml.
+configurations:
+- kustomizeconfig.yaml

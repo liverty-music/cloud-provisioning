@@ -1,0 +1,13 @@
+# Kustomize transformer config: teach the name-hash reference transformer that a
+# KEDA ScaledJob's pod-template envFrom.configMapRef.name is a ConfigMap
+# reference. The built-in nameReference config only knows native workload kinds
+# (Deployment, Job, …), so without this a ScaledJob (a CRD) keeps the bare
+# generator name `media-processor-config` while configMapGenerator emits the
+# hash-suffixed `media-processor-config-<hash>` — KEDA then fails with
+# "ConfigMap media-processor-config not found". This propagates the suffix into
+# the CRD the same way it already works for Deployments.
+nameReference:
+  - kind: ConfigMap
+    fieldSpecs:
+      - path: spec/jobTargetRef/template/spec/containers/envFrom/configMapRef/name
+        kind: ScaledJob
