@@ -31,4 +31,5 @@ resources:
 - consumer-analytics-organizer-artist-associated.yaml
 - consumer-notify-sales-phase.yaml
 - consumer-notify-sales-reminder.yaml
+- consumer-log-poison.yaml
 - consumer-media-uploaded.yaml
