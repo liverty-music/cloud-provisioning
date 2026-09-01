@@ -182,6 +182,13 @@ patches:
                 value: "386069101153353860"
               - name: DATABASE_USER
                 value: "organizer-console-api@liverty-music-prod.iam"
+              # Originals bucket for CreateMediaUploadURL signing. organizer-console-api
+              # borrows fan-api-config (which carries ORGANIZER_MEDIA_BUCKET +
+              # ORGANIZER_MEDIA_CDN_BASE for the read path) but NOT the internal
+              # originals bucket — only the organizer signs direct uploads, so it is
+              # set here, scoped to this Deployment.
+              - name: ORGANIZER_MEDIA_INTERNAL_BUCKET
+                value: "liverty-music-prod-organizer-media-internal"
   # Prod fan API HTTPRoute hostname (fan-api-route replaces server-route).
   - target:
       kind: HTTPRoute

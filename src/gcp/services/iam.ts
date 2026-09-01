@@ -53,6 +53,13 @@ export const Roles = {
 		 *  `allUsers` — Domain Restricted Sharing would reject that binding. */
 		ObjectViewer: 'roles/storage.objectViewer',
 	},
+	Iam: {
+		/** Allows a principal to mint short-lived credentials / signatures for a
+		 *  service account (SignBlob, access tokens). Granted to a workload ON ITS
+		 *  OWN service account so it can create keyless V4 signed URLs via IAM
+		 *  SignBlob (e.g. organizer-console-api signing direct-upload PUT URLs). */
+		ServiceAccountTokenCreator: 'roles/iam.serviceAccountTokenCreator',
+	},
 } as const
 
 type DeepValueOf<T> = T extends object
