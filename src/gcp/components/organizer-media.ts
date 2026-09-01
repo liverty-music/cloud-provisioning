@@ -26,12 +26,12 @@ export interface OrganizerMediaArgs {
 	 *  Receives `roles/storage.objectAdmin` on THIS bucket only (not
 	 *  project-level), following least-privilege design D7. */
 	organizerConsoleApiSaEmail: pulumi.Input<string>
-	/** GCP Service Account email for the media-processor workload. Receives
+	/** GCP Service Account email for the media-consumer workload. Receives
 	 *  `roles/storage.objectAdmin` bucket-scoped on BOTH the private originals
 	 *  bucket (`organizer-media-internal`, to read uploaded originals) and the
 	 *  served bucket (`organizer-media`, to write processed variants under
 	 *  `cdn/{org}/{mediaId}/{variant}.webp`). No project-level storage role. */
-	mediaProcessorSaEmail: pulumi.Input<string>
+	mediaConsumerSaEmail: pulumi.Input<string>
 	/** Cloudflare provider config (API token + zone id). Reused to create the
 	 *  `media.<publicDomain>` A record and the ACME DNS-01 challenge CNAME in
 	 *  the single Cloudflare-authoritative zone (`liverty-music.app`), matching
@@ -108,7 +108,7 @@ export interface OrganizerMediaArgs {
  *   - The served bucket (`organizer-media`, this one) still has NO CORS: it is
  *     read via Cloud CDN over the external HTTPS LB and consumed by `<img>`
  *     tags (not subject to CORS), and writes to it are server-side (the
- *     media-processor workload writes processed variants using Workload
+ *     media-consumer workload writes processed variants using Workload
  *     Identity credentials, no browser PUT).
  */
 export class OrganizerMediaComponent extends pulumi.ComponentResource {
@@ -132,7 +132,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 			environment,
 			location,
 			organizerConsoleApiSaEmail,
-			mediaProcessorSaEmail,
+			mediaConsumerSaEmail,
 			cloudflareConfig,
 		} = args
 
@@ -211,7 +211,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				// only IAM bindings control access.
 				uniformBucketLevelAccess: true,
 				// Standard storage class: originals are read shortly after upload
-				// by the media-processor, then retained; Nearline/Coldline would
+				// by the media-consumer, then retained; Nearline/Coldline would
 				// add retrieval fees for the immediate processing read.
 				storageClass: 'STANDARD',
 				// Soft delete: disabled. A replaced image gets a new `mediaId` key,
@@ -248,31 +248,41 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 			{ parent: this },
 		)
 
-		// media-processor read/write on the PRIVATE originals bucket — reads the
+		// media-consumer read/write on the PRIVATE originals bucket — reads the
 		// uploaded original at `{org}/{mediaId}`. `objectAdmin` (not just viewer)
 		// so it can also delete a processed original if the pipeline chooses to.
-		// Bucket-scoped binding only; no project-level storage role.
+		// Bucket-scoped binding only; no project-level storage role. Aliased from
+		// the old `organizer-media-internal-processor-write` logical name so the
+		// media-processor → media-consumer rename adopts the existing binding.
 		new gcp.storage.BucketIAMMember(
-			'organizer-media-internal-processor-write',
+			'organizer-media-internal-consumer-write',
 			{
 				bucket: internalBucket.name,
 				role: Roles.Storage.ObjectAdmin,
-				member: pulumi.interpolate`serviceAccount:${mediaProcessorSaEmail}`,
+				member: pulumi.interpolate`serviceAccount:${mediaConsumerSaEmail}`,
 			},
-			{ parent: this },
+			{
+				parent: this,
+				aliases: [{ name: 'organizer-media-internal-processor-write' }],
+			},
 		)
 
-		// media-processor write on the SERVED bucket — writes processed variants
+		// media-consumer write on the SERVED bucket — writes processed variants
 		// at `cdn/{org}/{mediaId}/{variant}.webp`. Bucket-scoped binding only;
-		// no project-level storage role.
+		// no project-level storage role. Aliased from the old
+		// `organizer-media-processor-write` logical name so the rename adopts the
+		// existing binding.
 		new gcp.storage.BucketIAMMember(
-			'organizer-media-processor-write',
+			'organizer-media-consumer-write',
 			{
 				bucket: bucket.name,
 				role: Roles.Storage.ObjectAdmin,
-				member: pulumi.interpolate`serviceAccount:${mediaProcessorSaEmail}`,
+				member: pulumi.interpolate`serviceAccount:${mediaConsumerSaEmail}`,
 			},
-			{ parent: this },
+			{
+				parent: this,
+				aliases: [{ name: 'organizer-media-processor-write' }],
+			},
 		)
 
 		// Cloud CDN backend bucket over the PRIVATE bucket. `FORCE_CACHE_ALL`

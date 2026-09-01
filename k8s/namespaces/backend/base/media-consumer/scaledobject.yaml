@@ -1,0 +1,29 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: media-consumer
+spec:
+  scaleTargetRef:
+    name: media-consumer
+  # Scale-to-zero: unlike the event-consumer ScaledObject (pinned min=1 in prod
+  # to hold its push durables open), the media-consumer's `media_uploaded`
+  # durable is a server-side pull work-queue Consumer (declarative NACK) that is
+  # NOT torn down when no subscriber is bound. Its backlog metric therefore
+  # remains readable at 0 replicas, so KEDA can always scale back up from zero —
+  # no min=1 pin needed in any environment.
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  cooldownPeriod: 120
+  pollingInterval: 15
+  triggers:
+  # MEDIA stream — `media.uploaded` events. The `consumer` MUST exactly match the
+  # live JetStream durable (durable == `media_uploaded`), else the scaler reports
+  # `<unknown>` and never scales up.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "MEDIA"
+      consumer: "media_uploaded"
+      lagThreshold: "1"
+      activationLagThreshold: "0"

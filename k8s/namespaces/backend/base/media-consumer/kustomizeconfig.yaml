@@ -1,0 +1,7 @@
+nameReference:
+- kind: Deployment
+  version: v1
+  group: apps
+  fieldSpecs:
+  - path: spec/scaleTargetRef/name
+    kind: ScaledObject

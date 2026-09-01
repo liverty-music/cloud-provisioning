@@ -1,0 +1,22 @@
+# NACK (JetStream controller) values. The controller watches
+# jetstream.nats.io/v1beta2 Stream/Consumer CRDs and reconciles them against the
+# in-cluster NATS JetStream Management API. It is the EXCLUSIVE owner of the
+# streams/consumers it manages — the backend no longer creates or reconciles
+# them (declarative-jetstream-nack).
+jetstream:
+  enabled: true
+  # control-loop mode: controller-runtime backend, "more reliably enforce
+  # resource state" (required for KV/ObjectStore too; recommended for prod).
+  controlLoop: true
+  nats:
+    # Same in-cluster endpoint the consumers connect to.
+    url: nats://nats.nats.svc.cluster.local:4222
+
+# Small footprint: the controller only reconciles a handful of CRDs.
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

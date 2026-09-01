@@ -16,6 +16,6 @@ resources:
 - cronjob/sales-phase-discovery
 - cronjob/sales-reminders
 - event-consumer
-- media-processor
+- media-consumer
 
 namespace: backend

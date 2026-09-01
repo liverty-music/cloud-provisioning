@@ -69,6 +69,7 @@ export class IamService {
 		displayName: string,
 		description: string,
 		parent?: pulumi.Resource,
+		opts?: Pick<pulumi.CustomResourceOptions, 'aliases'>,
 	) {
 		return new gcp.serviceaccount.Account(
 			name,
@@ -78,7 +79,7 @@ export class IamService {
 				description,
 				project: this.project.projectId,
 			},
-			{ parent },
+			{ parent, aliases: opts?.aliases },
 		)
 	}
 
@@ -87,16 +88,27 @@ export class IamService {
 		saName: string,
 		saEmail: pulumi.Input<string>,
 		parent?: pulumi.Resource,
+		opts?: {
+			/** Old `saName` to alias each per-role IAMMember logical name from,
+			 *  preserving state on a workload rename (avoids replace-delete). */
+			aliasSaName?: string
+		},
 	): gcp.projects.IAMMember[] {
 		return roles.map((role) => {
+			const roleSuffix = toKebabCase(role.split('/').pop() ?? 'unknown')
 			return new gcp.projects.IAMMember(
-				`${saName}-x-${toKebabCase(role.split('/').pop() ?? 'unknown')}`,
+				`${saName}-x-${roleSuffix}`,
 				{
 					project: this.project.projectId,
 					role,
 					member: pulumi.interpolate`serviceAccount:${saEmail}`,
 				},
-				{ parent },
+				{
+					parent,
+					aliases: opts?.aliasSaName
+						? [{ name: `${opts.aliasSaName}-x-${roleSuffix}` }]
+						: undefined,
+				},
 			)
 		})
 	}
@@ -146,6 +158,7 @@ export class IamService {
 		sa: gcp.serviceaccount.Account,
 		namespace: string,
 		parent?: pulumi.Resource,
+		opts?: Pick<pulumi.CustomResourceOptions, 'aliases'>,
 	) {
 		return new gcp.serviceaccount.IAMMember(
 			`${name}-k8s-sa-wif-user`,
@@ -154,7 +167,7 @@ export class IamService {
 				role: 'roles/iam.workloadIdentityUser',
 				member: pulumi.interpolate`principal://iam.googleapis.com/projects/${this.project.number}/locations/global/workloadIdentityPools/${this.project.projectId}.svc.id.goog/subject/ns/${namespace}/sa/${name}`,
 			},
-			{ parent },
+			{ parent, aliases: opts?.aliases },
 		)
 	}
 
@@ -164,6 +177,7 @@ export class IamService {
 		repository: gcp.artifactregistry.Repository,
 		location: string,
 		parent?: pulumi.Resource,
+		opts?: Pick<pulumi.CustomResourceOptions, 'aliases'>,
 	) {
 		return new gcp.artifactregistry.RepositoryIamMember(
 			`${name}-x-artifact-registry-reader`,
@@ -174,7 +188,7 @@ export class IamService {
 				role: Roles.ArtifactRegistry.Reader,
 				member: pulumi.interpolate`serviceAccount:${saEmail}`,
 			},
-			{ parent },
+			{ parent, aliases: opts?.aliases },
 		)
 	}
 }

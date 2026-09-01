@@ -10,3 +10,13 @@ helmCharts:
   releaseName: nats
   namespace: nats
   valuesFile: values.yaml
+# NACK — declarative JetStream controller. Reconciles Stream/Consumer CRDs
+# against the in-cluster NATS JSM API and is the exclusive owner of JetStream
+# streams/consumers (declarative-jetstream-nack). control-loop mode uses the
+# controller-runtime backend for more reliable state enforcement.
+- name: nack
+  repo: https://nats-io.github.io/k8s/helm/charts/
+  version: 0.35.0
+  releaseName: nack
+  namespace: nats
+  valuesFile: nack-values.yaml

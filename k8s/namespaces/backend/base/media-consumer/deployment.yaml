@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # media-consumer: long-running JetStream consumer that transcodes
+  # organizer-uploaded media. Renamed from the former `media-processor` KEDA
+  # ScaledJob — the binary is a resident consumer (like `event-consumer`), not a
+  # per-item batch job. Each `media.uploaded` event pulls the original from the
+  # private originals bucket, transcodes it with libvips, writes processed
+  # variants to the served bucket, then acks. Reuses the shared backend AR image
+  # (`backend/media-consumer`); see the `images:` transformer in this base's
+  # kustomization. The `media_uploaded` JetStream durable is a server-side pull
+  # work-queue Consumer (declarative NACK), so scaling the Deployment to zero
+  # does not tear it down — KEDA scales back up from 0 on backlog.
+  name: media-consumer
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  # The consumer binds the `media_uploaded` JetStream durable. A default rolling
+  # update would briefly run two pods that both pull the same durable; maxSurge=0
+  # guarantees the old pod is torn down before the new one starts, so at most one
+  # pod pulls at a time — the same guarantee as `type: Recreate`, but expressed
+  # as RollingUpdate tuning so it applies in-place (switching type to Recreate
+  # leaves the pre-existing `rollingUpdate` block populated, which the API
+  # rejects / silently keeps as RollingUpdate).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    spec:
+      terminationGracePeriodSeconds: 90
+      serviceAccountName: media-consumer
+      containers:
+      - name: media-consumer
+        image: media-consumer
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+          name: health
+        envFrom:
+        - configMapRef:
+            name: media-consumer-config
+        - secretRef:
+            name: backend-secrets
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # libvips transcodes decode the full image into memory; size requests for
+        # the largest expected original plus working buffers. Overlays right-size
+        # per environment.
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi

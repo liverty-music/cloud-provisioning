@@ -1,0 +1,14 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Stream
+metadata:
+  name: user
+spec:
+  name: USER
+  subjects: ["USER.*"]
+  storage: file
+  retention: limits
+  maxAge: 168h
+  duplicateWindow: 2m
+  discard: old
+  replicas: 1
+  preventDelete: true

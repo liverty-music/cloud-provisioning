@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- serviceaccount.yaml
+- deployment.yaml
+- scaledobject.yaml
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: media-consumer
+
+# The bare container `image: media-consumer` is rewritten to the dev-AR form
+# here; the prod overlay last-write-wins to the prod AR + semver pin. Mirrors the
+# event-consumer base's image transformer.
+images:
+- name: media-consumer
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-consumer
+  newTag: latest
+
+configMapGenerator:
+- name: media-consumer-config
+  envs:
+  - configmap.env
+
+# Propagate the ScaledObject scaleTargetRef nameReference — see kustomizeconfig.yaml.
+configurations:
+- kustomizeconfig.yaml
