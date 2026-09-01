@@ -267,6 +267,20 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 			},
 		)
 
+		// organizer-console-api write on the PRIVATE originals bucket. The API
+		// mints a V4 signed PUT URL (keyless, via IAM SignBlob) for the browser to
+		// upload the original to `{org}/{mediaId}`; GCS authorizes that PUT against
+		// the SIGNER (this GSA), so it needs object-create here. Bucket-scoped only.
+		new gcp.storage.BucketIAMMember(
+			'organizer-media-internal-api-write',
+			{
+				bucket: internalBucket.name,
+				role: Roles.Storage.ObjectAdmin,
+				member: pulumi.interpolate`serviceAccount:${organizerConsoleApiSaEmail}`,
+			},
+			{ parent: this },
+		)
+
 		// media-consumer write on the SERVED bucket — writes processed variants
 		// at `cdn/{org}/{mediaId}/{variant}.webp`. Bucket-scoped binding only;
 		// no project-level storage role. Aliased from the old

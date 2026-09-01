@@ -342,6 +342,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			organizerConsoleApiSa.email,
 			this,
 		)
+		// organizer-console-api mints V4 signed upload URLs keyless via IAM
+		// SignBlob (CreateMediaUploadURL), so it must be able to sign AS ITSELF:
+		// grant it Service Account Token Creator on its own SA.
+		new gcp.serviceaccount.IAMMember(
+			'organizer-console-api-sign-blob',
+			{
+				serviceAccountId: organizerConsoleApiSa.name,
+				role: Roles.Iam.ServiceAccountTokenCreator,
+				member: pulumi.interpolate`serviceAccount:${organizerConsoleApiSa.email}`,
+			},
+			{ parent: this },
+		)
 
 		// 2d. Media Consumer Service Account (media-consumer)
 		// The long-running KEDA-scaled consumer (Deployment + ScaledObject,
