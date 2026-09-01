@@ -3,6 +3,13 @@ kind: Kustomization
 
 namespace: nats
 
+# Declarative JetStream resources (Stream/Consumer CRs) reconciled by NACK.
+# ArgoCD adopts the already-live durables in place (they were applied during the
+# declarative-jetstream-nack prod cut-over); with preventDelete on every CR,
+# removing one orphans (never deletes) the underlying stream/durable.
+resources:
+- jetstream
+
 helmCharts:
 - name: nats
   repo: https://nats-io.github.io/k8s/helm/charts/
