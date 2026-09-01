@@ -1,0 +1,14 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Stream
+metadata:
+  name: organizer
+spec:
+  name: ORGANIZER
+  subjects: ["ORGANIZER.*"]
+  storage: file
+  retention: limits
+  maxAge: 168h
+  duplicateWindow: 2m
+  discard: old
+  replicas: 1
+  preventDelete: true

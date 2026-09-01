@@ -1,0 +1,14 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Stream
+metadata:
+  name: ticket-journey
+spec:
+  name: TICKET_JOURNEY
+  subjects: ["TICKET_JOURNEY.*"]
+  storage: file
+  retention: limits
+  maxAge: 168h
+  duplicateWindow: 2m
+  discard: old
+  replicas: 1
+  preventDelete: true

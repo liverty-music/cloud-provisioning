@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: media-uploaded
+spec:
+  streamName: MEDIA
+  durableName: media_uploaded
+  # PULL work-queue (no deliverSubject/deliverGroup) — declarative NACK consumer
+  # drained by the media-consumer Deployment (KEDA scale-to-zero). Server-side, so
+  # the durable survives while the consumer is scaled to 0.
+  deliverPolicy: all
+  filterSubject: MEDIA.uploaded
+  ackPolicy: explicit
+  ackWait: 120s
+  maxAckPending: 10
+  maxDeliver: 3
+  replayPolicy: instant
+  preventDelete: true

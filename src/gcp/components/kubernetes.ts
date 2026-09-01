@@ -68,10 +68,11 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly adminConsoleApiServiceAccountEmail: pulumi.Output<string>
 	/** Organizer Console API GCP SA email — least-privilege read-only backend workload; exposed so Postgres can create its dedicated IAM SQL user. */
 	public readonly organizerConsoleApiServiceAccountEmail: pulumi.Output<string>
-	/** Media Processor GCP SA email — the KEDA-scaled worker that reads uploaded
-	 *  originals and writes processed variants; exposed so OrganizerMediaComponent
-	 *  can grant it bucket-scoped storage.objectAdmin on both media buckets. */
-	public readonly mediaProcessorServiceAccountEmail: pulumi.Output<string>
+	/** Media Consumer GCP SA email — the long-running KEDA-scaled consumer that
+	 *  reads uploaded originals and writes processed variants; exposed so
+	 *  OrganizerMediaComponent can grant it bucket-scoped storage.objectAdmin on
+	 *  both media buckets. */
+	public readonly mediaConsumerServiceAccountEmail: pulumi.Output<string>
 	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
 	public readonly zitadelServiceAccountEmail: pulumi.Output<string>
 	/** ESO controller's GCP SA email — exposed so callers can grant per-secret accessor bindings. */
@@ -145,8 +146,9 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		)
 
 		// Grant permission to pull from Artifact Registries
-		// Registry order: [backend, frontend, media-processor]
-		const registryNames = ['backend', 'frontend', 'media-processor']
+		// Registry order: [backend, frontend] — media images share the backend
+		// repo (there is no dedicated media-processor registry).
+		const registryNames = ['backend', 'frontend']
 		for (const [index, registry] of artifactRegistries.entries()) {
 			iamSvc.bindArtifactRegistryReader(
 				`${registryNames[index]}-gke-node`,
@@ -170,7 +172,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		this.backendAppServiceAccountEmail = backendAppSa.email
 
 		// Grant permission to pull from Artifact Registries
-		// Registry order: [backend, frontend, media-processor]
+		// Registry order: [backend, frontend]
 		for (const [index, registry] of artifactRegistries.entries()) {
 			iamSvc.bindArtifactRegistryReader(
 				`${registryNames[index]}-app`,
@@ -341,33 +343,47 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 
-		// 2d. Media Processor Service Account (media-processor)
-		// The KEDA-scaled worker (ScaledJob) that consumes `media.uploaded`
-		// events, reads the uploaded original from the PRIVATE originals bucket,
-		// transcodes it with libvips, and writes processed variants to the served
-		// bucket. It does NOT talk to Cloud SQL, so it is granted NEITHER
-		// `cloudSql.Client` NOR `cloudSql.InstanceUser` — a deliberately smaller
-		// role set than the fan/admin/organizer API workloads. Bucket access is
-		// granted separately as bucket-scoped `storage.objectAdmin` bindings in
-		// OrganizerMediaComponent (least privilege — no project-level storage
-		// role). K8s SA name == GCP SA id == `media-processor`.
-		const mediaProcessor = 'media-processor'
-		const mediaProcessorSa = iamSvc.createServiceAccount(
-			`liverty-music-${mediaProcessor}`,
-			mediaProcessor,
-			'Liverty Music Media Processor Service Account',
-			'KEDA-scaled media transcoding worker; reads uploaded originals and writes processed variants (no Cloud SQL access)',
+		// 2d. Media Consumer Service Account (media-consumer)
+		// The long-running KEDA-scaled consumer (Deployment + ScaledObject,
+		// scale-to-zero) that consumes `media.uploaded` events, reads the uploaded
+		// original from the PRIVATE originals bucket, transcodes it with libvips,
+		// and writes processed variants to the served bucket. It does NOT talk to
+		// Cloud SQL, so it is granted NEITHER `cloudSql.Client` NOR
+		// `cloudSql.InstanceUser` — a deliberately smaller role set than the
+		// fan/admin/organizer API workloads. Bucket access is granted separately as
+		// bucket-scoped `storage.objectAdmin` bindings in OrganizerMediaComponent
+		// (least privilege — no project-level storage role). K8s SA name == GCP SA
+		// id == `media-consumer`.
+		//
+		// Renamed from `media-processor` (media-consumer is a long-running consumer,
+		// not a batch job). The GSA + WI binding + AR-reader + project-role bindings
+		// carry `aliases` to the old `media-processor` logical names so the rename
+		// adopts the just-created prod resources in place rather than replace-delete.
+		const mediaConsumer = 'media-consumer'
+		const mediaConsumerSa = iamSvc.createServiceAccount(
+			`liverty-music-${mediaConsumer}`,
+			mediaConsumer,
+			'Liverty Music Media Consumer Service Account',
+			'Long-running KEDA-scaled media transcoding consumer; reads uploaded originals and writes processed variants (no Cloud SQL access)',
 			this,
+			{ aliases: [{ name: 'liverty-music-media-processor' }] },
 		)
-		this.mediaProcessorServiceAccountEmail = mediaProcessorSa.email
+		this.mediaConsumerServiceAccountEmail = mediaConsumerSa.email
 		// Grant pull access on both registries, mirroring the API workloads.
 		for (const [index, registry] of artifactRegistries.entries()) {
 			iamSvc.bindArtifactRegistryReader(
-				`${registryNames[index]}-media-processor`,
-				mediaProcessorSa.email,
+				`${registryNames[index]}-media-consumer`,
+				mediaConsumerSa.email,
 				registry,
 				region,
 				this,
+				{
+					aliases: [
+						{
+							name: `${registryNames[index]}-media-processor-x-artifact-registry-reader`,
+						},
+					],
+				},
 			)
 		}
 		// Minimal operational project roles — logging/metrics/trace + service
@@ -379,16 +395,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				Roles.CloudTrace.Agent,
 				Roles.ServiceUsage.ServiceUsageConsumer,
 			],
-			mediaProcessor,
-			mediaProcessorSa.email,
+			mediaConsumer,
+			mediaConsumerSa.email,
 			this,
+			{ aliasSaName: 'media-processor' },
 		)
-		// Bind Kubernetes Service Account (ns/backend/sa/media-processor) to Workload Identity.
+		// Bind Kubernetes Service Account (ns/backend/sa/media-consumer) to Workload Identity.
 		iamSvc.bindKubernetesSaUser(
-			mediaProcessor,
-			mediaProcessorSa,
+			mediaConsumer,
+			mediaConsumerSa,
 			namespace,
 			this,
+			{ aliases: [{ name: 'media-processor-k8s-sa-wif-user' }] },
 		)
 
 		// External Secrets Operator Service Account

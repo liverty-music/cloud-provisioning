@@ -142,13 +142,13 @@ jobs:
               # successor to `server`/`fan-api`; it pins both the fan-api and
               # admin-console-api workloads. `consumer` backs event-consumer.
               # sales-phase-discovery / sales-reminders are the CronJob images;
-              # media-processor is the KEDA ScaledJob worker (backend/media-processor).
+              # media-consumer is the KEDA-scaled long-running consumer (backend/media-consumer).
               # They MUST be listed here too or they stay frozen while the rest
               # advance, and schema-drift (e.g. a dropped column) then breaks the
               # stale image at runtime. The backend release retag matrix already
               # publishes all seven under the release tag, so a single dispatch pins
               # them in lock-step.
-              IMAGES="api consumer concert-discovery artist-image-sync sales-phase-discovery sales-reminders media-processor"
+              IMAGES="api consumer concert-discovery artist-image-sync sales-phase-discovery sales-reminders media-consumer"
               BUMP_LABEL=true ;;
             frontend)
               # One frontend release ships three web bundles from the same tag —

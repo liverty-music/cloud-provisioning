@@ -67,11 +67,11 @@ patches:
     target:
       kind: ServiceAccount
       name: organizer-console-api
-  # Bind KSA media-processor to its dedicated prod GSA (Workload Identity).
-  - path: serviceaccount_media_processor_patch.yaml
+  # Bind KSA media-consumer to its dedicated prod GSA (Workload Identity).
+  - path: serviceaccount_media_consumer_patch.yaml
     target:
       kind: ServiceAccount
-      name: media-processor
+      name: media-consumer
   # Global Spot VM patch for all Deployments
   - path: spot-vm_patch.yaml
     target:
@@ -250,24 +250,47 @@ patches:
       spec:
         minReplicaCount: 1
         maxReplicaCount: 1
-  # media-processor ScaledJob — cap concurrency at 1 Job in prod (serialize
+  # media-consumer Deployment — match dev's resource sizing (libvips needs real
+  # memory; too-small a limit OOM-kills the transcode).
+  - target:
+      kind: Deployment
+      name: media-consumer
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: media-consumer
+      spec:
+        template:
+          spec:
+            containers:
+            - name: media-consumer
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+  # media-consumer ScaledObject — cap concurrency at 1 replica in prod (serialize
   # transcodes to keep node-pool memory pressure bounded at launch volume).
   #
-  # NOTE (deviation from the event-consumer "min=max=1" pin): a ScaledJob is a
-  # batch primitive, so minReplicaCount stays at its default 0 (scale-to-zero).
-  # Unlike the event-consumer ScaledObject — whose min MUST be 1 to hold its
-  # JetStream durables open — the media-processor's `media_uploaded` durable is
-  # server-side and NOT torn down when no Job runs, so nothing is lost while
-  # idle. Pinning min=1 here would keep an idle Job resident forever, which
-  # defeats the batch design. Only maxReplicaCount is pinned.
+  # NOTE (deviation from the event-consumer "min=max=1" pin): minReplicaCount
+  # stays at its base 0 (scale-to-zero). Unlike the event-consumer ScaledObject —
+  # whose min MUST be 1 to hold its PUSH JetStream durables open — the
+  # media-consumer's `media_uploaded` durable is a server-side PULL work-queue
+  # Consumer (declarative NACK) that is NOT torn down when no pod is bound, so its
+  # backlog metric stays readable at 0 replicas and KEDA can always scale back up.
+  # Pinning min=1 here would keep an idle pod resident forever, defeating the
+  # scale-to-zero design. Only maxReplicaCount is pinned.
   - target:
-      kind: ScaledJob
-      name: media-processor
+      kind: ScaledObject
+      name: media-consumer
     patch: |-
       apiVersion: keda.sh/v1alpha1
-      kind: ScaledJob
+      kind: ScaledObject
       metadata:
-        name: media-processor
+        name: media-consumer
       spec:
         maxReplicaCount: 1
 configMapGenerator:
@@ -297,10 +320,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - event-consumer/configmap.env
-  - name: media-processor-config
+  - name: media-consumer-config
     behavior: merge
     envs:
-      - media-processor/configmap.env
+      - media-consumer/configmap.env
 # Pin all backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -361,11 +384,11 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
     newTag: v1.49.0 # commit 096ed18686f91ee9134c4088eab3da149a973044
-  # media-processor: shipped from its own AR repo (not backend/). Pinned to the
-  # prod AR + semver tag; the bump-prod-pin workflow keeps this in lock-step.
-  # NOTE: the media-processor image does not exist yet at this tag — it is built
-  # once the backend Dockerfile target ships; the ScaledJob scales from 0 and
-  # creates no Job (hence no image pull) until MEDIA.uploaded events arrive.
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-processor
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/media-processor
+  # media-consumer: shipped from the shared backend AR repo (backend/media-consumer).
+  # Pinned to the prod AR + semver tag; the bump-prod-pin workflow keeps this in
+  # lock-step. NOTE: the media-consumer image does not exist yet at this tag — it
+  # is built once the backend Dockerfile target ships; the ScaledObject scales
+  # from 0 and pulls no image until MEDIA.uploaded events arrive.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-consumer
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/media-consumer
     newTag: v1.49.0 # commit 096ed18686f91ee9134c4088eab3da149a973044

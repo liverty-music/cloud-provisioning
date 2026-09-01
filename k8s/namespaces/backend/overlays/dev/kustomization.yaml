@@ -33,11 +33,11 @@ patches:
     kind: ServiceAccount
     name: organizer-console-api
 
-# Bind KSA media-processor to its dedicated dev GSA (Workload Identity).
-- path: serviceaccount_media_processor_patch.yaml
+# Bind KSA media-consumer to its dedicated dev GSA (Workload Identity).
+- path: serviceaccount_media_consumer_patch.yaml
   target:
     kind: ServiceAccount
-    name: media-processor
+    name: media-consumer
 
 # Global Spot VM patch for all Deployments in dev
 - path: spot-vm_patch.yaml
@@ -228,36 +228,43 @@ patches:
     spec:
       maxReplicaCount: 1
 
-# media-processor ScaledJob in dev: spot nodeSelector + right-sized resources +
-# maxReplicaCount 1. The global spot-vm_patch targets only Deployment/CronJob
-# kinds, so the ScaledJob's pod template needs the Spot nodeSelector applied
-# explicitly here. libvips still needs real memory even in dev, so the limits
-# stay meaningful (a too-small limit OOM-kills the transcode).
-#
-# These use JSON6902 path ops, NOT a strategic-merge patch: ScaledJob is a CRD,
-# so Kustomize has no merge-key for the nested `containers` list and a
-# strategic-merge `containers: [{name, resources}]` REPLACES the base container
-# (dropping image/envFrom). Path ops surgically set fields on container [0].
+# media-consumer Deployment in dev: right-sized resources. The Spot nodeSelector
+# comes from the global spot-vm_patch (which targets kind: Deployment), so no
+# explicit spot patch is needed here (unlike the old ScaledJob, which the global
+# patch did not match). libvips still needs real memory even in dev, so the
+# limits stay meaningful (a too-small limit OOM-kills the transcode).
 - target:
-    kind: ScaledJob
-    name: media-processor
+    kind: Deployment
+    name: media-consumer
   patch: |-
-    - op: replace
-      path: /spec/maxReplicaCount
-      value: 1
-    - op: add
-      path: /spec/jobTargetRef/template/spec/nodeSelector
-      value:
-        cloud.google.com/gke-spot: "true"
-    - op: replace
-      path: /spec/jobTargetRef/template/spec/containers/0/resources
-      value:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: media-consumer
+    spec:
+      template:
+        spec:
+          containers:
+          - name: media-consumer
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+
+# media-consumer ScaledObject in dev: cap concurrency at 1 replica.
+- target:
+    kind: ScaledObject
+    name: media-consumer
+  patch: |-
+    apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata:
+      name: media-consumer
+    spec:
+      maxReplicaCount: 1
 
 configMapGenerator:
 - name: fan-api-config
@@ -284,7 +291,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - event-consumer/configmap.env
-- name: media-processor-config
+- name: media-consumer-config
   behavior: merge
   envs:
-  - media-processor/configmap.env
+  - media-consumer/configmap.env

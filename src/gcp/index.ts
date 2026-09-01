@@ -225,8 +225,8 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
-		// The `media-processor` image ships from the backend build into the
-		// SHARED `backend` Artifact Registry repo (as `backend/media-processor`),
+		// The `media-consumer` image ships from the backend build into the
+		// SHARED `backend` Artifact Registry repo (as `backend/media-consumer`),
 		// exactly like the other backend binaries (consumer, concert-discovery,
 		// …) — the backend deploy workflow pushes all targets to one repo. No
 		// dedicated repo, prod-CI reader, or workload AR-reader binding is needed
@@ -533,8 +533,8 @@ export class Gcp {
 					location: Regions.Osaka,
 					organizerConsoleApiSaEmail:
 						kubernetes.organizerConsoleApiServiceAccountEmail,
-					mediaProcessorSaEmail:
-						kubernetes.mediaProcessorServiceAccountEmail,
+					mediaConsumerSaEmail:
+						kubernetes.mediaConsumerServiceAccountEmail,
 					cloudflareConfig,
 				},
 			)

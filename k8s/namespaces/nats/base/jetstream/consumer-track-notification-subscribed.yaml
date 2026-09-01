@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: track-notification-subscribed
+spec:
+  streamName: NOTIFICATION
+  durableName: track-notification-subscribed
+  # PULL work-queue (no deliverSubject/deliverGroup) — declarative, replaces the
+  # push consumer whose random _INBOX deliver subject cannot be declared (D5).
+  deliverPolicy: new
+  filterSubject: NOTIFICATION.subscribed
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  replicas: 0
+  preventDelete: true
