@@ -119,6 +119,10 @@ export class Gcp {
 				backendAppEmail: pulumi.Output<string>
 				/** Fan API GCP SA email (backend-app successor). */
 				fanApiEmail: pulumi.Output<string>
+				/** Media Consumer GCP SA email — needs its OWN IAM DB user for the
+				 *  series_media cut-over (FindMediaByID + UPDATE), in addition to
+				 *  bucket-scoped storage access. */
+				mediaConsumerEmail: pulumi.Output<string>
 				/** Admin Console API GCP SA email. */
 				adminConsoleApiEmail: pulumi.Output<string>
 				/** Organizer Console API GCP SA email (least-privilege read-only). */
@@ -542,6 +546,7 @@ export class Gcp {
 			this.workloadSAs = {
 				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
 				fanApiEmail: kubernetes.fanApiServiceAccountEmail,
+				mediaConsumerEmail: kubernetes.mediaConsumerServiceAccountEmail,
 				adminConsoleApiEmail:
 					kubernetes.adminConsoleApiServiceAccountEmail,
 				organizerConsoleApiEmail:
@@ -580,6 +585,8 @@ export class Gcp {
 				this.workloadSAs?.organizerConsoleApiEmail,
 			zitadelServiceAccountEmail: this.workloadSAs?.zitadelEmail,
 			fanApiServiceAccountEmail: this.workloadSAs?.fanApiEmail,
+			mediaConsumerServiceAccountEmail:
+				this.workloadSAs?.mediaConsumerEmail,
 			iamDatabaseUsers: cloudSqlUsers,
 			postgresAdminPassword: gcpConfig.postgresAdminPassword
 				? pulumi.secret(gcpConfig.postgresAdminPassword)
