@@ -92,6 +92,15 @@ export interface PostgresComponentArgs {
 	 */
 	fanApiServiceAccountEmail?: pulumi.Input<string>
 	/**
+	 * media-consumer GCP SA email. When provided (workload up), a matching IAM
+	 * SQL user is created so the media-consumer authenticates as its OWN IAM DB
+	 * user (media-consumer@<project>.iam) via the Cloud SQL Go connector with
+	 * Workload Identity IAM auth — it performs the series_media cut-over
+	 * (FindMediaByID + UPDATE) after generating WebP variants. App-schema grants
+	 * are applied by a separate backend grant migration once this user exists.
+	 */
+	mediaConsumerServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * Human user emails that require IAM database authentication access.
 	 */
 	iamDatabaseUsers?: string[]
@@ -142,6 +151,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			organizerServiceAccountEmail,
 			zitadelServiceAccountEmail,
 			fanApiServiceAccountEmail,
+			mediaConsumerServiceAccountEmail,
 			iamDatabaseUsers = [],
 			postgresAdminPassword,
 		} = args
@@ -450,6 +460,30 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					'fan-api',
 					{
 						name: fanApiIamUserName,
+						project: project.projectId,
+						instance: instance.name,
+						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+					},
+					{ parent: this, dependsOn: [instance] },
+				)
+			}
+
+			// media-consumer IAM SQL user — only when the media-consumer SA exists.
+			// The media-consumer runs under its OWN dedicated GSA (bucket-scoped),
+			// so it authenticates to Cloud SQL as media-consumer@<project>.iam via
+			// the in-process Cloud SQL Go connector with Workload Identity IAM auth.
+			// It needs its own login role to perform the series_media cut-over. The
+			// app-schema grants are applied by a backend grant migration that must
+			// run AFTER this user exists (pulumi up precedes the grant apply).
+			if (mediaConsumerServiceAccountEmail) {
+				const mediaConsumerIamUserName = pulumi
+					.output(mediaConsumerServiceAccountEmail)
+					.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+				new gcp.sql.User(
+					'media-consumer',
+					{
+						name: mediaConsumerIamUserName,
 						project: project.projectId,
 						instance: instance.name,
 						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
