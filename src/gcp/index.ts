@@ -43,6 +43,13 @@ export interface GcpArgs {
 	 *  Secret via ExternalSecret. `gemini.NewConcertSearcher` REQUIRES this
 	 *  (no Vertex AI fallback as of backend #303). */
 	geminiSearchApiKey?: pulumi.Output<string>
+	/** Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api eKYC
+	 *  flow (identity-ekyc-jpki). Stored in Secret Manager as `pocket-sign-token`
+	 *  and synced into `fan-api-backend-secrets` as `POCKET_SIGN_TOKEN` via
+	 *  ExternalSecret. MVP uses the free mock/sandbox token in every env incl
+	 *  prod. When unset, fan-api falls back to StubVerifier (verification
+	 *  unavailable). */
+	pocketSignToken?: pulumi.Output<string>
 	/** HMAC signing key Zitadel generated for the login-event Actions v2 Target
 	 *  (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
 	 *  `webhook-login-event-signing-key` and synced into `backend-secrets` as
@@ -158,6 +165,7 @@ export class Gcp {
 			fanartTvApiKey,
 			posthogProjectApiKey,
 			geminiSearchApiKey,
+			pocketSignToken,
 			loginEventSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
@@ -421,6 +429,22 @@ export class Gcp {
 								{
 									name: 'gemini-search-api-key',
 									value: geminiSearchApiKey,
+								},
+							]
+						: []),
+					// Pocket Sign Bearer token for the fan-api eKYC flow
+					// (identity-ekyc-jpki). Synced into `fan-api-backend-secrets`
+					// as `POCKET_SIGN_TOKEN` via ExternalSecret. Conditional-spread
+					// matches every other optional secret: skip creation when the ESC
+					// config is unset (GCP rejects zero-byte AddSecretVersion). The
+					// K8s ExternalSecret entry lands in a follow-up PR once
+					// `esc env set liverty-music/<env> pulumiConfig.pocketSignToken`
+					// is set and `pulumi up` has provisioned this GSM secret.
+					...(pocketSignToken
+						? [
+								{
+									name: 'pocket-sign-token',
+									value: pulumi.secret(pocketSignToken),
 								},
 							]
 						: []),
