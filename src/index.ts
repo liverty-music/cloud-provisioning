@@ -40,6 +40,15 @@ const geminiSearchApiKey = config.getSecret('geminiSearchApiKey')
 // by fan-api via ESO; when unset the backend falls back to StubVerifier
 // (UNAVAILABLE), so verification is simply unavailable rather than broken.
 const pocketSignToken = config.getSecret('pocketSignToken')
+// Stripe secret key for the lottery ticketing flow (④). For the current
+// milestone this is a **test-mode** key (`sk_test_…`) so prod runs the lottery
+// end-to-end with no real charges; the live-mode/Connect launch is deferred.
+// Sourced via `esc env set liverty-music/<env> pulumiConfig.stripeSecretKey
+// "sk_test_…" --secret`. When unset, the backend uses NoopAuthorizationPort and
+// Apply returns Unavailable (local-dev convention). Consumed as STRIPE_SECRET_KEY
+// by the fan-api deployment via the ESO ExternalSecret (added in a follow-up PR,
+// AFTER this GSM secret exists — ESO fails the whole bundle on a missing key).
+const stripeSecretKey = config.getSecret('stripeSecretKey')
 const bufConfig = config.requireObject('buf') as BufConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
@@ -183,6 +192,7 @@ const gcp = new Gcp({
 	posthogProjectApiKey,
 	geminiSearchApiKey,
 	pocketSignToken,
+	stripeSecretKey,
 	cloudflareConfig,
 	postmarkConfig,
 	zitadelMachineKey,

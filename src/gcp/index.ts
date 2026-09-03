@@ -50,6 +50,12 @@ export interface GcpArgs {
 	 *  prod. When unset, fan-api falls back to StubVerifier (verification
 	 *  unavailable). */
 	pocketSignToken?: pulumi.Output<string>
+	/**
+	 * Stripe secret key for the lottery ticketing flow. Test-mode (`sk_test_…`)
+	 * for the current no-charge prod milestone. Seeds a GSM secret consumed as
+	 * STRIPE_SECRET_KEY by the fan-api backend via ESO. Omitted → NoopAuthorizationPort.
+	 */
+	stripeSecretKey?: pulumi.Output<string>
 	/** HMAC signing key Zitadel generated for the login-event Actions v2 Target
 	 *  (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
 	 *  `webhook-login-event-signing-key` and synced into `backend-secrets` as
@@ -166,6 +172,7 @@ export class Gcp {
 			posthogProjectApiKey,
 			geminiSearchApiKey,
 			pocketSignToken,
+			stripeSecretKey,
 			loginEventSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
@@ -445,6 +452,18 @@ export class Gcp {
 								{
 									name: 'pocket-sign-token',
 									value: pulumi.secret(pocketSignToken),
+								},
+							]
+						: []),
+					// Stripe secret key (test-mode for the no-charge prod milestone).
+					// Consumed as STRIPE_SECRET_KEY by fan-api via the ESO
+					// ExternalSecret, which is added ONLY after this GSM secret exists
+					// (ESO fails the whole fan-api bundle on a missing referenced key).
+					...(stripeSecretKey
+						? [
+								{
+									name: 'stripe-secret-key',
+									value: pulumi.secret(stripeSecretKey),
 								},
 							]
 						: []),
