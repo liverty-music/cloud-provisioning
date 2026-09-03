@@ -14,7 +14,14 @@ spec:
       labels:
         app: cloud-sql-proxy
     spec:
-      serviceAccountName: backend-app
+      # Ad-hoc DB access proxy runs as `fan-api`, the audience-tier successor to
+      # `backend-app` (unify-workload-naming). `fan-api@<project>.iam` is a live
+      # Cloud SQL IAM user with app-schema CRUD (grant migration
+      # 20260817010000) that the fan-api workload authenticates as, so
+      # --auto-iam-authn connections through this proxy resolve to a role that
+      # exists and is granted. `backend-app@<project>.iam` no longer maps to a
+      # usable prod role, which broke port-forward access via this proxy.
+      serviceAccountName: fan-api
       nodeSelector:
         cloud.google.com/gke-spot: "true"
       containers:
