@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
@@ -30,40 +28,40 @@ import {
 import { ZitadelHostedLoginTranslation } from './dynamic/index.js'
 
 /**
- * Complete Japanese Hosted Login translation payload, pinned from upstream
- * `zitadel/zitadel apps/login/locales/ja.json` at the deployed login version
- * (`v4.14.0`). Seeded via `ZitadelHostedLoginTranslation` because Zitadel's
- * backend defaults omit Japanese, so the Settings API otherwise returns English
- * for `ja` and the Login UI v2 renders the Japanese login in English. MUST stay
- * complete (the API English-fills omitted keys). Re-sync on Zitadel upgrades;
- * remove once upstream `v2-default.json` ships Japanese. See OpenSpec change
- * `fix-zitadel-login-ja-i18n`.
+ * Empty Hosted Login translation payload for the product org's `ja` locale.
+ *
+ * Historically this carried the COMPLETE Japanese key set, seeded because
+ * Zitadel's backend hosted-login defaults omitted Japanese — so the Settings
+ * API returned English for `ja` and the Login UI v2 rendered the Japanese login
+ * in English. Zitadel v4.17.0 ships Japanese in its `v2-default.json`
+ * hosted-login defaults, and `GetHostedLoginTranslation` merges the org
+ * override over the system default: any key absent from the override now
+ * back-fills from the Japanese system default (not English). The override is
+ * therefore no longer needed to render Japanese.
+ *
+ * We set an EMPTY payload rather than removing the resource, on purpose:
+ * Zitadel exposes no reset/delete RPC for hosted-login translations, and the
+ * dynamic provider's `delete()` is a no-op, so removing the resource would
+ * strand the stale full override in the DB. An empty override contributes no
+ * keys, leaving `ja` served entirely by the upstream system default. See
+ * OpenSpec change `retire-ja-hosted-login-override`.
  */
-const jaLoginTranslationJson = readFileSync(
-	fileURLToPath(new URL('./translations/ja.json', import.meta.url)),
-	'utf-8',
-)
+const jaLoginTranslationJson = '{}'
 
 /**
- * Complete English Hosted Login translation payload, pinned from upstream
- * `zitadel/zitadel apps/login/locales/en.json` at the deployed login version
- * (`v4.14.0`), with the product-org rebrand applied: `register.description`
- * and `common.title` drop the literal "Zitadel" in favor of "Liverty Music".
- *
- * Unlike `ja`, English is NOT a missing-language case — the Settings API
- * already returns English. We still seed the COMPLETE payload (rather than a
- * partial 2-key override) because `SetHostedLoginTranslation` English-fills
- * omitted keys from the backend `v2-default.json` and the Login UI v2 then
- * shadows its bundled `en.json` with that API result. A partial override would
- * therefore let backend-default English (which can lag the login app's bundled
- * `en.json`) silently replace every un-supplied key. Pinning the login app's
- * own `en.json` keeps all other strings byte-identical to what the image
- * bundles, so only the two rebranded keys change. Re-sync on Zitadel upgrades.
+ * Partial Hosted Login translation payload for the product org's `en` locale:
+ * only the two product-org rebrand keys that drop the literal "Zitadel" in
+ * favor of "Liverty Music". Every other key is back-filled from the running
+ * Zitadel version's English system default, because `GetHostedLoginTranslation`
+ * merges the override over the system translation. On matched versions that
+ * system default equals the login image's bundled `en.json`, so the rendered
+ * copy is unchanged apart from the two rebranded strings — and we no longer pin
+ * and re-sync the full English payload on every Zitadel upgrade.
  */
-const enLoginTranslationJson = readFileSync(
-	fileURLToPath(new URL('./translations/en.json', import.meta.url)),
-	'utf-8',
-)
+const enLoginTranslationJson = JSON.stringify({
+	common: { title: 'Log in to Liverty Music' },
+	register: { description: 'Create your Liverty Music account.' },
+})
 
 export * from './components/actions-v2.js'
 export * from './components/admin-console.js'
@@ -182,10 +180,11 @@ export class Zitadel {
 	public readonly frontend: FrontendComponent
 	/** Internal admin console OIDC surface in the admin role org. */
 	public readonly adminConsole: AdminConsoleComponent
-	/** Japanese Hosted Login translation override for the product org. */
+	/** Empty `ja` Hosted Login override, retained only to clear the historical
+	 *  full override now that upstream ships Japanese defaults (v4.17.0). */
 	public readonly jaLoginTranslation: ZitadelHostedLoginTranslation
-	/** English Hosted Login translation override for the product org
-	 *  (carries the "Liverty Music" rebrand of the login/register copy). */
+	/** English Hosted Login override for the product org — carries only the
+	 *  two "Liverty Music" rebrand keys of the login/register copy. */
 	public readonly enLoginTranslation: ZitadelHostedLoginTranslation
 	public readonly smtp: SmtpComponent
 	public readonly actionsV2: ActionsV2Component
@@ -396,12 +395,12 @@ export class Zitadel {
 		})
 
 		// Japanese Hosted Login translation override, scoped to the product
-		// org. Zitadel's backend default hosted-login translations omit `ja`,
-		// so the Settings API returns English for the `ja` locale and the
-		// Login UI v2 merges that over its bundled Japanese — rendering the
-		// Japanese login in English. Seeding the full Japanese payload here
-		// makes the API return Japanese. Org-scoped so the admin/console org
-		// login is unaffected. See OpenSpec change `fix-zitadel-login-ja-i18n`.
+		// org. Now an EMPTY payload: Zitadel v4.17.0 ships `ja` in its
+		// hosted-login system defaults, so the login renders Japanese without
+		// an override. The (empty) resource is retained to reliably clear the
+		// historical full-`ja` override — there is no reset RPC and the
+		// provider's delete is a no-op, so an empty upsert is how we neutralize
+		// it. See OpenSpec change `retire-ja-hosted-login-override`.
 		this.jaLoginTranslation = new ZitadelHostedLoginTranslation(
 			`${name}-ja-login-translation`,
 			{
@@ -416,11 +415,11 @@ export class Zitadel {
 		// English Hosted Login translation override, also scoped to the product
 		// org. English already resolves (it is the instance default language),
 		// so this override exists purely to rebrand the login/register copy:
-		// `register.description` and `common.title` drop the literal "Zitadel"
-		// for "Liverty Music". The payload is the complete pinned `en.json` (see
-		// `enLoginTranslationJson` doc) so only those two keys differ from the
-		// login image's bundled English. Org-scoped, so the admin/console org
-		// login keeps the upstream wording.
+		// `common.title` and `register.description` drop the literal "Zitadel"
+		// for "Liverty Music". The payload carries only those two keys; every
+		// other key back-fills from the running version's English system
+		// default (see `enLoginTranslationJson` doc). Org-scoped, so the
+		// admin/console org login keeps the upstream wording.
 		this.enLoginTranslation = new ZitadelHostedLoginTranslation(
 			`${name}-en-login-translation`,
 			{
