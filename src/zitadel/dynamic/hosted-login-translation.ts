@@ -132,16 +132,17 @@ export const hostedLoginTranslationProvider: pulumi.dynamic.ResourceProvider = {
  * `ZitadelHostedLoginTranslation` provisions a Zitadel Hosted Login Translation
  * override (Settings v2 `SetHostedLoginTranslation`) for a single locale.
  *
- * Why this exists: Zitadel's backend default hosted-login translations
- * (`internal/query/v2-default.json`) omit Japanese (and several other
- * languages present in the login app's `locales/`). For a missing language the
- * Settings API returns the instance default language (English), and the Login
- * UI v2 merges that API result OVER its own bundled `ja.json` — so the Japanese
- * login renders English. Seeding the full Japanese payload here makes the API
- * return Japanese, which the login app then renders. See OpenSpec change
- * `fix-zitadel-login-ja-i18n`. The upstream permanent fix is to add the missing
- * languages to `v2-default.json`; once a deployed Zitadel version ships that,
- * this resource can be removed.
+ * Why this exists: `GetHostedLoginTranslation` merges an org/instance override
+ * over Zitadel's backend hosted-login system defaults, so this resource lets us
+ * declaratively override specific login/register strings per locale (e.g. the
+ * product-org "Liverty Music" rebrand of the English copy).
+ *
+ * It was originally introduced to supply Japanese, which Zitadel's backend
+ * defaults (`internal/query/v2-default.json`) omitted until v4.17.0 — before
+ * that, the Settings API fell back to English for `ja` and the Login UI v2
+ * merged that over its bundled `ja.json`, rendering the Japanese login in
+ * English. Since v4.17.0 ships `ja`, that override is no longer needed; see
+ * OpenSpec change `retire-ja-hosted-login-override`.
  */
 /**
  * Bake `jwtProfileJson` into `additionalSecretOutputs` so the admin machine-user
