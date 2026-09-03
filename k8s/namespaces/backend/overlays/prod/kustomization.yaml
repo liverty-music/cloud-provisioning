@@ -43,7 +43,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.53.0"
+      app.kubernetes.io/version: "1.53.1"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -373,24 +373,24 @@ images:
   # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.53.0 # commit dd9ba30bd189b17594fd276763220bfab093a03d
+    newTag: v1.53.1 # commit d0a77c24834fd515671d5de8fa2b585aad49d770
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.53.0 # commit dd9ba30bd189b17594fd276763220bfab093a03d
+    newTag: v1.53.1 # commit d0a77c24834fd515671d5de8fa2b585aad49d770
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.53.0 # commit dd9ba30bd189b17594fd276763220bfab093a03d
+    newTag: v1.53.1 # commit d0a77c24834fd515671d5de8fa2b585aad49d770
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.53.0 # commit dd9ba30bd189b17594fd276763220bfab093a03d
+    newTag: v1.53.1 # commit d0a77c24834fd515671d5de8fa2b585aad49d770
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
-    newTag: v1.53.0 # commit dd9ba30bd189b17594fd276763220bfab093a03d
+    newTag: v1.53.1 # commit d0a77c24834fd515671d5de8fa2b585aad49d770
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
-    newTag: v1.53.0 # commit dd9ba30bd189b17594fd276763220bfab093a03d
+    newTag: v1.53.1 # commit d0a77c24834fd515671d5de8fa2b585aad49d770
   # media-consumer: shipped from the shared backend AR repo (backend/media-consumer).
   # Pinned to the prod AR + semver tag; the bump-prod-pin workflow keeps this in
   # lock-step. NOTE: the media-consumer image does not exist yet at this tag — it
@@ -398,4 +398,4 @@ images:
   # from 0 and pulls no image until MEDIA.uploaded events arrive.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/media-consumer
-    newTag: v1.53.0 # commit dd9ba30bd189b17594fd276763220bfab093a03d
+    newTag: v1.53.1 # commit d0a77c24834fd515671d5de8fa2b585aad49d770
