@@ -1,3 +1,7 @@
+# Prefer Spot, fall back to on-demand (prod availability). See the frontend
+# overlay's spot-vm_patch.yaml for the rationale — a hard Spot nodeSelector
+# leaves pods Pending when Spot capacity is unavailable; this tolerates the
+# Spot taint + softly prefers Spot, allowing on-demand fallback.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,5 +9,18 @@ metadata:
 spec:
   template:
     spec:
-      nodeSelector:
-        cloud.google.com/gke-spot: "true"
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: cloud.google.com/gke-spot
+                    operator: In
+                    values:
+                      - "true"
