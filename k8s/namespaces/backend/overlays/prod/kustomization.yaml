@@ -21,6 +21,7 @@ kind: Kustomization
 resources:
   - ../../base
   - sql-proxy/deployment.yaml
+  - fan-api-pdb.yaml
   # NOTE: the `backend-server` PodMonitoring was deleted (unify-workload-naming).
   # It was mis-specified from the prod bootstrap (2026-05-14): selector
   # `app: server-app` never matched any pod (the server workload carried
@@ -79,8 +80,9 @@ patches:
   - path: spot-vm_patch_cronjob.yaml
     target:
       kind: CronJob
-  # fan-api — single replica + dev-parity sizing (unify-workload-naming).
-  # Replaces the deleted server-app as the fan-facing backend (design D8/D2).
+  # fan-api — HA (prod): 2 replicas soft-spread across nodes so a single node
+  # loss (Spot preemption / drain / upgrade) can't drop the fan-facing API.
+  # Pairs with the fan-api PodDisruptionBudget resource.
   - target:
       kind: Deployment
       name: fan-api
@@ -90,7 +92,16 @@ patches:
       metadata:
         name: fan-api
       spec:
-        replicas: 1
+        replicas: 2
+        template:
+          spec:
+            topologySpreadConstraints:
+              - maxSkew: 1
+                topologyKey: kubernetes.io/hostname
+                whenUnsatisfiable: ScheduleAnyway
+                labelSelector:
+                  matchLabels:
+                    app: fan-api
   - target:
       kind: Deployment
       name: fan-api

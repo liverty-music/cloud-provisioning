@@ -21,6 +21,7 @@ resources:
   - fan-web-configmap.yaml
   - admin-console-web-configmap.yaml
   - organizer-console-web-configmap.yaml
+  - fan-web-pdb.yaml
 namespace: frontend
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource. Value SHALL be the bare semver without the leading `v`
@@ -62,6 +63,28 @@ patches:
                 limits:
                   cpu: 100m
                   memory: 128Mi
+  # HA (prod): run 2 fan-web replicas and soft-spread them across nodes so a
+  # single node loss (Spot preemption / drain / upgrade) can't drop the whole
+  # consumer site. Pairs with the fan-web PodDisruptionBudget below.
+  - target:
+      kind: Deployment
+      name: fan-web-app
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: fan-web-app
+      spec:
+        replicas: 2
+        template:
+          spec:
+            topologySpreadConstraints:
+              - maxSkew: 1
+                topologyKey: kubernetes.io/hostname
+                whenUnsatisfiable: ScheduleAnyway
+                labelSelector:
+                  matchLabels:
+                    app: fan-web
   # Prod consumer-site HTTPRoute hostname (apex). fan-web-route replaces the
   # deleted web-route and owns liverty-music.app -> fan-web-svc.
   - target:

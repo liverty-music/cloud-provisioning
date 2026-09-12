@@ -1,0 +1,14 @@
+# Keep >=1 fan-web replica serving during voluntary disruptions (node drain,
+# GKE node upgrade, autoscaler eviction) — the class of event that stranded the
+# stack during the 2026-09 node upgrade. (PDBs do NOT cover Spot preemption /
+# involuntary loss; that is handled by 2 replicas + node spread + on-demand
+# fallback.) Safe because fan-web runs 2 replicas in prod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fan-web
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: fan-web
