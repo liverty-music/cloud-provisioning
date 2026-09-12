@@ -18,7 +18,11 @@ patches:
     kind: ServiceAccount
     name: external-secrets
 
-# Spot VM patch for prod: apply to all ESO Deployments
+# Prefer Spot, fall back to on-demand (prod availability) for all ESO
+# Deployments. ESO must stay up to keep cluster secrets in sync, so it must not
+# be strandable on Spot-only: null the Spot node pin + add a Spot toleration and
+# a soft prefer-Spot nodeAffinity, allowing on-demand fallback when Spot is
+# unavailable.
 - target:
     kind: Deployment
   patch: |-
@@ -30,7 +34,23 @@ patches:
       template:
         spec:
           nodeSelector:
-            cloud.google.com/gke-spot: "true"
+            cloud.google.com/gke-spot: null
+            cloud.google.com/compute-class: null
+          tolerations:
+            - key: cloud.google.com/gke-spot
+              operator: Equal
+              value: "true"
+              effect: NoSchedule
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: cloud.google.com/gke-spot
+                        operator: In
+                        values:
+                          - "true"
 
 # Replicas=1 per design D8 (matches dev)
 - target:
