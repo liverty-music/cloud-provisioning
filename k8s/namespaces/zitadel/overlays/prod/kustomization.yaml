@@ -56,3 +56,8 @@ patches:
   target:
     kind: Deployment
     name: zitadel-api-login
+# Prefer Spot with on-demand fallback (prod availability) — the base pins auth
+# pods Spot-only; this lets them fall back to on-demand when Spot is scarce.
+- path: spot-vm_fallback_patch.yaml
+  target:
+    kind: Deployment

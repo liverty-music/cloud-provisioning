@@ -1,4 +1,30 @@
-- op: replace
-  path: /spec/template/spec/nodeSelector
-  value:
-    cloud.google.com/gke-spot: "true"
+# Prefer Spot, fall back to on-demand (prod availability). ArgoCD must stay up
+# to self-heal the cluster, so it must not be strandable on Spot-only: null out
+# the Helm base's Spot node pin (gke-spot / compute-class) and add a Spot
+# toleration + a soft prefer-Spot nodeAffinity, allowing on-demand fallback
+# when Spot is unavailable. Strategic merge preserves the chart's podAntiAffinity.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: any
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: null
+        cloud.google.com/compute-class: null
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: cloud.google.com/gke-spot
+                    operator: In
+                    values:
+                      - "true"

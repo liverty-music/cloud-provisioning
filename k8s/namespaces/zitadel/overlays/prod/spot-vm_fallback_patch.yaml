@@ -1,7 +1,11 @@
-# Prefer Spot, fall back to on-demand (prod availability). See
-# spot-vm_patch_deployment.yaml — Job variant (e.g. redis-secret-init).
-apiVersion: batch/v1
-kind: Job
+# Prefer Spot, fall back to on-demand (prod availability). Zitadel is auth, yet
+# both zitadel-api replicas were pinned Spot-only (via the Helm base's
+# nodeSelector), so a single Spot-node loss = login outage with no reschedule.
+# Null the Spot node pin (set in base values.yaml) + add a Spot toleration and a
+# soft prefer-Spot nodeAffinity, allowing on-demand fallback. Applies to
+# zitadel-api + zitadel-api-login.
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: any
 spec:
