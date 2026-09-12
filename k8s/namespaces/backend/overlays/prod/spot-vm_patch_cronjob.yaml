@@ -1,3 +1,7 @@
+# Prefer Spot, fall back to on-demand (prod availability). CronJob variant of
+# spot-vm_patch.yaml — a hard Spot nodeSelector left discovery/reminder jobs
+# Pending (and missing runs) during a Spot shortage; this tolerates the Spot
+# taint + softly prefers Spot, allowing on-demand fallback.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -7,5 +11,18 @@ spec:
     spec:
       template:
         spec:
-          nodeSelector:
-            cloud.google.com/gke-spot: "true"
+          tolerations:
+            - key: cloud.google.com/gke-spot
+              operator: Equal
+              value: "true"
+              effect: NoSchedule
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: cloud.google.com/gke-spot
+                        operator: In
+                        values:
+                          - "true"

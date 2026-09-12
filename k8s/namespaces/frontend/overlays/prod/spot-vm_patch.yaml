@@ -1,3 +1,12 @@
+# Prefer Spot, fall back to on-demand (prod availability).
+#
+# A hard `nodeSelector: gke-spot=true` pins these pods to Spot ONLY, so when
+# GKE cannot provision a Spot node (region Spot scarcity / after a node
+# upgrade) they stay Pending indefinitely — which stranded the whole frontend
+# on a single Spot node. Instead: tolerate the Spot taint (so pods CAN use
+# Spot) + a soft `preferred` nodeAffinity that biases toward Spot but allows
+# on-demand fallback when Spot is unavailable. Cost stays at Spot rates when
+# Spot is available; on-demand only kicks in during a Spot shortage.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,5 +14,18 @@ metadata:
 spec:
   template:
     spec:
-      nodeSelector:
-        cloud.google.com/gke-spot: "true"
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: cloud.google.com/gke-spot
+                    operator: In
+                    values:
+                      - "true"
