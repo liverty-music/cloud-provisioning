@@ -14,6 +14,20 @@ replicaCount: 2
 pdb:
   minAvailable: 1
 
+# Spread the 2 zitadel-api replicas across nodes so a single node loss (Spot
+# preemption / drain / upgrade) can't take down both at once — they previously
+# co-located on one node, negating the 2-replica HA. Soft (ScheduleAnyway) so
+# it never blocks scheduling when nodes are scarce.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: zitadel
+        app.kubernetes.io/instance: zitadel
+        app.kubernetes.io/component: start
+
 zitadel:
   configmapConfig:
     ExternalDomain: auth.liverty-music.app
