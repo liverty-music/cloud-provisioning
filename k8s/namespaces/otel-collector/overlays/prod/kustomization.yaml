@@ -47,7 +47,10 @@ patches:
             resources:
               requests:
                 cpu: 10m
-                memory: 64Mi
+                # Live usage (~75Mi) exceeded the prior 64Mi request, making the
+                # pod evictable under node memory pressure; raise the request
+                # above the working set. Limit stays 128Mi (headroom for bursts).
+                memory: 96Mi
               limits:
                 cpu: 200m
                 memory: 128Mi
