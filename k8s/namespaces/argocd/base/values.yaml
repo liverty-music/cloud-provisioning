@@ -55,13 +55,20 @@ repoServer:
 
 controller:
   enableStatefulSet: true
+  # The application-controller was OOMKilled (exit 137) in a crash loop at the
+  # prior 512Mi limit: rendering ~11 apps — several Helm-based, the zitadel
+  # chart alone ~11s/render — spikes well past 512Mi, and a crash-looping
+  # controller can't even sync its own fix (argocd is self-managed with
+  # selfHeal). Raised to a 1Gi request / 2Gi limit so renders have headroom,
+  # plus more CPU to keep the render/reconcile loop responsive (also satisfies
+  # Autopilot's memory:CPU ratio for the larger request).
   resources:
     requests:
-      cpu: 50m
-      memory: 256Mi
+      cpu: 250m
+      memory: 1Gi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: "1"
+      memory: 2Gi
 
 redis:
   enabled: true
