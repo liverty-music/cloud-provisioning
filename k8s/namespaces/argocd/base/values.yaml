@@ -56,16 +56,17 @@ repoServer:
 controller:
   enableStatefulSet: true
   # The application-controller was OOMKilled (exit 137) in a crash loop at the
-  # prior 512Mi limit: rendering ~11 apps — several Helm-based, the zitadel
-  # chart alone ~11s/render — spikes well past 512Mi, and a crash-looping
-  # controller can't even sync its own fix (argocd is self-managed with
-  # selfHeal). Raised to a 1Gi request / 2Gi limit so renders have headroom,
-  # plus more CPU to keep the render/reconcile loop responsive (also satisfies
-  # Autopilot's memory:CPU ratio for the larger request).
+  # prior 512Mi *limit*: reconciling ~14 apps (serverSideDiff enabled for GKE
+  # Autopilot) spikes well past 512Mi during concurrent diffs, worsened when the
+  # controller was CPU-throttled on an overloaded node. The fix is the 2Gi
+  # *limit* (spike headroom) + more CPU. The request is sized to the steady-state
+  # working set (~286Mi observed) with margin — 512Mi, not the peak — so we don't
+  # over-bill on Autopilot (which charges on requests); bursts up to the 2Gi
+  # limit are Burstable.
   resources:
     requests:
       cpu: 250m
-      memory: 1Gi
+      memory: 512Mi
     limits:
       cpu: "1"
       memory: 2Gi
