@@ -15,13 +15,17 @@ pdb:
   minAvailable: 1
 
 # Spread the 2 zitadel-api replicas across nodes so a single node loss (Spot
-# preemption / drain / upgrade) can't take down both at once — they previously
-# co-located on one node, negating the 2-replica HA. Soft (ScheduleAnyway) so
-# it never blocks scheduling when nodes are scarce.
+# preemption / drain / upgrade) can't take down both at once. HARD spread
+# (DoNotSchedule): a soft (ScheduleAnyway) constraint was overridden by the
+# weight-100 prefer-Spot nodeAffinity and both replicas still co-located on the
+# Spot node (observed 2026-09). Safe because the cluster always keeps >=3
+# on-demand nodes, so placing 2 replicas on distinct hosts is always
+# satisfiable — the on-demand pool is never the scarce resource (only Spot is,
+# which the prefer-Spot fallback already handles).
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
-    whenUnsatisfiable: ScheduleAnyway
+    whenUnsatisfiable: DoNotSchedule
     labelSelector:
       matchLabels:
         app.kubernetes.io/name: zitadel

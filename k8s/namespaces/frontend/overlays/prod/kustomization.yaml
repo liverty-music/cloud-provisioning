@@ -63,9 +63,11 @@ patches:
                 limits:
                   cpu: 100m
                   memory: 128Mi
-  # HA (prod): run 2 fan-web replicas and soft-spread them across nodes so a
+  # HA (prod): run 2 fan-web replicas and hard-spread them across nodes
+  # (DoNotSchedule — a soft spread lost to the prefer-Spot nodeAffinity) so a
   # single node loss (Spot preemption / drain / upgrade) can't drop the whole
-  # consumer site. Pairs with the fan-web PodDisruptionBudget below.
+  # consumer site. Safe: >=3 on-demand nodes always exist. Pairs with the
+  # fan-web PodDisruptionBudget below.
   - target:
       kind: Deployment
       name: fan-web-app
@@ -81,7 +83,7 @@ patches:
             topologySpreadConstraints:
               - maxSkew: 1
                 topologyKey: kubernetes.io/hostname
-                whenUnsatisfiable: ScheduleAnyway
+                whenUnsatisfiable: DoNotSchedule
                 labelSelector:
                   matchLabels:
                     app: fan-web
