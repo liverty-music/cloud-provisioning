@@ -49,6 +49,21 @@ const pocketSignToken = config.getSecret('pocketSignToken')
 // by the fan-api deployment via the ESO ExternalSecret (added in a follow-up PR,
 // AFTER this GSM secret exists — ESO fails the whole bundle on a missing key).
 const stripeSecretKey = config.getSecret('stripeSecretKey')
+// Stripe webhook signing secret (`whsec_…`) for the settlement/payout flow
+// (ticket-settlement-and-payout §5.1). The fan-api webhook handler verifies the
+// `Stripe-Signature` header on inbound transfer/payout/refund/dispute events
+// against it. Sourced via `esc env set liverty-music/<env>
+// pulumiConfig.stripeWebhookSigningSecret "whsec_…" --secret`. EXTERNAL 0.1: the
+// VALUE only exists after the Stripe webhook endpoint is registered in the
+// Dashboard (a Stripe-account step, NOT IaC — see external prerequisite 0.1);
+// until then leave it unset. Optional → absent for local/pre-launch, matching
+// `stripeSecretKey`. When unset, the backend handler has no secret and fails
+// closed (503) on every inbound webhook. Consumed as STRIPE_WEBHOOK_SIGNING_SECRET
+// by the fan-api deployment via the ESO ExternalSecret (GSM secret id
+// `stripe-webhook-signing-secret`).
+const stripeWebhookSigningSecret = config.getSecret(
+	'stripeWebhookSigningSecret',
+)
 const bufConfig = config.requireObject('buf') as BufConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
@@ -193,6 +208,7 @@ const gcp = new Gcp({
 	geminiSearchApiKey,
 	pocketSignToken,
 	stripeSecretKey,
+	stripeWebhookSigningSecret,
 	cloudflareConfig,
 	postmarkConfig,
 	zitadelMachineKey,
