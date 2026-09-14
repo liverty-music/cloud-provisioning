@@ -56,6 +56,16 @@ export interface GcpArgs {
 	 * STRIPE_SECRET_KEY by the fan-api backend via ESO. Omitted → NoopAuthorizationPort.
 	 */
 	stripeSecretKey?: pulumi.Output<string>
+	/**
+	 * Stripe webhook signing secret (`whsec_…`) for the settlement/payout flow
+	 * (ticket-settlement-and-payout §5.1). Seeds a GSM secret (`stripe-webhook-signing-secret`)
+	 * consumed as STRIPE_WEBHOOK_SIGNING_SECRET by the fan-api backend via ESO; the
+	 * webhook handler verifies the `Stripe-Signature` header on inbound
+	 * transfer/payout/refund/dispute events against it. EXTERNAL 0.1: the VALUE only
+	 * exists after the Stripe webhook endpoint is registered (Dashboard step, not IaC).
+	 * Omitted → handler fails closed (503) until configured.
+	 */
+	stripeWebhookSigningSecret?: pulumi.Output<string>
 	/** HMAC signing key Zitadel generated for the login-event Actions v2 Target
 	 *  (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
 	 *  `webhook-login-event-signing-key` and synced into `backend-secrets` as
@@ -173,6 +183,7 @@ export class Gcp {
 			geminiSearchApiKey,
 			pocketSignToken,
 			stripeSecretKey,
+			stripeWebhookSigningSecret,
 			loginEventSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
@@ -464,6 +475,26 @@ export class Gcp {
 								{
 									name: 'stripe-secret-key',
 									value: pulumi.secret(stripeSecretKey),
+								},
+							]
+						: []),
+					// Stripe webhook signing secret (`whsec_…`) for the
+					// settlement/payout flow (ticket-settlement-and-payout §5.1).
+					// Consumed as STRIPE_WEBHOOK_SIGNING_SECRET by fan-api via the
+					// ESO ExternalSecret, which references this GSM secret only after
+					// it exists (ESO fails the whole fan-api bundle on a missing key).
+					// EXTERNAL 0.1: the VALUE is populated only after the Stripe
+					// webhook endpoint is registered in the Dashboard — until then the
+					// ESC config is unset, this secret is not provisioned (GCP rejects
+					// zero-byte AddSecretVersion), and the backend handler fails closed
+					// (503). Conditional-spread matches every other optional secret.
+					...(stripeWebhookSigningSecret
+						? [
+								{
+									name: 'stripe-webhook-signing-secret',
+									value: pulumi.secret(
+										stripeWebhookSigningSecret,
+									),
 								},
 							]
 						: []),
