@@ -49,6 +49,15 @@ const pocketSignToken = config.getSecret('pocketSignToken')
 // by the fan-api deployment via the ESO ExternalSecret (added in a follow-up PR,
 // AFTER this GSM secret exists — ESO fails the whole bundle on a missing key).
 const stripeSecretKey = config.getSecret('stripeSecretKey')
+// Stripe sandbox (test-mode) secret key for the backend's opt-in sandbox E2E
+// (`make test-stripe-e2e`) when run in CI. Distinct from `stripeSecretKey` (the
+// fan-api runtime key): this is the dedicated `ci` sandbox's `sk_test_…`, exposed
+// as the repo-level Actions secret STRIPE_TEST_SECRET_KEY on the backend repo
+// (managed in the prod stack only — repo-level secrets are singular per repo).
+// Sourced via `esc env set liverty-music/prod pulumiConfig.stripeTestSecretKey
+// "sk_test_…" --secret`. When unset, the secret is simply not created and the
+// E2E job stays skipped.
+const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
 const bufConfig = config.requireObject('buf') as BufConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
@@ -270,6 +279,16 @@ new GitHubRepositoryComponent({
 	variables: sharedVariables,
 	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
+	// Repo-level Stripe sandbox test key for the opt-in sandbox E2E job
+	// (`make test-stripe-e2e`). Repo-level (not environment-scoped) so a
+	// scheduled / workflow_dispatch job with no `environment:` can read it.
+	// Managed in the prod stack only (repo-level secrets are singular per repo,
+	// so a single stack must own them — mirrors the cloud-provisioning repo's
+	// prod-gated repositorySecrets). Absent until the ESC value is set.
+	repositorySecrets:
+		env === 'prod' && stripeTestSecretKey
+			? { STRIPE_TEST_SECRET_KEY: stripeTestSecretKey }
+			: undefined,
 })
 
 // Frontend Repository
