@@ -10,6 +10,7 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
+import { StripeWebhookEndpoint } from './stripe/dynamic/index.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
@@ -58,21 +59,14 @@ const stripeSecretKey = config.getSecret('stripeSecretKey')
 // "sk_test_…" --secret`. When unset, the secret is simply not created and the
 // E2E job stays skipped.
 const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
-// Stripe webhook signing secret (`whsec_…`) for the settlement/payout flow
-// (ticket-settlement-and-payout §5.1). The fan-api webhook handler verifies the
-// `Stripe-Signature` header on inbound transfer/payout/refund/dispute events
-// against it. Sourced via `esc env set liverty-music/<env>
-// pulumiConfig.stripeWebhookSigningSecret "whsec_…" --secret`. EXTERNAL 0.1: the
-// VALUE only exists after the Stripe webhook endpoint is registered in the
-// Dashboard (a Stripe-account step, NOT IaC — see external prerequisite 0.1);
-// until then leave it unset. Optional → absent for local/pre-launch, matching
-// `stripeSecretKey`. When unset, the backend handler has no secret and fails
-// closed (503) on every inbound webhook. Consumed as STRIPE_WEBHOOK_SIGNING_SECRET
-// by the fan-api deployment via the ESO ExternalSecret (GSM secret id
-// `stripe-webhook-signing-secret`).
-const stripeWebhookSigningSecret = config.getSecret(
-	'stripeWebhookSigningSecret',
-)
+// Restricted Stripe key used ONLY to register the webhook endpoint below.
+// Stripe recommends restricted keys over secret keys; this one should carry
+// `Webhook Endpoints: write` and nothing else, so a compromised Pulumi run
+// cannot reach payments, refunds, transfers or customer data. Sourced via
+// `esc env set liverty-music/prod pulumiConfig.stripeWebhookAdminKey
+// "rk_live_…" --secret`. When unset, no endpoint is registered and the backend
+// handler fails closed (503) — the correct pre-launch state.
+const stripeWebhookAdminKey = config.getSecret('stripeWebhookAdminKey')
 const bufConfig = config.requireObject('buf') as BufConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
@@ -98,6 +92,56 @@ const zitadelConfig = config.requireSecretObject<{
 }>('zitadel')
 
 const env = pulumi.getStack() as Environment
+
+// Stripe webhook endpoint for the settlement/payout flow
+// (ticket-settlement-and-payout §5.1). Registering it here rather than in the
+// Dashboard means the `whsec_…` signing secret never has to be copied between
+// two consoles: Stripe returns it in the creation response, and it flows
+// straight into the GSM secret ESO syncs to the backend as
+// STRIPE_WEBHOOK_SIGNING_SECRET. The subscribed event list is reviewable here
+// instead of living in Dashboard state.
+//
+// prod only: per the settlement change's environment decision there is no dev
+// Stripe environment, so there is no dev endpoint to register.
+//
+// NOTE: destroying this resource deletes the endpoint at Stripe and stops
+// delivery of the dispute/refund events the settlement flow depends on. Treat
+// removing it — or renaming it such that its URN changes — as a production change.
+const stripeWebhookEndpoint =
+	env === 'prod' && stripeWebhookAdminKey
+		? new StripeWebhookEndpoint(
+				'stripe-webhook-endpoint',
+				{
+					apiKey: stripeWebhookAdminKey,
+					url: 'https://api.liverty-music.app/stripe-webhook',
+					description:
+						'Liverty Music settlement/payout — transfer, payout, refund and dispute events',
+					enabledEvents: [
+						'charge.refunded',
+						'charge.dispute.created',
+						'charge.dispute.closed',
+						'transfer.created',
+						'transfer.reversed',
+						'payout.paid',
+						'payout.failed',
+					],
+				},
+				// protect: true — deleting the endpoint stops Stripe delivering the
+				// dispute and refund events the settlement flow depends on, and it
+				// would fail silently: money-out keeps working, only the clawback
+				// path goes dark. A `pulumi destroy --target`, a URN-changing rename
+				// or an operator slip should not be able to do that. Removal requires
+				// a deliberate `pulumi state unprotect` first — the same
+				// blast-radius-proportional barrier used on the prod-CI Artifact
+				// Registry grants. This does not change what `delete` does; it
+				// changes whether Pulumi will run it without being asked twice.
+				{ protect: true },
+			)
+		: undefined
+
+// Consumed as STRIPE_WEBHOOK_SIGNING_SECRET by the fan-api deployment via the
+// ESO ExternalSecret (GSM secret id `stripe-webhook-signing-secret`).
+const stripeWebhookSigningSecret = stripeWebhookEndpoint?.signingSecret
 
 // Workload tier gate. When false (dev shutdown mode), skip the
 // in-cluster Zitadel orchestrator, GSM bootstrap secret shells, and
