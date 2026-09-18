@@ -41,11 +41,11 @@ spec:
             name: fan-api-backend-secrets
         # Stripe webhook signing secret, isolated + optional. The Secret
         # `fan-api-stripe-webhook-secret` is created by a dedicated ExternalSecret
-        # added together with external prerequisite 0.1 (once the GSM secret
-        # `stripe-webhook-signing-secret` exists). Wiring it optional here now means
-        # 0.1 only adds that one ExternalSecret — no Deployment change. Until then
-        # the Secret is absent: optional lets the pod start, and the webhook handler
-        # fails closed (503) while STRIPE_WEBHOOK_SIGNING_SECRET is unset. Isolating
+        # in the **prod overlay** — the GSM secret `stripe-webhook-signing-secret`
+        # is written by the prod Pulumi stack and dev has no Stripe environment.
+        # optional matters in dev, where the Secret is absent by design: the pod
+        # starts and the webhook handler fails closed (503) while
+        # STRIPE_WEBHOOK_SIGNING_SECRET is unset. Isolating
         # it (vs. the all-or-nothing fan-api-backend-secrets bundle) also keeps a
         # future signing-secret rotation fault from stranding every backend secret.
         - secretRef:
