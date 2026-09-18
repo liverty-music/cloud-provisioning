@@ -64,8 +64,9 @@ const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
 // `Webhook Endpoints: write` and nothing else, so a compromised Pulumi run
 // cannot reach payments, refunds, transfers or customer data. Sourced via
 // `esc env set liverty-music/prod pulumiConfig.stripeWebhookAdminKey
-// "rk_live_…" --secret`. When unset, no endpoint is registered and the backend
-// handler fails closed (503) — the correct pre-launch state.
+// "rk_test_…" --secret`. A test-mode key: the prod stack points at the
+// `pannpers.dev sandbox` preprod account, not a livemode one. When unset, no
+// endpoint is registered and the backend handler fails closed (503).
 const stripeWebhookAdminKey = config.getSecret('stripeWebhookAdminKey')
 const bufConfig = config.requireObject('buf') as BufConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
@@ -102,7 +103,9 @@ const env = pulumi.getStack() as Environment
 // instead of living in Dashboard state.
 //
 // prod only: per the settlement change's environment decision there is no dev
-// Stripe environment, so there is no dev endpoint to register.
+// Stripe environment, so there is no dev endpoint to register. "prod" is the
+// deployment stack, which points at the `pannpers.dev sandbox` preprod Stripe
+// account — no livemode account is involved anywhere in this change.
 //
 // NOTE: destroying this resource deletes the endpoint at Stripe and stops
 // delivery of the dispute/refund events the settlement flow depends on. Treat

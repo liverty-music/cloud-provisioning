@@ -49,7 +49,7 @@ export function encodeForm(
 /**
  * Performs an authenticated Stripe REST call.
  *
- * `apiKey` should be a restricted key (`rk_live_…`) carrying only
+ * `apiKey` should be a restricted key (`rk_test_…`/`rk_live_…`) carrying only
  * `Webhook Endpoints: write` — Stripe recommends restricted keys over secret
  * keys wherever possible, and this caller needs nothing else. A key with wider
  * scope works too, but widens what a compromised Pulumi run can reach.

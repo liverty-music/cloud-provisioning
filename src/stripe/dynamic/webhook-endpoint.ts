@@ -3,8 +3,8 @@ import { stripeApiCall, stripeErrorMessage } from './api-client.js'
 
 export interface StripeWebhookEndpointArgs {
 	/**
-	 * Restricted Stripe API key (`rk_live_…`) with `Webhook Endpoints: write`
-	 * and nothing else. Stripe recommends restricted keys over secret keys, and
+	 * Restricted Stripe API key (`rk_test_…` for the preprod sandbox the prod
+	 * stack uses) with `Webhook Endpoints: write` and nothing else. Stripe recommends restricted keys over secret keys, and
 	 * least privilege matters more than usual here: this credential lives in the
 	 * Pulumi stack rather than in the application.
 	 */
