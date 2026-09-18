@@ -22,6 +22,9 @@ resources:
   - ../../base
   - sql-proxy/deployment.yaml
   - fan-api-pdb.yaml
+  # prod-only: the GSM key it reads is created by the prod Pulumi stack, and
+  # dev has no Stripe environment (see the file's own comment).
+  - fan-api/stripe-webhook-external-secret.yaml
   # NOTE: the `backend-server` PodMonitoring was deleted (unify-workload-naming).
   # It was mis-specified from the prod bootstrap (2026-05-14): selector
   # `app: server-app` never matched any pod (the server workload carried
