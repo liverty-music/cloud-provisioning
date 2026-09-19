@@ -9,15 +9,20 @@ Closes #
 - [ ] Prod
 
 ## 🔮 Pulumi Preview
-<!-- 
-Please check the CI/GitHub Actions output for the Preview result.
-If CI is not running, paste the local `pulumi preview` output here.
+<!--
+Pulumi Cloud posts the preview as a comment on this pull request — NOT in the
+GitHub Actions output. Read it there; there is nothing to paste.
+
+It runs for every stack whose trigger `paths` your change touches
+(`Pulumi.{dev,prod}.deploy.yaml`). If no preview appears and you did change
+what the stack deploys, that is a gap in those `paths` — fix it there rather
+than pasting a local run, which proves nothing a reviewer can re-check.
 -->
 
 ## 📦 State Changes
 <!-- Does this require `pulumi state mv`, `import`, or destructive changes? -->
 
 ## ✅ Checklist
-- [ ] `pulumi preview` passes locally or in CI.
+- [ ] The Pulumi Cloud preview comment on this PR shows no unintended changes.
 - [ ] No unintended destructive changes.
 - [ ] Secrets are managed in Pulumi Config.

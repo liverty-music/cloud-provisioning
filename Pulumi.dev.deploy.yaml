@@ -1,0 +1,56 @@
+# Pulumi Cloud Deployments settings for the dev stack.
+#
+# Committed so the `paths` list below is reviewable and diffable. It was
+# previously console-only, which meant the control described there could be
+# changed with no diff, no review and no record. Round-trip with:
+#
+#   pulumi deployment settings pull -s dev    # console -> this file
+#   pulumi deployment settings push -s dev    # this file -> console
+#
+settings:
+  executorContext: {}
+  sourceContext:
+    git:
+      branch: main
+  gitHub:
+    repository: liverty-music/cloud-provisioning
+    deployCommits: true
+    previewPullRequests: true
+    # WHAT MAY TRIGGER A PREVIEW. This list is a security control, not a
+    # performance tuning knob — see the OpenSpec change
+    # `automate-dependency-updates`, design D6.
+    #
+    # Producing a preview runs `npm ci` and then executes the stack's program
+    # (`skipInstallDependencies` is false, below), and the program resolves
+    # production provider credentials from ESC at stack load. So whatever is in
+    # the dependency tree of a previewed pull request executes with those
+    # credentials.
+    #
+    # DO NOT ADD `package.json` OR `package-lock.json`.
+    #
+    # It is a reasonable-looking change to make: a dependency bump does alter
+    # what the program does, so previewing it looks like an improvement. It is
+    # not. Renovate pushes its branches INSIDE this repository, so the fork
+    # protections do not apply to them, and adding those files here would mean
+    # every automated dependency pull request executes a just-published,
+    # unreviewed third-party package against production credentials before any
+    # person has read it.
+    #
+    # Renovate pull requests touch only the two manifest files, so leaving them
+    # out is what keeps them from being previewed. Nothing else enforces this —
+    # a GitHub Actions `if:` condition cannot govern this trigger.
+    paths:
+      - src/**
+      - Pulumi.dev.yaml
+  operationContext:
+    oidc:
+      gcp:
+        projectId: "1058199000631"
+        workloadPoolId: external-providers
+        providerId: pulumi-provider
+        serviceAccount: pulumi-cloud@liverty-music-dev.iam.gserviceaccount.com
+    options:
+      skipInstallDependencies: false
+      skipIntermediateDeployments: false
+      deleteAfterDestroy: false
+      remediateIfDriftDetected: false
