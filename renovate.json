@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["local>liverty-music/.github:renovate-config"],
+
+  "packageRules": [
+    {
+      "description": "NEVER automerge a Pulumi provider, at any version increment. This is not pending a gate signal — there is none to wait for, and there deliberately will not be. Producing the preview that would justify an automerge means installing and EXECUTING the proposed package with ESC-resolved production credentials, so the Pulumi Cloud trigger `paths` exclude dependency manifests precisely to stop that happening on an automated pull request (see src/pulumi-cloud/deployment-settings.ts and design D6). A reviewer merges these after running `pulumi preview` themselves, which is what the pull request template and the runbooks already prescribe.",
+      "matchPackageNames": ["@pulumi/**", "@pulumiverse/**"],
+      "automerge": false
+    }
+  ]
+}
