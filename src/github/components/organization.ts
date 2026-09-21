@@ -55,6 +55,28 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			allowMergeCommit: true,
 			allowSquashMerge: false,
 			allowRebaseMerge: false,
+			// Lets a pull request be queued to merge once its required checks
+			// pass. This is PERMISSION, not policy: it grants nothing on its own,
+			// and Renovate's own `automerge` is off org-wide, so nothing merges
+			// unattended until that is turned on group by group.
+			//
+			// It has to live here rather than in GitHubRepositoryComponent,
+			// because it is a `github.Repository` argument and that component
+			// manages protection, environments, variables and secrets — not the
+			// repository resource itself.
+			//
+			// This reaches ALL FIVE repositories, including `.github`, which has
+			// no branch protection and no CI. Nothing stops an auto-merge landing
+			// there with no gate at all except Renovate's permanent exclusion for
+			// that repository in the org preset — so do not remove that rule
+			// while this is enabled (design D11, and follow-up 12.4 is the real
+			// remedy).
+			//
+			// The gate itself is unchanged: `requiredStatusCheckContexts` stays
+			// `['CI Success']` on the other four, and an auto-merge satisfies the
+			// same branch protection a human merge does. The strategy is
+			// merge-commit only, since squash and rebase are both false above.
+			allowAutoMerge: true,
 		}
 
 		// Create repositories
