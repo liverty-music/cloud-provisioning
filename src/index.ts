@@ -10,6 +10,7 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
+import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
 import { StripeWebhookEndpoint } from './stripe/dynamic/index.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
@@ -288,6 +289,23 @@ const gcp = new Gcp({
 	),
 	workloadEnabled,
 	postgresAvailabilityType,
+})
+
+// 3. Pulumi Cloud Deployments (per stack)
+//
+// Declares the deployment settings that were previously console-only. The
+// trigger `paths` inside are a security control — see the component's doc
+// comment and OpenSpec change `automate-dependency-updates`, design D6.
+//
+// `deployCommits` is dev-only: prod is applied deliberately from the Pulumi
+// Cloud console (CLAUDE.md, "Pulumi Deployments (Automated)").
+new DeploymentSettingsComponent({
+	organization: pulumi.getOrganization(),
+	project: pulumi.getProject(),
+	environment: env,
+	gcpProjectNumber: gcp.project.number,
+	gcpServiceAccount: pulumi.interpolate`pulumi-cloud@${gcp.projectId}.iam.gserviceaccount.com`,
+	deployCommits: env === 'dev',
 })
 
 // 5. Self-hosted Zitadel GSM secret shells (all envs, always).
