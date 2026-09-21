@@ -1,12 +1,23 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>liverty-music/.github:renovate-config"],
-
+  "extends": [
+    "local>liverty-music/.github:renovate-config"
+  ],
   "packageRules": [
     {
       "description": "NEVER automerge a Pulumi provider, at any version increment. This is not pending a gate signal — there is none to wait for, and there deliberately will not be. Producing the preview that would justify an automerge means installing and EXECUTING the proposed package with ESC-resolved production credentials, so the Pulumi Cloud trigger `paths` exclude dependency manifests precisely to stop that happening on an automated pull request (see src/pulumi-cloud/deployment-settings.ts and design D6). A reviewer merges these after running `pulumi preview` themselves, which is what the pull request template and the runbooks already prescribe.",
-      "matchPackageNames": ["@pulumi/**", "@pulumiverse/**"],
+      "matchPackageNames": [
+        "@pulumi/**",
+        "@pulumiverse/**"
+      ],
       "automerge": false
+    },
+    {
+      "description": "NEVER propose our own application images. These are the tags pinned in k8s/namespaces/*/overlays/*/kustomization.yaml, and ArgoCD syncs from those overlays — so changing a `newTag` IS a deployment, not a dependency bump. They already have an owner: bump-prod-pin.yml moves the tag and its `app.kubernetes.io/version` label in lock-step and validates the result. A pull request here would propose shipping a version nobody decided to release; an automerged one would ship it unattended. Renovate's first run reported `No docker auth found` and ten failed lookups against this registry — that error is a SYMPTOM. Do NOT fix it by giving Renovate registry credentials: that would enable exactly the updates this rule exists to prevent. `enabled: false` rather than `ignorePaths` so they stay on the dependency dashboard as disabled-with-an-update-available, which makes an overlay left behind by a release visible. Third-party images are unaffected — every `images:` entry in this org is ours, and third-party ones appear as inline `image:` fields that the `kubernetes` manager still handles. See design D7.",
+      "matchPackageNames": [
+        "asia-northeast2-docker.pkg.dev/liverty-music-**"
+      ],
+      "enabled": false
     }
   ]
 }
