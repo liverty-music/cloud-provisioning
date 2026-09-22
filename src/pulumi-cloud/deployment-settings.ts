@@ -99,16 +99,17 @@ export class DeploymentSettingsComponent extends pulumi.ComponentResource {
 				stack: args.environment,
 				sourceContext: {
 					git: {
-						// `repoUrl` is REQUIRED by the API even though `vcs.repository`
-						// already names the same repository — omitting it fails the
-						// create with `400 Bad Request: repoUrl cannot be empty`.
+						// NO `repoUrl` HERE. The two VCS fields impose opposite
+						// requirements on it and the API enforces both:
 						//
-						// It is absent from what `pulumi deployment settings pull`
-						// emits, because that form carries the repository in its
-						// `gitHub` block instead. Transcribing the pulled YAML is
-						// therefore not sufficient to reproduce the settings through
-						// the provider.
-						repoUrl: `https://github.com/${REPOSITORY}`,
+						//   vcs:    400 `repoUrl cannot be empty`
+						//   github: 400 `sourceContext.git.repoUrl cannot be
+						//               specified when using GitHub integration`
+						//
+						// Under `github` the integration carries the repository
+						// itself, which is also why `pulumi deployment settings
+						// pull` emits no `repoUrl` — the pulled YAML was right and
+						// adding one to satisfy `vcs` is what broke it.
 						branch: 'main',
 					},
 				},
