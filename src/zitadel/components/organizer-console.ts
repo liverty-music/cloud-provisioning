@@ -12,7 +12,7 @@ import { baseDomainMap } from '../constants.js'
  * value requires a matching backend change. Only `owner` is defined now; the
  * sub-owner roles (`editor`, `viewer`, `reception`) are a later change.
  *
- * Named `owner`, NOT `admin`: `admin` already denotes the Liverty-internal
+ * Named `owner`, NOT `admin`: `admin` already denotes the Liverty Music-internal
  * operator role on the separate `admin-console` project
  * (`ADMIN_CONSOLE_ROLE_ADMIN`), so reusing it would overload the roles claim
  * and collide with Zitadel's own admin concepts. This principal is the
