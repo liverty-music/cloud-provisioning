@@ -14,6 +14,19 @@
 
 <agent-rules>
 
+## OpenSpec (planning lives in the store)
+
+This repository carries no planning of its own. `openspec/config.yaml` declares `store: openspec-store` (the `liverty-music/specification` repository), so every `openspec` command run here resolves to that store; the `Using OpenSpec root: openspec-store` banner confirms it.
+
+- **Before implementing**, read the change's artifacts and the affected specs in the store: `openspec show <change>`, `openspec instructions apply --change <change>`, and `openspec show <spec-id> --type spec`. Implement against the spec, not against memory.
+- **Run `openspec doctor` first** on a fresh machine or cloud VM. If the store is not registered, run the `Fix:` command it prints (clone + `openspec store register ... --id openspec-store`), then continue.
+- **Never write to the store from this repository.** Task progress and archiving are recorded in the `specification` repository once this repository's PR merges.
+- **Every PR must cite its change**: fill the `OpenSpec-Change` (or `OpenSpec-Spec`) field and the store commit SHA in the PR template so reviewers can see which contract version the implementation follows.
+
+## Cross-repo workflow (poly-repo)
+
+This repo is one of four under `liverty-music/`: `specification` (proto schema + OpenSpec store), `backend`, `frontend`, `cloud-provisioning`. Infrastructure here is not gated by the proto release flow (that process lives in the specification repo's AGENTS.md). When a change spans repositories, keep this repo's PR independently mergeable and cite the same OpenSpec change in every PR so reviewers can follow the set.
+
 ## Operating Protocols
 
 ### Pulumi Deployment Approval
