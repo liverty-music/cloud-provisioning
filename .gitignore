@@ -15,6 +15,12 @@ build/
 
 # Pulumi
 Pulumi.*.yaml.bak
+# `pulumi deployment settings pull` writes this. Do NOT commit it: the
+# deployment settings are declared in src/pulumi-cloud/deployment-settings.ts
+# and a committed copy is a second source of truth that drifts silently.
+# It is also written in the legacy shape, so the copy is wrong the moment
+# it lands. The trigger `paths` it carries are a security control.
+Pulumi.*.deploy.yaml
 
 # IDE
 .vscode/
