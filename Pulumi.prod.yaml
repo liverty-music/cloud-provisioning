@@ -1,3 +1,8 @@
+# Editing this file alone triggers a Pulumi Cloud preview. That is not
+# incidental: this path is listed in the prod stack trigger `paths`
+# (see src/pulumi-cloud/deployment-settings.ts). Before it was, a pull
+# request changing only prod stack configuration changed what would be
+# deployed and was previewed by nothing.
 environment:
   - liverty-music/prod
 config:
