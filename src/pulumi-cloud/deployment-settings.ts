@@ -99,21 +99,47 @@ export class DeploymentSettingsComponent extends pulumi.ComponentResource {
 				stack: args.environment,
 				sourceContext: {
 					git: {
-						// `repoUrl` is REQUIRED by the API even though `vcs.repository`
-						// already names the same repository — omitting it fails the
-						// create with `400 Bad Request: repoUrl cannot be empty`.
+						// NO `repoUrl` HERE. The two VCS fields impose opposite
+						// requirements on it and the API enforces both:
 						//
-						// It is absent from what `pulumi deployment settings pull`
-						// emits, because that form carries the repository in its
-						// `gitHub` block instead. Transcribing the pulled YAML is
-						// therefore not sufficient to reproduce the settings through
-						// the provider.
-						repoUrl: `https://github.com/${REPOSITORY}`,
+						//   vcs:    400 `repoUrl cannot be empty`
+						//   github: 400 `sourceContext.git.repoUrl cannot be
+						//               specified when using GitHub integration`
+						//
+						// Under `github` the integration carries the repository
+						// itself, which is also why `pulumi deployment settings
+						// pull` emits no `repoUrl` — the pulled YAML was right and
+						// adding one to satisfy `vcs` is what broke it.
 						branch: 'main',
 					},
 				},
-				vcs: {
-					provider: 'GitHub',
+				// `github` is DEPRECATED in favour of `vcs`, and is used anyway.
+				//
+				// `vcs` is the documented replacement and it does not work:
+				// Pulumi Cloud accepts the resource, reports success, and never
+				// registers the stack with its trigger dispatcher, so no pull
+				// request is ever previewed. Nothing fails — the deployments
+				// simply stop being created.
+				//
+				// Measured here, not inferred. Previews ran on every `src/**`
+				// pull request until the `pulumi up` at 2026-09-22T06:00Z that
+				// created this resource with `vcs`; after it, the stack's
+				// deployment list contains no `github-pull-request` entry at
+				// all, and the settings endpoint returns neither a `vcs` nor a
+				// `gitHub` block. The resource's Pulumi state shows why: `vcs`
+				// is in its INPUTS and absent from its OUTPUTS — the provider
+				// sent it and the service did not keep it.
+				//
+				// Upstream: pulumi/pulumi-pulumiservice#754, open. Reverting to
+				// `github` is the reported fix and the only one.
+				//
+				// DO NOT "modernise" this back to `vcs` because a deprecation
+				// warning says to. `pulumi preview` cannot catch the mistake —
+				// it diffs the program against its own inputs, and the inputs
+				// are exactly what the service discards. Confirm the issue is
+				// closed, then verify against the stack's deployment list that
+				// a pull request actually previews.
+				github: {
 					repository: REPOSITORY,
 					previewPullRequests: true,
 					deployCommits: args.deployCommits ?? false,

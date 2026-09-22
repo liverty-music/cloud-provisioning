@@ -1,6 +1,18 @@
 ## 🔗 Related Issue
 Closes #
 
+## 📐 OpenSpec Traceability
+
+<!--
+Every PR cites the store change (or spec) it implements. The store is the
+liverty-music/specification repository. Get the SHA with:
+  git -C <specification-checkout> rev-parse --short HEAD
+-->
+
+- OpenSpec-Change: <!-- change id under openspec/changes/, or "none" -->
+- OpenSpec-Spec: <!-- spec id under openspec/specs/ when no change applies -->
+- Store commit: <!-- specification SHA the implementation was built against -->
+
 ## 📝 Summary of Changes
 <!-- What resources are being added/modified? -->
 
