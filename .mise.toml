@@ -6,4 +6,4 @@ GOOGLE_CLOUD_QUOTA_PROJECT = "liverty-music-dev"
 # Pinned, not "latest": a floating reference can never produce an update
 # proposal, so Renovate would report this axis as up to date forever while it
 # silently drifted. See OpenSpec change `automate-dependency-updates`, task 5.2a.
-kustomize = "5.8.0"
+kustomize = "5.8.1"
