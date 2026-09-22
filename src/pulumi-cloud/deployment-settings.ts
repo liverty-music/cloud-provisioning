@@ -112,8 +112,33 @@ export class DeploymentSettingsComponent extends pulumi.ComponentResource {
 						branch: 'main',
 					},
 				},
-				vcs: {
-					provider: 'GitHub',
+				// `github` is DEPRECATED in favour of `vcs`, and is used anyway.
+				//
+				// `vcs` is the documented replacement and it does not work:
+				// Pulumi Cloud accepts the resource, reports success, and never
+				// registers the stack with its trigger dispatcher, so no pull
+				// request is ever previewed. Nothing fails — the deployments
+				// simply stop being created.
+				//
+				// Measured here, not inferred. Previews ran on every `src/**`
+				// pull request until the `pulumi up` at 2026-09-22T06:00Z that
+				// created this resource with `vcs`; after it, the stack's
+				// deployment list contains no `github-pull-request` entry at
+				// all, and the settings endpoint returns neither a `vcs` nor a
+				// `gitHub` block. The resource's Pulumi state shows why: `vcs`
+				// is in its INPUTS and absent from its OUTPUTS — the provider
+				// sent it and the service did not keep it.
+				//
+				// Upstream: pulumi/pulumi-pulumiservice#754, open. Reverting to
+				// `github` is the reported fix and the only one.
+				//
+				// DO NOT "modernise" this back to `vcs` because a deprecation
+				// warning says to. `pulumi preview` cannot catch the mistake —
+				// it diffs the program against its own inputs, and the inputs
+				// are exactly what the service discards. Confirm the issue is
+				// closed, then verify against the stack's deployment list that
+				// a pull request actually previews.
+				github: {
 					repository: REPOSITORY,
 					previewPullRequests: true,
 					deployCommits: args.deployCommits ?? false,
