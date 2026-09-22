@@ -183,13 +183,13 @@ jobs:
       # repository_dispatch path.
       - name: Mint ci-bot token
         id: bot
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
         with:
           app-id: ${{ secrets.CI_BOT_APP_ID }}
           private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Full history so the fetch-rebase-retry push loop can rebase on a
           # concurrent bump. Persist the ci-bot token (not the built-in
@@ -208,7 +208,7 @@ jobs:
       # bogus-tag paths. Applies to both triggers.
       # ----------------------------------------------------------------------
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           # Repository-level SECRETS (not environment-scoped) so they resolve on
           # the empty-environment `repository_dispatch` path. Stored as secrets
@@ -221,7 +221,7 @@ jobs:
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Configure Docker for prod AR
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
@@ -384,7 +384,7 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Install Kustomize
         if: steps.idem.outputs.skip != 'true'
-        uses: imranismail/setup-kustomize@v2
+        uses: imranismail/setup-kustomize@2ba527d4d055ab63514ba50a99456fc35684947f # v2
 
       - name: Validate overlay renders
         if: steps.idem.outputs.skip != 'true'
