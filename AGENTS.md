@@ -19,7 +19,8 @@
 This repository carries no planning of its own. `openspec/config.yaml` declares `store: openspec-store` (the `liverty-music/specification` repository), so every `openspec` command run here resolves to that store; the `Using OpenSpec root: openspec-store` banner confirms it.
 
 - **Before implementing**, read the change's artifacts and the affected specs in the store: `openspec show <change>`, `openspec instructions apply --change <change>`, and `openspec show <spec-id> --type spec`. Implement against the spec, not against memory.
-- **Run `openspec doctor` first** on a fresh machine or cloud VM. If the store is not registered, run the `Fix:` command it prints (clone + `openspec store register ... --id openspec-store`), then continue.
+- **Run `openspec doctor` first** on a fresh machine and at the start of every cloud thread. If the store is not registered, register a `specification` checkout: the sibling clone when one exists (`openspec store register "$(git rev-parse --show-toplevel)/../specification" --id openspec-store`, the layout of a multi-repo Claude Project thread), otherwise clone the public repo first (`git clone --depth 1 https://github.com/liverty-music/specification.git /tmp/openspec-store`) and register that path. Then continue.
+- **Isolate local work with `claude --worktree <change>`** (it lands in `.claude/worktrees/<change>`, and `.worktreeinclude` copies the gitignored files a worktree needs). The full cross-repo workflow, local and cloud, is in the `specification` repository's README ("Development workflow").
 - **Never write to the store from this repository.** Task progress and archiving are recorded in the `specification` repository once this repository's PR merges.
 - **Every PR must cite its change**: fill the `OpenSpec-Change` (or `OpenSpec-Spec`) field and the store commit SHA in the PR template so reviewers can see which contract version the implementation follows.
 
