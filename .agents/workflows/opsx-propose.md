@@ -1,9 +1,5 @@
 ---
-name: "OPSX: Propose"
 description: "Propose a new change - create it and generate all artifacts in one step"
-allowed-tools: Bash(openspec:*)
-category: "Workflow"
-tags: ["workflow", "artifacts", "experimental"]
 ---
 
 Propose a new change - create the change and generate all artifacts in one step.
@@ -35,7 +31,7 @@ Otherwise, with no root, what happens next depends on how this workflow was reac
 
 In both branches, never create the root as a side effect: do not run `openspec init` until the user asks for it, do not hand-create `openspec/` files, and do not let a command create it.
 
-**Input**: The argument after `/opsx:propose` is the change name (kebab-case), OR a description of what the user wants to build.
+**Input**: The argument after `/opsx-propose` is the change name (kebab-case), OR a description of what the user wants to build.
 
 **Steps**
 
@@ -148,7 +144,7 @@ After completing all artifacts, summarize:
 - Change name and location
 - List of artifacts created with brief descriptions, plus any conditional artifact you skipped and why
 - What's ready: "All artifacts needed for implementation are ready."
-- Prompt: "The artifacts are ready for review. When you are ready, run `/opsx:apply`."
+- Prompt: "The artifacts are ready for review. When you are ready, run `/opsx-apply`."
 
 **Artifact Creation Guidelines**
 
