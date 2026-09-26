@@ -21,10 +21,12 @@ resources:
 - consumer-track-user-created.yaml
 - consumer-track-user-logged-in.yaml
 - consumer-track-artist-followed.yaml
+- consumer-search-first-followed-artist.yaml
 - consumer-track-artist-unfollowed.yaml
 - consumer-track-notification-subscribed.yaml
 - consumer-track-notification-unsubscribed.yaml
 - consumer-track-notification-delivered.yaml
+- consumer-deliver-notification.yaml
 - consumer-track-ticket-journey.yaml
 - consumer-track-ticket-email.yaml
 - consumer-analytics-organizer-created.yaml
