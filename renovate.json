@@ -14,6 +14,13 @@
       "groupName": "pulumi"
     },
     {
+      "description": "HOLD typescript below 7 until Pulumi supports it. TypeScript 7 is the native (Go) compiler and its npm package ships no JavaScript API — `require('typescript').transpileModule` and `createProgram` are undefined — while Pulumi runs this program through ts-node, which is built on exactly that API. `@pulumi/pulumi` states it as a peer range, `typescript: \">= 3.8.3 < 7\"` (3.265.0), so the TypeScript 7 pull request could not even install (`npm ci` ERESOLVE). This is a cap on a known-incompatible major, not a pin: minor and patch updates within 5.x still flow. REMOVE THIS RULE when `@pulumi/pulumi` widens that peer range — at that point the upgrade also needs the tsconfig migration frontend went through (TypeScript 6 removed `moduleResolution: node` and `baseUrl`, and changed the `strict` and `types` defaults).",
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "allowedVersions": "<7"
+    },
+    {
       "description": "NEVER propose our own application images. These are the tags pinned in k8s/namespaces/*/overlays/*/kustomization.yaml, and ArgoCD syncs from those overlays — so changing a `newTag` IS a deployment, not a dependency bump. They already have an owner: bump-prod-pin.yml moves the tag and its `app.kubernetes.io/version` label in lock-step and validates the result. A pull request here would propose shipping a version nobody decided to release; an automerged one would ship it unattended. Renovate's first run reported `No docker auth found` and ten failed lookups against this registry — that error is a SYMPTOM. Do NOT fix it by giving Renovate registry credentials: that would enable exactly the updates this rule exists to prevent. `enabled: false` rather than `ignorePaths` so they stay on the dependency dashboard as disabled-with-an-update-available, which makes an overlay left behind by a release visible. Third-party images are unaffected — every `images:` entry in this org is ours, and third-party ones appear as inline `image:` fields that the `kubernetes` manager still handles.  GLOB SHAPE: the trailing `/**` is load-bearing and must not be collapsed to `liverty-music-**`. Renovate parses these with minimatch, where `*` and a segment-internal `**` both stop at a `/` (https://docs.renovatebot.com/string-pattern-matching/), so `liverty-music-**` matches the project segment alone and NEVER `liverty-music-prod/backend/api`. It was written that way first, and the rule was inert: the dependency dashboard kept reporting ten failed lookups against this registry, which is how the mistake surfaced. See design D7.",
       "matchPackageNames": [
         "asia-northeast2-docker.pkg.dev/liverty-music-*/**"
