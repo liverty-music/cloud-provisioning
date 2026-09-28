@@ -12,9 +12,10 @@ spec:
   # Triggers reference the behavior-named JetStream durables the consumer app
   # creates (durable == deliver group == handler behavior name; see the backend
   # messaging.behaviorTable). Each trigger's `consumer` MUST exactly match a live
-  # durable, else the HPA reports `<unknown>`. Two subjects have two behaviors
-  # each (ARTIST.created, USER.created) → two durables/triggers (fan-out). Prod
-  # pins min=max=1 so these are inert there, but the base stays complete for dev.
+  # durable, else the HPA reports `<unknown>`. Three subjects have two behaviors
+  # each (ARTIST.created, ARTIST.followed, USER.created) → two durables/triggers
+  # (fan-out). Prod pins min=max=1 so these are inert there, but the base stays
+  # complete for dev.
   triggers:
   # CONCERT stream
   - type: nats-jetstream
@@ -56,6 +57,14 @@ spec:
       account: "$G"
       stream: "ARTIST"
       consumer: "track-artist-followed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "search-first-followed-artist"
       lagThreshold: "1"
       activationLagThreshold: "0"
   - type: nats-jetstream
@@ -114,6 +123,14 @@ spec:
       account: "$G"
       stream: "NOTIFICATION"
       consumer: "track-notification-delivered"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "NOTIFICATION"
+      consumer: "deliver-notification"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # TICKET_JOURNEY / TICKET_EMAIL streams

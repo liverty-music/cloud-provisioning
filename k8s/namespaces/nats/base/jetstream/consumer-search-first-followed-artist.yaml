@@ -1,0 +1,21 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: search-first-followed-artist
+spec:
+  streamName: ARTIST
+  durableName: search-first-followed-artist
+  # PULL work-queue (no deliverSubject/deliverGroup) — declarative, replaces the
+  # push consumer whose random _INBOX deliver subject cannot be declared (D5).
+  deliverPolicy: new
+  filterSubject: ARTIST.followed
+  ackPolicy: explicit
+  # The handler runs a full concert search (several Gemini calls, each bounded
+  # at 120s with backoff retries), so the default 30s would redeliver a message
+  # that is still being processed and start a duplicate search.
+  ackWait: 10m
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  replicas: 0
+  preventDelete: true
