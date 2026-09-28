@@ -11,6 +11,16 @@ namespace: nats
 # JetStream consumer-backlog stall alert (see src/gcp/components/monitoring.ts).
 resources:
 - podmonitoring.yaml
+# Declarative JetStream Stream/Consumer CRs, reconciled by NACK (below). These
+# were meant to be ArgoCD-owned since declarative-jetstream-nack, but this
+# overlay never referenced them: the prod cut-over applied them with kubectl,
+# and every CR added afterwards (search-first-followed-artist,
+# deliver-notification) never reached the cluster — while the event-consumer
+# ScaledObject already referenced them, leaving it in TriggerError. Only the
+# jetstream/ directory is pulled in, not ../../base itself, because base also
+# declares its own `nats` chart and values that would collide with this
+# overlay's.
+- ../../base/jetstream
 
 helmCharts:
 - name: nats
@@ -19,6 +29,14 @@ helmCharts:
   releaseName: nats
   namespace: nats
   valuesFile: values.yaml
+# NACK — the exclusive owner of JetStream streams/consumers. CRDs were
+# installed at the cut-over and are left unmanaged (no includeCRDs), as before.
+- name: nack
+  repo: https://nats-io.github.io/k8s/helm/charts/
+  version: 0.35.0
+  releaseName: nack
+  namespace: nats
+  valuesFile: ../../base/nack-values.yaml
 
 patches:
 - target:
@@ -34,6 +52,22 @@ patches:
           nodeSelector:
             cloud.google.com/gke-spot: "true"
           # GKE Autopilot injects seccompProfile on all pods
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+- target:
+    kind: Deployment
+    name: nack
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: nack
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/gke-spot: "true"
           securityContext:
             seccompProfile:
               type: RuntimeDefault
