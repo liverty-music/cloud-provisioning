@@ -11,6 +11,12 @@ namespace: nats
 # JetStream consumer-backlog stall alert (see src/gcp/components/monitoring.ts).
 resources:
 - podmonitoring.yaml
+# Declarative JetStream Stream/Consumer CRs reconciled by NACK. ArgoCD adopts
+# the live CRs (applied by hand during the declarative-jetstream-nack cut-over)
+# in place; every CR sets preventDelete, so an ArgoCD prune orphans rather than
+# deletes the underlying stream/durable. The NACK controller itself is still
+# unmanaged (cloud-provisioning#532).
+- ../../base/jetstream
 
 helmCharts:
 - name: nats
