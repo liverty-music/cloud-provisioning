@@ -384,7 +384,7 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Install Kustomize
         if: steps.idem.outputs.skip != 'true'
-        uses: imranismail/setup-kustomize@2ba527d4d055ab63514ba50a99456fc35684947f # v2
+        uses: imranismail/setup-kustomize@53f941b41dca13ed61874bbc6b4b6e1562877530 # v3
 
       - name: Validate overlay renders
         if: steps.idem.outputs.skip != 'true'
