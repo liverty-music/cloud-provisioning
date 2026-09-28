@@ -13,3 +13,31 @@ helmCharts:
   valuesFile: values.yaml
 
 
+
+# ONE-TIME MIGRATION — remove once the CRDs below have been replaced.
+#
+# These three CRDs still carry the conversion webhook from the 0.12 era:
+# `spec.conversion.strategy` and the webhook service are owned by
+# argocd-controller (server-side apply), but `webhook.clientConfig.caBundle`
+# is owned by the old cert-controller (`external-secrets`, Update). The 0.20+
+# chart ships these CRDs with no conversion block, so server-side apply drops
+# only the fields ArgoCD owns and leaves the foreign caBundle behind — an
+# object with a webhook clientConfig but no strategy, which the API server
+# rejects (`spec.conversion.strategy: Required value`). The CRDs stay on the
+# 0.12 schema without `external-secrets.io/v1`, and the 2.x controller cannot
+# start.
+#
+# `Replace=true` makes ArgoCD PUT the whole object for just these CRDs, which
+# removes the foreign field. Replacing a CRD does not delete its custom
+# resources. 2.x runs no conversion webhook (v1 and v1beta1 share a schema and
+# storedVersions is [v1beta1]), so strategy None is correct. Once the three
+# CRDs show `conversion: {strategy: None}` and serve v1, delete this block:
+# server-side apply then owns every field again.
+patches:
+- target:
+    kind: CustomResourceDefinition
+    name: (externalsecrets|clustersecretstores|secretstores)\.external-secrets\.io
+  patch: |-
+    - op: add
+      path: /metadata/annotations/argocd.argoproj.io~1sync-options
+      value: Replace=true
