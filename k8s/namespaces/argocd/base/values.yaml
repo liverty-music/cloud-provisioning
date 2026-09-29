@@ -44,12 +44,17 @@ configs:
     # (configChecksumAnnotation now defaults to false so config changes
     # hot-reload instead of rolling the single replica). Ignore that one key
     # for every workload kind Autopilot mutates, rather than per Application.
+    # The second expression drops the whole map when that key is its only
+    # entry: removing just the key leaves `annotations: {}` on the live side,
+    # which still differs from a desired pod template with no annotations.
     resource.customizations.ignoreDifferences.apps_StatefulSet: |
       jqPathExpressions:
       - '.spec.template.metadata.annotations["autopilot.gke.io/selector-toleration"]'
+      - '.spec.template.metadata.annotations | select(type == "object" and keys == ["autopilot.gke.io/selector-toleration"])'
     resource.customizations.ignoreDifferences.apps_Deployment: |
       jqPathExpressions:
       - '.spec.template.metadata.annotations["autopilot.gke.io/selector-toleration"]'
+      - '.spec.template.metadata.annotations | select(type == "object" and keys == ["autopilot.gke.io/selector-toleration"])'
   params:
     # Use server-side diff for accurate sync status on GKE Autopilot.
     # Without this, ArgoCD uses legacy 3-way diff which reports false
