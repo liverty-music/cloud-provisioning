@@ -1,5 +1,6 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import * as tls from '@pulumi/tls'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import type { Environment } from '../config.js'
 import { BillingExportComponent } from './components/billing-export.js'
@@ -371,6 +372,29 @@ export class Gcp {
 		// (§9) remain unguarded so GitHub Actions OIDC and billing alerts
 		// persist while the workload tier is down.
 		if (workloadEnabled) {
+			// Keypair the Login V2 pod authenticates to the Zitadel API with.
+			// Zitadel chart 10.x replaced the login client's PAT with a
+			// SystemAPIUsers X.509 key; left to the chart, it is generated with
+			// `lookup` + `genSelfSignedCert`, and `lookup` is always empty under
+			// kustomize/ArgoCD — every render would mint a new key and roll the
+			// API and login pods, rejecting logins mid-roll. Owning it here makes
+			// the render stable (`login.loginServiceKeySecretName`). RSA because
+			// the login container signs its JWTs with RS256.
+			const zitadelLoginServiceKey = zitadelLoginPat
+				? new tls.PrivateKey('zitadel-login-service-key', {
+						algorithm: 'RSA',
+						rsaBits: 2048,
+					})
+				: undefined
+			const zitadelLoginServiceCert = zitadelLoginServiceKey
+				? new tls.SelfSignedCert('zitadel-login-service-cert', {
+						privateKeyPem: zitadelLoginServiceKey.privateKeyPem,
+						subject: { commonName: 'zitadel-login-client' },
+						validityPeriodHours: 24 * 365 * 10,
+						allowedUses: ['digital_signature'],
+					})
+				: undefined
+
 			const kubernetes = new KubernetesComponent('kubernetes-cluster', {
 				project: this.project,
 				environment,
@@ -556,6 +580,23 @@ export class Gcp {
 								{
 									name: 'zitadel-login-pat',
 									value: pulumi.secret(zitadelLoginPat),
+								},
+							]
+						: []),
+					// X.509 keypair for the Login V2 client (Zitadel chart 10.x). ESO
+					// mirrors both halves into the `zitadel-login-service-key` TLS
+					// Secret named by `login.loginServiceKeySecretName`.
+					...(zitadelLoginServiceKey && zitadelLoginServiceCert
+						? [
+								{
+									name: 'zitadel-login-service-key-crt',
+									value: zitadelLoginServiceCert.certPem,
+								},
+								{
+									name: 'zitadel-login-service-key-key',
+									value: pulumi.secret(
+										zitadelLoginServiceKey.privateKeyPem,
+									),
 								},
 							]
 						: []),
