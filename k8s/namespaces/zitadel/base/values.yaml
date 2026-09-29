@@ -278,55 +278,17 @@ login:
   # image with a different base path or a Gateway URLRewrite —
   # tracked as a follow-up.
   #
-  # ZITADEL_SERVICE_USER_TOKEN_FILE is NOT set inline. The chart's
-  # auto-generated `login-config-dotenv` ConfigMap (mounted at
-  # `/.env-file/`) sets it to `/login-client/pat`. The Login UI reads
-  # the .env file at startup, NOT process env vars — so inline `login.env`
-  # overrides do not propagate. We instead mount our existing
-  # zitadel-web-pat Secret at `/login-client/pat` (extraVolumes below)
-  # to match the chart's expectation.
+  # The login client authenticates to the API with an X.509 key
+  # (chart 10.x SystemAPIUsers `login-client`), mounted from the
+  # externally owned Secret named by `login.loginServiceKeySecretName`
+  # above; see external-secret-login-service-key.yaml.
   #
-  # CUSTOM_REQUEST_HEADERS likewise comes from the chart-auto-generated
+  # CUSTOM_REQUEST_HEADERS comes from the chart-auto-generated
   # login-config-dotenv ConfigMap as
   # `Host:<ExternalDomain>,X-Zitadel-Public-Host:<ExternalDomain>`.
   # DO NOT override inline — that would drop the X-Zitadel-Public-Host
   # half that Zitadel's PublicHostHeaders default reads for instance
   # discovery from cluster-internal callers.
-
-  # Mount the existing Pulumi-managed `zitadel-web-pat` Secret as a
-  # file at `/login-client/pat` — the path the chart's auto-generated
-  # `ZITADEL_SERVICE_USER_TOKEN_FILE` in the login-config-dotenv
-  # ConfigMap points to. The Login UI Next.js app reads the .env file
-  # from `/.env-file/` at startup, so the chart-rendered token path
-  # is authoritative; we make the file appear there from our existing
-  # GSM-backed PAT.
-  #
-  # `subPath` mounts only the named Secret key as a single file —
-  # leaving the rest of `/login-client/` writable and visible to any
-  # other process / future chart-managed file. A bare `mountPath:
-  # /login-client` would replace the entire directory contents with
-  # just `items:` and shadow anything else the chart might put there.
-  # Trade-off: subPath mounts don't auto-receive Secret rotations
-  # (need a Pod restart). PAT rotation is deliberate + paired with
-  # a rollout, so this is acceptable.
-  #
-  # `defaultMode: 0400` makes the file owner-read-only (vs the K8s
-  # default 0644 = world-readable). `readOnly: true` on the mount
-  # prevents writes; defaultMode is the complementary least-privilege
-  # control on file access mode.
-  extraVolumes:
-  - name: login-pat
-    secret:
-      secretName: zitadel-web-pat
-      defaultMode: 0400
-      items:
-      - key: token
-        path: pat
-  extraVolumeMounts:
-  - name: login-pat
-    mountPath: /login-client/pat
-    subPath: pat
-    readOnly: true
 
   resources:
     requests:

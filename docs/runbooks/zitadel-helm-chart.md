@@ -29,7 +29,7 @@ k8s/namespaces/zitadel/
 │   ├── healthcheckpolicy.yaml
 │   ├── serviceaccount.yaml  ← shared zitadel SA + Workload Identity binding
 │   ├── external-secret.yaml ← ESO → K8s Secret `zitadel-masterkey`
-│   ├── external-secret-web-pat.yaml
+│   ├── external-secret-login-service-key.yaml ← ESO → TLS Secret for the Login V2 client's X.509 key
 │   ├── external-secret-postgres-admin.yaml
 │   └── namespace.yaml
 └── overlays/{dev,prod}/

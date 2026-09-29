@@ -78,10 +78,10 @@ export interface GcpArgs {
 	postmarkConfig: PostmarkDnsConfig
 	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
 	zitadelMachineKey?: pulumi.Output<string>
-	/** Personal Access Token for the zitadel-login (Login V2 UI) container.
-	 *  Stored in Secret Manager and mounted into the zitadel-login pod via
-	 *  ExternalSecret as a file referenced by `ZITADEL_SERVICE_USER_TOKEN_FILE`. */
-	zitadelLoginPat?: pulumi.Output<string>
+	/** Whether the self-hosted Zitadel workload is provisioned in this stack.
+	 *  Gates the Login V2 client's X.509 keypair, which only a Zitadel
+	 *  instance consumes. */
+	zitadelEnabled?: boolean
 	/** Personal Access Token for the watchdog CronJob bearer token.
 	 *  Stored in Secret Manager and synced into the `zitadel` namespace via
 	 *  ExternalSecret (`zitadel-watchdog-probe-pat`), mounted into the CronJob. */
@@ -189,7 +189,7 @@ export class Gcp {
 			cloudflareConfig,
 			postmarkConfig,
 			zitadelMachineKey,
-			zitadelLoginPat,
+			zitadelEnabled,
 			zitadelWatchdogProbePat,
 			zitadelOrganizerProvisionerKey,
 			workloadEnabled,
@@ -380,7 +380,7 @@ export class Gcp {
 			// API and login pods, rejecting logins mid-roll. Owning it here makes
 			// the render stable (`login.loginServiceKeySecretName`). RSA because
 			// the login container signs its JWTs with RS256.
-			const zitadelLoginServiceKey = zitadelLoginPat
+			const zitadelLoginServiceKey = zitadelEnabled
 				? new tls.PrivateKey('zitadel-login-service-key', {
 						algorithm: 'RSA',
 						rsaBits: 2048,
@@ -567,19 +567,6 @@ export class Gcp {
 									value: pulumi.secret(
 										gcpConfig.argocdGoogleChatWebhookUrl,
 									),
-								},
-							]
-						: []),
-					// PAT consumed only by the zitadel-login pod (Login V2 UI). ESO in
-					// the `zitadel` namespace mirrors this into a K8s Secret which the
-					// pod mounts as a file referenced by ZITADEL_SERVICE_USER_TOKEN_FILE.
-					// Backend-app does not need access — the backend talks to Zitadel
-					// via its own JWT-key (zitadel-machine-key-for-backend-app), not this PAT.
-					...(zitadelLoginPat
-						? [
-								{
-									name: 'zitadel-login-pat',
-									value: pulumi.secret(zitadelLoginPat),
 								},
 							]
 						: []),

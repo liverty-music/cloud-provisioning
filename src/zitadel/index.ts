@@ -12,7 +12,6 @@ import { E2eTestUserComponent } from './components/e2e-test-user.js'
 import { FrontendComponent } from './components/frontend.js'
 import { GoogleAdminIdpComponent } from './components/google-admin-idp.js'
 import { HumanAdminComponent } from './components/human-admin.js'
-import { LoginClientComponent } from './components/login-client.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { OrganizerConsoleComponent } from './components/organizer-console.js'
 import { OrganizerProvisionerComponent } from './components/organizer-provisioner.js'
@@ -70,7 +69,6 @@ export * from './components/e2e-test-user.js'
 export * from './components/frontend.js'
 export * from './components/google-admin-idp.js'
 export * from './components/human-admin.js'
-export * from './components/login-client.js'
 export * from './components/machine-user.js'
 export * from './components/organizer-console.js'
 export * from './components/organizer-provisioner.js'
@@ -133,7 +131,7 @@ export interface ZitadelArgs {
  * - **`admin` role org** — created by Zitadel at first-instance bootstrap
  *   because the configmap sets `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`.
  *   Hosts operator identities only: `pulumi-admin` (machine, IaC and
- *   break-glass), `login-client` (machine, Login V2 PAT), and human
+ *   break-glass) and human
  *   admins like `pannpers@pannpers.dev` (Google SSO via instance-level
  *   IdP). Holds an explicit `LoginPolicy` that disables username +
  *   password sign-in and exposes the Google IdP.
@@ -189,7 +187,6 @@ export class Zitadel {
 	public readonly smtp: SmtpComponent
 	public readonly actionsV2: ActionsV2Component
 	public readonly machineUser: MachineUserComponent
-	public readonly loginClient: LoginClientComponent
 	public readonly googleAdminIdp: GoogleAdminIdpComponent
 	public readonly adminOrgConfig: AdminOrgConfigComponent
 	public readonly humanAdmin: HumanAdminComponent
@@ -214,11 +211,6 @@ export class Zitadel {
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
-
-	/** Personal Access Token for the zitadel-login (Login V2 UI) container.
-	 *  Store in Secret Manager and mount via ExternalSecret as a file
-	 *  (consumed by `ZITADEL_SERVICE_USER_TOKEN_FILE`). */
-	public readonly loginClientToken: pulumi.Output<string>
 
 	/** Personal Access Token for the watchdog CronJob bearer token.
 	 *  Store in Secret Manager and sync to the `zitadel` namespace via ExternalSecret. */
@@ -456,16 +448,6 @@ export class Zitadel {
 		})
 
 		this.machineKeyDetails = this.machineUser.keyDetails
-
-		// Operator machine user — login-client hosts the Login V2 PAT. Lives
-		// in the admin role org per the "Place Machine Users by
-		// Responsibility" requirement.
-		this.loginClient = new LoginClientComponent(name, {
-			orgId: this.adminOrg.id,
-			provider: this.provider,
-		})
-
-		this.loginClientToken = this.loginClient.token
 
 		// Watchdog probe identity — least-privilege machine user in the product
 		// org (co-located with the project it probes), granted PROJECT_OWNER_VIEWER
