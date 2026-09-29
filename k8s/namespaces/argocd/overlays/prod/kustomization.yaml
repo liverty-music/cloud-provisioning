@@ -40,7 +40,7 @@ patches:
 # so re-enablement is a single-line revert.
 #
 # Deployment name note: the standalone `argocd-image-updater` Helm
-# chart (v1.1.1, in base/charts/) renders its Deployment as
+# chart (see base/kustomization.yaml) renders its Deployment as
 # `argocd-image-updater-controller` — NOT plain `argocd-image-updater`.
 # The chart's template literally appends `-controller`:
 #   templates/deployment.yaml:4 → name: {{ include "argocd-image-updater.fullname" . }}-controller
