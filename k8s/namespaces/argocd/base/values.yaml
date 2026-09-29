@@ -3,6 +3,13 @@ global:
   # dev overlay replaces this with cloud.google.com/gke-spot: "true" (GKE Standard Spot).
   nodeSelector:
     cloud.google.com/compute-class: "autopilot-spot"
+  # Chart 10.0.0 flipped this default to true, adding Ingress NetworkPolicies
+  # for the controller, repo-server, redis, server and notifications. Kept at
+  # the 9.x behaviour deliberately: prod (Autopilot, Dataplane V2) enforces
+  # NetworkPolicy but dev (Standard) does not, so dev cannot validate the
+  # policies before prod. Turning this on is its own change.
+  networkPolicy:
+    create: false
 
 configs:
   cm:
@@ -15,16 +22,20 @@ configs:
     # applied. The flag was added for the zitadel overlays, which use
     # `valuesFile: ../../base/values.yaml` for shared Helm chart values
     # (see `k8s/namespaces/zitadel/base/kustomization.yaml` for full
-    # rationale). Other existing overlays (external-secrets, reloader,
-    # nats, keda, atlas-operator) do not currently use out-of-tree file
-    # references — verified at this commit — so the flag widens the
-    # defence-in-depth boundary but does not silently enable any
-    # existing-but-prohibited reference.
+    # rationale). The prod nats overlay now relies on it too: it pulls
+    # `../../base/jetstream` and `valuesFile: ../../base/nack-values.yaml`
+    # so the JetStream CRs and NACK stay defined once. Other overlays
+    # (external-secrets, reloader, keda, atlas-operator) use no out-of-tree
+    # file references.
     #
     # Documented Kustomize trade-off (loss of kustomization
     # relocatability) is acceptable: no overlay in this repo is
     # designed to be moved/copied to another path.
     kustomize.buildOptions: "--enable-helm --load-restrictor=LoadRestrictionsNone"
+    # Argo CD 3.5 changed the default to 120s + 60s jitter. Pin the previous
+    # 180s so the upgrade does not raise reconcile frequency on a controller
+    # that has already been OOMKilled under concurrent diffs (see below).
+    timeout.reconciliation: 180s
   params:
     # Use server-side diff for accurate sync status on GKE Autopilot.
     # Without this, ArgoCD uses legacy 3-way diff which reports false
