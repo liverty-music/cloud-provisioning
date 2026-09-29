@@ -24,6 +24,11 @@ lint-ts:
 # scripts/check-crd-versions.py, which is what catches an unserved apiVersion.
 KUBERNETES_VERSION ?= 1.35.0
 CRDS_CATALOG_REF ?= ad3b08c5045129d7bb1eeffd8e61719b2c8dd1e2
+# Downloaded schemas are cached so a flaky network (the pre-commit gate runs
+# this locally) does not fail lint-k8s on a fetch. The Kubernetes schemas are
+# published per released version and the catalog is pinned to a commit, so a
+# cached copy does not go stale; changing either variable changes the URL.
+KUBECONFORM_CACHE ?= $(HOME)/.cache/kubeconform
 
 lint-k8s:
 	mkdir -p /tmp/rendered
@@ -37,7 +42,8 @@ lint-k8s:
 	./scripts/check-spot-nodeselector.sh /tmp/rendered
 	rm -rf /tmp/crd-schemas
 	./scripts/check-crd-versions.py /tmp/rendered /tmp/crd-schemas
-	kubeconform -summary -strict \
+	mkdir -p $(KUBECONFORM_CACHE)
+	kubeconform -summary -strict -cache $(KUBECONFORM_CACHE) \
 		-kubernetes-version $(KUBERNETES_VERSION) \
 		-skip CustomResourceDefinition \
 		-schema-location default \
