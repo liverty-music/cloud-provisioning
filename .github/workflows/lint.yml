@@ -8,6 +8,8 @@ on:
       - "k8s/**"
       - ".kube-linter.yaml"
       - "scripts/check-spot-nodeselector.sh"
+      - "scripts/check-crd-versions.py"
+      - ".mise.toml"
       - "Makefile"
       - ".github/workflows/lint.yml"
   pull_request:
@@ -15,6 +17,8 @@ on:
       - "k8s/**"
       - ".kube-linter.yaml"
       - "scripts/check-spot-nodeselector.sh"
+      - "scripts/check-crd-versions.py"
+      - ".mise.toml"
       - "Makefile"
       - ".github/workflows/lint.yml"
 
@@ -44,6 +48,24 @@ jobs:
           curl -sLO "https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz"
           tar -xzf kube-linter-linux.tar.gz
           sudo install kube-linter /usr/local/bin/
+
+      # Version comes from .mise.toml, the single pin Renovate updates (the
+      # mise manager); the tarball is verified against the release's own
+      # CHECKSUMS file.
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^kubeconform = "\(.*\)"$/\1/p' .mise.toml)"
+          test -n "$version"
+          base="https://github.com/yannh/kubeconform/releases/download/v${version}"
+          curl -sSfLO "${base}/kubeconform-linux-amd64.tar.gz"
+          curl -sSfL "${base}/CHECKSUMS" | grep ' kubeconform-linux-amd64.tar.gz$' | sha256sum -c -
+          tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
+          sudo install kubeconform /usr/local/bin/
+
+      # scripts/check-crd-versions.py parses the rendered manifests.
+      - name: Install PyYAML
+        run: python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y --no-install-recommends python3-yaml
 
       - name: Run make lint-k8s
         run: make lint-k8s
