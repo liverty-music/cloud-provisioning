@@ -66,8 +66,8 @@ export const LOGIN_EVENT_PATH = '/account-login-event'
  * Zitadel instance is split into two orgs:
  *   - `admin` role org — created by Zitadel at first-instance bootstrap
  *     because the configmap sets `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`.
- *     Hosts the `pulumi-admin` machine user (used by Pulumi to authenticate),
- *     the `login-client` machine user (Login V2 PAT host), and human admins.
+ *     Hosts the `pulumi-admin` machine user (used by Pulumi to authenticate)
+ *     and human admins.
  *   - `liverty-music` product org — created by Pulumi via `zitadel.Org`.
  *     Hosts the product Project, ApplicationOidc, end-user LoginPolicy,
  *     `backend-app` machine user, and end-user accounts.

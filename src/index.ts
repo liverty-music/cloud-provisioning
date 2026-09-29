@@ -215,9 +215,9 @@ if (env === 'prod') {
 // Single unified `Zitadel` class per `refactor-unify-env-dispatch`. The
 // admin SA JWT is read from GSM `zitadel-machine-key-for-pulumi-admin`
 // (populated once by the in-cluster `bootstrap-uploader` sidecar on
-// first-instance Zitadel boot) inside the class. Both
-// `zitadelMachineKey` and `zitadelLoginPat` flow through `Gcp` for all
-// envs to create the corresponding GSM Secrets in the standard
+// first-instance Zitadel boot) inside the class. Its credentials (e.g.
+// `zitadelMachineKey`) flow through `Gcp` for all envs to create the
+// corresponding GSM Secrets in the standard
 // `KubernetesComponent.secrets` / `esoOnlySecrets` paths.
 // Skipped when `workloadEnabled=false`: the Zitadel orchestrator talks
 // to the in-cluster Zitadel API which is unreachable while the cluster
@@ -249,7 +249,6 @@ const zitadel = workloadEnabled
 		})
 	: undefined
 const zitadelMachineKey = zitadel?.machineKeyDetails
-const zitadelLoginPat = zitadel?.loginClientToken
 const zitadelWatchdogProbePat = zitadel?.watchdogProbeToken
 const zitadelOrganizerProvisionerKey = zitadel?.organizerProvisionerKeyDetails
 
@@ -269,7 +268,7 @@ const gcp = new Gcp({
 	cloudflareConfig,
 	postmarkConfig,
 	zitadelMachineKey,
-	zitadelLoginPat,
+	zitadelEnabled: zitadel !== undefined,
 	zitadelWatchdogProbePat,
 	zitadelOrganizerProvisionerKey,
 	// HMAC signing key Zitadel generated for the login-event Target
