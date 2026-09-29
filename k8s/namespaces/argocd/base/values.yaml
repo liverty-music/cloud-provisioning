@@ -36,6 +36,20 @@ configs:
     # 180s so the upgrade does not raise reconcile frequency on a controller
     # that has already been OOMKilled under concurrent diffs (see below).
     timeout.reconciliation: 180s
+    # GKE Autopilot's mutating webhook stamps
+    # autopilot.gke.io/selector-toleration on every pod template it adds a
+    # spot toleration to. The key is the platform's, never ours, and it shows
+    # up as a permanent diff whenever a chart renders no pod-template
+    # annotation of its own — NATS chart 2.x did exactly that
+    # (configChecksumAnnotation now defaults to false so config changes
+    # hot-reload instead of rolling the single replica). Ignore that one key
+    # for every workload kind Autopilot mutates, rather than per Application.
+    resource.customizations.ignoreDifferences.apps_StatefulSet: |
+      jqPathExpressions:
+      - '.spec.template.metadata.annotations["autopilot.gke.io/selector-toleration"]'
+    resource.customizations.ignoreDifferences.apps_Deployment: |
+      jqPathExpressions:
+      - '.spec.template.metadata.annotations["autopilot.gke.io/selector-toleration"]'
   params:
     # Use server-side diff for accurate sync status on GKE Autopilot.
     # Without this, ArgoCD uses legacy 3-way diff which reports false
