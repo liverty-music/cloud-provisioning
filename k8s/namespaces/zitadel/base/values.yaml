@@ -239,6 +239,10 @@ env:
 
 login:
   enabled: true
+  # Externally owned X.509 keypair for the Login V2 client (chart 10.x);
+  # see external-secret-login-service-key.yaml for why the chart must not
+  # generate it. Chart 9.x ignores this key, so it can land before the bump.
+  loginServiceKeySecretName: zitadel-login-service-key
   # Login UI's chart-natural name is `<zitadel.fullname>-login` —
   # `login.fullnameOverride` is NOT honored by the chart templates
   # (`_helpers.tpl:38` hard-codes `-login` suffix). So the Service /
