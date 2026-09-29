@@ -3,6 +3,13 @@ kind: Kustomization
 
 namespace: nats
 
+# Declarative JetStream Stream/Consumer CRs, reconciled by NACK (below) — the
+# same set prod runs. Without them a recreated dev cluster would have NATS but
+# no streams or durables, and the event-consumer ScaledObject would sit in
+# TriggerError on consumers that never exist.
+resources:
+- ../../base/jetstream
+
 helmCharts:
 - name: nats
   repo: https://nats-io.github.io/k8s/helm/charts/
@@ -10,6 +17,17 @@ helmCharts:
   releaseName: nats
   namespace: nats
   valuesFile: values.yaml
+# NACK — the exclusive owner of JetStream streams/consumers. Unlike prod
+# (whose CRDs were installed by hand at the cut-over), dev is torn down
+# between uses and comes back as an empty cluster, so the chart installs the
+# CRDs here.
+- name: nack
+  repo: https://nats-io.github.io/k8s/helm/charts/
+  version: 0.35.0
+  releaseName: nack
+  namespace: nats
+  includeCRDs: true
+  valuesFile: ../../base/nack-values.yaml
 
 # Spot VM patch for dev cost reduction
 patches:
@@ -26,6 +44,22 @@ patches:
           nodeSelector:
             cloud.google.com/gke-spot: "true"
           # GKE Autopilot injects seccompProfile on all pods
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+- target:
+    kind: Deployment
+    name: nack
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: nack
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            cloud.google.com/gke-spot: "true"
           securityContext:
             seccompProfile:
               type: RuntimeDefault
