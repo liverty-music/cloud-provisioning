@@ -13,6 +13,10 @@ config:
         storageClassName: premium-rwo
 
 container:
+  # NATS 2.12 changed its memory usage pattern; without a soft limit the Go
+  # runtime can grow past the 256Mi container limit before collecting.
+  env:
+    GOMEMLIMIT: 200MiB
   merge:
     resources:
       requests:
