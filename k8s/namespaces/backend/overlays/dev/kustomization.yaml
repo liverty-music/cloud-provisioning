@@ -194,6 +194,12 @@ patches:
     kind: CronJob
     name: sales-phase-discovery-app
 
+# CronJob: TEMPORARY suspend of Gemini discovery jobs (see patch file header)
+- path: cronjob/suspend-gemini-discovery_patch.yaml
+  target:
+    kind: CronJob
+    name: (concert|sales-phase)-discovery-app
+
 # Right-size resources for event-consumer in dev
 - target:
     kind: Deployment
