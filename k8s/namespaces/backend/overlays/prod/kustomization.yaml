@@ -83,6 +83,11 @@ patches:
   - path: spot-vm_patch_cronjob.yaml
     target:
       kind: CronJob
+  # TEMPORARY suspend of Gemini discovery jobs (see patch file header)
+  - path: cronjob/suspend-gemini-discovery_patch.yaml
+    target:
+      kind: CronJob
+      name: (concert|sales-phase)-discovery-app
   # fan-api — HA (prod): 2 replicas hard-spread across nodes (DoNotSchedule — a
   # soft spread lost to the prefer-Spot nodeAffinity) so a single node loss
   # (Spot preemption / drain / upgrade) can't drop the fan-facing API. Safe:
