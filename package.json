@@ -19,7 +19,7 @@
     "@types/node": "24.19.0",
     "ts-node": "10.9.2",
     "typescript": "5.9.3",
-    "vitest": "5.0.1"
+    "vitest": "5.0.2"
   },
   "dependencies": {
     "@pulumi/cloudflare": "^6.15.0",
