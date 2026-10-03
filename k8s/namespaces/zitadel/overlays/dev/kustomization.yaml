@@ -10,7 +10,7 @@ namespace: zitadel
 helmCharts:
 - name: zitadel
   repo: https://charts.zitadel.com
-  version: 10.0.6
+  version: 10.3.0
   releaseName: zitadel
   namespace: zitadel
   includeCRDs: false
