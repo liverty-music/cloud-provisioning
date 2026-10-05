@@ -49,6 +49,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly clusterSecretStoreNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly externalSecretNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly argocdControlPlaneDownAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly containerCrashLoopAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
 	public readonly webPushDeliveryFailureMetric: gcp.logging.Metric
@@ -698,6 +699,79 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 			{ parent: this },
 		)
 		this.alertPolicies.push(this.argocdControlPlaneDownAlertPolicy)
+
+		// Container crash-loop alert, cluster-wide.
+		//
+		// Covers the crash loop that ArgoCD health cannot see: a container that
+		// passes readiness, runs for a while, then exits (OOM under load, a panic
+		// after some minutes, a dropped dependency). Argo CD reports a Deployment
+		// as Healthy whenever its replicas are available at evaluation time, so
+		// every restart flips the Application back to Healthy and resets the
+		// `on-health-progressing-stuck` timer; neither Google Chat nor the
+		// incident-triage workflow is notified (confirmed by the 2026-10-05
+		// end-to-end test, OpenSpec change `autonomous-incident-response`).
+		//
+		// Counting restarts does not depend on ArgoCD. Baseline is zero restarts
+		// across every namespace, so more than 3 in 30 minutes is a real crash
+		// loop, not noise. Grouped by namespace and container so a replaced pod
+		// keeps the same series.
+		this.containerCrashLoopAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-container-crash-loop',
+			{
+				displayName: 'Container Crash Loop',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'Container restarted more than 3 times in 30m',
+						conditionThreshold: {
+							filter: pulumi.interpolate`metric.type="kubernetes.io/container/restart_count" AND resource.type="k8s_container" AND resource.labels.project_id="${projectId}" AND resource.labels.location="${clusterLocation}" AND resource.labels.cluster_name="${clusterName}"`,
+							aggregations: [
+								{
+									alignmentPeriod: '1800s', // 30-minute window
+									perSeriesAligner: 'ALIGN_DELTA',
+									crossSeriesReducer: 'REDUCE_SUM',
+									groupByFields: [
+										'resource.label.namespace_name',
+										'resource.label.container_name',
+									],
+								},
+							],
+							comparison: 'COMPARISON_GT',
+							thresholdValue: 3,
+							duration: '0s',
+							trigger: { count: 1 },
+						},
+					},
+				],
+				alertStrategy: {
+					// notificationRateLimit is rejected by the GCP API on
+					// metric (non-log-based) policies.
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Container Crash Loop Alert',
+						'',
+						'A container restarted more than 3 times in 30 minutes. This catches crash loops ArgoCD does not report: a container that passes readiness and runs for a while before exiting makes the Application flip back to Healthy on every restart, so no ArgoCD notification or automated incident triage fires for it.',
+						'',
+						'### Alert Labels',
+						'- `namespace_name`, `container_name`: the crashing container.',
+						'',
+						'### Triage Steps',
+						'1. Get cluster credentials (docs/runbooks/prod-cluster-credentials.md), then find the pod: `kubectl get pods -n <namespace_name>` and `kubectl describe pod <pod> -n <namespace_name>` (`Last State`, `Reason`, exit code; `OOMKilled` means the memory limit is too low).',
+						'2. Read the output of the crashed instances: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="<namespace_name>" AND resource.labels.container_name="<container_name>"\' --limit=100 --freshness=1h`.',
+						'3. Check recent changes to the workload: `git log -- k8s/namespaces/<namespace_name>/`.',
+						'4. To have Claude investigate, dispatch the incident-triage workflow by hand for the ArgoCD Application (docs/runbooks/incident-triage.md).',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(this.containerCrashLoopAlertPolicy)
 
 		// Sales-reminder delivery outcome metric.
 		//
