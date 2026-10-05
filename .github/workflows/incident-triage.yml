@@ -104,6 +104,22 @@ jobs:
           location: asia-northeast2
           project_id: ${{ vars.PROJECT_ID }}
 
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (set on the Claude step) requires
+      # bubblewrap; without it Claude Code refuses to start. claude-code-action
+      # installs it only when `allowed_non_write_users` is set, so mirror that
+      # step (action.yml @cfc3eb2, "Install subprocess isolation dependencies").
+      # Unlike the action's best-effort step, a failure here stops the job:
+      # Claude must not run without the scrubbing.
+      - name: Install subprocess isolation dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          # Ubuntu 24.04+ restricts unprivileged user namespaces via AppArmor;
+          # the sysctl does not exist on older kernels.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Run Claude triage
         id: claude
         # Leaves time inside the job timeout for the report upload.

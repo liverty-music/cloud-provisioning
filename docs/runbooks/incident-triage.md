@@ -118,7 +118,8 @@ Claude Code's allowlist in the workflow (`settings`): `kubectl get|describe|even
 `--server` / `-s` / `--kubeconfig` / `--token`, `gcloud` `--access-token-file` /
 `--impersonate-service-account`, `git --output`, `env` / `printenv`, web and GitHub MCP
 tools. `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` removes the Anthropic credential from Bash
-subprocesses, and the job's `GITHUB_TOKEN` is read-only. The Issues-write token exists
+subprocesses (it requires bubblewrap, which the job installs before the Claude step;
+without it Claude Code refuses to start), and the job's `GITHUB_TOKEN` is read-only. The Issues-write token exists
 only in the `report` job, where Claude never runs.
 
 Widen the allowlist only with read-only subcommands, after reviewing real runs whose
