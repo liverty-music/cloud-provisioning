@@ -7,8 +7,9 @@ on:
     paths:
       - "k8s/**"
       - ".kube-linter.yaml"
-      - "scripts/check-spot-nodeselector.sh"
-      - "scripts/check-crd-versions.py"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
       - ".mise.toml"
       - "Makefile"
       - ".github/workflows/lint.yml"
@@ -16,8 +17,9 @@ on:
     paths:
       - "k8s/**"
       - ".kube-linter.yaml"
-      - "scripts/check-spot-nodeselector.sh"
-      - "scripts/check-crd-versions.py"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
       - ".mise.toml"
       - "Makefile"
       - ".github/workflows/lint.yml"
@@ -63,9 +65,15 @@ jobs:
           tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
           sudo install kubeconform /usr/local/bin/
 
-      # scripts/check-crd-versions.py parses the rendered manifests.
-      - name: Install PyYAML
-        run: python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y --no-install-recommends python3-yaml
+      # The check scripts (scripts/*.ts) run on Node and parse the rendered
+      # manifests with the `yaml` devDependency.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run make lint-k8s
         run: make lint-k8s

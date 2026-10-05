@@ -27,6 +27,8 @@ jobs:
           filters: |
             src:
               - 'src/**'
+              - 'scripts/**'
+              - 'vitest.config.ts'
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig.json'
