@@ -312,8 +312,11 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				cdnPolicy: {
 					cacheMode: 'FORCE_CACHE_ALL',
 					// 1 year — matches the backend's immutable Cache-Control.
+					// No maxTtl: with FORCE_CACHE_ALL "the TTL is always set to
+					// the default TTL; you can't set a max TTL" (Cloud CDN TTL
+					// overrides), and the API returning 0 for it made every
+					// `pulumi up` report a diff.
 					defaultTtl: 31536000,
-					maxTtl: 31536000,
 					clientTtl: 31536000,
 				},
 			},
