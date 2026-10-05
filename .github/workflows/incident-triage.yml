@@ -71,6 +71,10 @@ jobs:
       contents: read
       # WIF token exchange for the read-only `incident-triage` SA.
       id-token: write
+    # Lets the report job say at which stage a failed run stopped.
+    outputs:
+      claude_outcome: ${{ steps.claude.outcome }}
+      claude_conclusion: ${{ steps.claude.outputs.conclusion }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -103,6 +107,22 @@ jobs:
           cluster_name: autopilot-cluster-osaka
           location: asia-northeast2
           project_id: ${{ vars.PROJECT_ID }}
+
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (set on the Claude step) requires
+      # bubblewrap; without it Claude Code refuses to start. claude-code-action
+      # installs it only when `allowed_non_write_users` is set, so mirror that
+      # step (action.yml @cfc3eb2, "Install subprocess isolation dependencies").
+      # Unlike the action's best-effort step, a failure here stops the job:
+      # Claude must not run without the scrubbing.
+      - name: Install subprocess isolation dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          # Ubuntu 24.04+ restricts unprivileged user namespaces via AppArmor;
+          # the sysctl does not exist on older kernels.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
 
       - name: Run Claude triage
         id: claude
@@ -219,8 +239,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APP: ${{ inputs.app }}
           TRIGGER: ${{ inputs.trigger }}
+          PAYLOAD: ${{ inputs.payload }}
           TRIAGE_RESULT: ${{ needs.triage.result }}
-          # Only used to refuse posting a report that contains it.
+          CLAUDE_OUTCOME: ${{ needs.triage.outputs.claude_outcome }}
+          CLAUDE_CONCLUSION: ${{ needs.triage.outputs.claude_conclusion }}
+          # Only used to refuse posting text that contains it.
           OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           set -euo pipefail
@@ -228,33 +251,86 @@ jobs:
           body=$(mktemp)
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+          # ArgoCD Notifications always dispatches as the cluster-bot App; any
+          # other actor is a person running the workflow by hand. Manual runs
+          # get their own title prefix so they never absorb, or get absorbed
+          # by, a real incident for the same Application.
+          if [ "$GITHUB_ACTOR" = "liverty-music-cluster-bot[bot]" ]; then
+            manual=""
+          else
+            manual="[manual] "
+          fi
+
+          leaks_secret() {
+            # Compare against the token without putting it on a command line.
+            if [ -n "${OAUTH_TOKEN:-}" ] && grep -qF -f <(printenv OAUTH_TOKEN) "$1"; then
+              return 0
+            fi
+            grep -q 'ya29\.' "$1"
+          }
+
+          # Why a run did not succeed, from the most to the least specific signal.
+          stage=""
+          if [ "$TRIAGE_RESULT" = "cancelled" ]; then
+            stage="The triage job timed out or was cancelled."
+          elif [ "$TRIAGE_RESULT" != "success" ]; then
+            case "$CLAUDE_OUTCOME/$CLAUDE_CONCLUSION" in
+              failure/failure) stage="Claude ran but did not finish successfully (error or turn cap)." ;;
+              failure/*) stage="Claude Code failed to start." ;;
+              success/*) stage="The triage job failed after Claude finished." ;;
+              *) stage="Setup failed before Claude started (checkout, GCP authentication, GKE credentials or dependency install)." ;;
+            esac
+          fi
+
           {
             echo "**Application:** \`${APP}\` · **Trigger:** \`${TRIGGER}\` · [workflow run](${run_url})"
+            if [ -n "$manual" ]; then
+              echo
+              echo "Manual run by @${GITHUB_ACTOR}, not an ArgoCD notification."
+            fi
             echo
-            if [ "$TRIAGE_RESULT" != "success" ]; then
+            if [ -n "$stage" ]; then
               echo "> [!WARNING]"
-              echo "> Truncated: the triage job ended with result \`${TRIAGE_RESULT}\` (turn cap, timeout or error). The report below may be incomplete."
+              if [ -s "$report" ]; then
+                echo "> The triage run did not finish: ${stage} The report below may be incomplete."
+              else
+                echo "> No report was produced: ${stage} See the [workflow run](${run_url}) for details."
+              fi
               echo
             fi
           } > "$body"
 
-          leaks_secret() {
-            # Compare against the token without putting it on a command line.
-            if [ -n "${OAUTH_TOKEN:-}" ] && grep -qF -f <(printenv OAUTH_TOKEN) "$report"; then
-              return 0
-            fi
-            grep -q 'ya29\.' "$report"
-          }
-
           if [ ! -s "$report" ]; then
-            echo "No report produced. See the [workflow run](${run_url}) for details." >> "$body"
-          elif leaks_secret; then
+            if [ -z "$stage" ]; then
+              echo "No report was produced although the triage job succeeded. See the [workflow run](${run_url})." >> "$body"
+            fi
+          elif leaks_secret "$report"; then
             echo "::warning::Report withheld: it contains a credential pattern."
             echo "Report withheld: it contained a credential pattern. See the [workflow run](${run_url}); the report artifact was not posted." >> "$body"
           else
             # Stay below GitHub's 65536-character body limit.
-            head -c 60000 "$report" >> "$body"
+            head -c 50000 "$report" >> "$body"
           fi
+
+          # The ArgoCD status at dispatch time, so the Issue carries the
+          # incident even when Claude produced nothing.
+          snapshot=$(mktemp)
+          printenv PAYLOAD | head -c 8000 > "$snapshot"
+          {
+            echo
+            echo "<details><summary>ArgoCD status at dispatch time</summary>"
+            echo
+            if leaks_secret "$snapshot"; then
+              echo "Withheld: it contained a credential pattern."
+            else
+              echo '````json'
+              # Pretty-print when it is JSON; always end with a newline.
+              { jq . "$snapshot" 2>/dev/null || cat "$snapshot"; } | sed -e '$a\'
+              echo '````'
+            fi
+            echo
+            echo "</details>"
+          } >> "$body"
 
           # Ensure the label exists (`--force` makes this idempotent). It is not
           # managed by Pulumi: label writes need Issues: write, which the Pulumi
@@ -262,7 +338,7 @@ jobs:
           gh label create incident --repo "$GITHUB_REPOSITORY" --color b60205 \
             --description "Automated incident triage report (incident-triage workflow)" --force
 
-          prefix="[incident] ${APP}:"
+          prefix="[incident] ${manual}${APP}:"
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label incident --state open \
             --limit 200 --json number,title |
             jq -r --arg p "$prefix" '[.[] | select(.title | startswith($p))][0].number // empty')
@@ -271,5 +347,5 @@ jobs:
             gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body-file "$body"
           else
             gh issue create --repo "$GITHUB_REPOSITORY" --label incident \
-              --title "[incident] ${APP}: ${TRIGGER}" --body-file "$body"
+              --title "${prefix} ${TRIGGER}" --body-file "$body"
           fi
