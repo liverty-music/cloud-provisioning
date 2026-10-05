@@ -68,9 +68,6 @@ export interface GitHubRepositoryComponentArgs {
 	 * `autonomous-incident-response` D10.
 	 */
 	operatorOwnedVariables?: Record<string, pulumi.Input<string>>
-	/** Issue labels managed on the repository (repository-wide, so set them
-	 *  from one stack only). */
-	issueLabels?: { name: string; color: string; description: string }[]
 }
 
 export class GitHubRepositoryComponent extends pulumi.ComponentResource {
@@ -104,7 +101,6 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			botBypassAppId,
 			repositorySecrets,
 			operatorOwnedVariables,
-			issueLabels,
 		} = args
 
 		// Use a new provider instance to ensure we can use it in any stack
@@ -206,19 +202,6 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 					},
 					{ provider, parent: this, ignoreChanges: ['value'] },
 				),
-			)
-		}
-
-		for (const label of issueLabels ?? []) {
-			new github.IssueLabel(
-				`${repositoryName}-label-${label.name}`,
-				{
-					repository: repositoryName,
-					name: label.name,
-					color: label.color,
-					description: label.description,
-				},
-				{ provider, parent: this },
 			)
 		}
 

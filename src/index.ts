@@ -414,17 +414,6 @@ new GitHubRepositoryComponent({
 	// flip it in the GitHub UI and Pulumi does not revert it.
 	operatorOwnedVariables:
 		env === 'prod' ? { INCIDENT_TRIAGE_ENABLED: 'false' } : undefined,
-	issueLabels:
-		env === 'prod'
-			? [
-					{
-						name: 'incident',
-						color: 'b60205',
-						description:
-							'Automated incident triage report (incident-triage workflow)',
-					},
-				]
-			: undefined,
 	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
 	// Admin-reviewer gate for the `bump-prod-pin.yml` manual recovery path.

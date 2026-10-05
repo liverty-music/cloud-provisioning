@@ -256,6 +256,12 @@ jobs:
             head -c 60000 "$report" >> "$body"
           fi
 
+          # Ensure the label exists (`--force` makes this idempotent). It is not
+          # managed by Pulumi: label writes need Issues: write, which the Pulumi
+          # GitHub token does not have, while this job's GITHUB_TOKEN does.
+          gh label create incident --repo "$GITHUB_REPOSITORY" --color b60205 \
+            --description "Automated incident triage report (incident-triage workflow)" --force
+
           prefix="[incident] ${APP}:"
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label incident --state open \
             --limit 200 --json number,title |
