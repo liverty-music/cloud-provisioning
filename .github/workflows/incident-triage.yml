@@ -101,12 +101,29 @@ jobs:
           workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.INCIDENT_TRIAGE_SA_EMAIL }}
 
+      # The auth action hands credentials to tools through environment
+      # variables (CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE, KUBECONFIG via
+      # get-gke-credentials), which CLAUDE_CODE_SUBPROCESS_ENV_SCRUB removes
+      # from Claude's Bash subprocesses: the first verification run got
+      # "You do not currently have an active account selected" from gcloud.
+      # setup-gcloud registers the credential in gcloud's own config
+      # (`gcloud auth login --cred-file`, from GOOGLE_GHA_CREDS_PATH), the same
+      # pattern bump-prod-pin.yml uses.
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3.0.0
         with:
           cluster_name: autopilot-cluster-osaka
           location: asia-northeast2
           project_id: ${{ vars.PROJECT_ID }}
+
+      # get-gke-credentials writes the kubeconfig into the workspace and points
+      # KUBECONFIG at it; copy it to kubectl's default path so kubectl still
+      # finds it once KUBECONFIG is scrubbed.
+      - name: Install kubeconfig at the default path
+        run: install -D -m 0600 "$KUBECONFIG" "$HOME/.kube/config"
 
       # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (set on the Claude step) requires
       # bubblewrap; without it Claude Code refuses to start. claude-code-action
@@ -197,6 +214,8 @@ jobs:
                   "Read(./.git/**)",
                   "Read(**/gha-creds-*.json)",
                   "Read(**/gha-kubeconfig-*)",
+                  "Read(~/.kube/**)",
+                  "Read(~/.config/gcloud/**)",
                   "WebFetch",
                   "WebSearch",
                   "mcp__github",

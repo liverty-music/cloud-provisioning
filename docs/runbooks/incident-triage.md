@@ -124,12 +124,17 @@ is read-only.
 Claude Code's allowlist in the workflow (`settings`): `kubectl get|describe|events`,
 `gcloud logging read`, `gcloud container clusters describe`, `git log|show`, `Read` /
 `Glob` / `Grep` in the checkout (excluding `.git/`, `gha-creds-*.json`,
-`gha-kubeconfig-*`), `Write` / `Edit` on `triage-report.md` only. Denied: `kubectl`
+`gha-kubeconfig-*`, `~/.kube/`, `~/.config/gcloud/`), `Write` / `Edit` on `triage-report.md` only. Denied: `kubectl`
 `--server` / `-s` / `--kubeconfig` / `--token`, `gcloud` `--access-token-file` /
 `--impersonate-service-account`, `git --output`, `env` / `printenv`, web and GitHub MCP
 tools. `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` removes the Anthropic credential from Bash
 subprocesses (it requires bubblewrap, which the job installs before the Claude step;
-without it Claude Code refuses to start), and the job's `GITHUB_TOKEN` is read-only. The Issues-write token exists
+without it Claude Code refuses to start), and the job's `GITHUB_TOKEN` is read-only.
+Because the scrubbing also removes credential environment variables, the job registers
+the GCP credential in gcloud's config (`setup-gcloud`) and copies the kubeconfig to
+`~/.kube/config` instead of relying on `CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE` /
+`KUBECONFIG`. Commands must put the subcommand first (`kubectl get pods -n x`, not
+`kubectl -n x get pods`): the allowlist is a prefix match. The Issues-write token exists
 only in the `report` job, where Claude never runs.
 
 Widen the allowlist only with read-only subcommands, after reviewing real runs whose
