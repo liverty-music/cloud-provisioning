@@ -14,6 +14,11 @@ export interface GcpConfig {
 	vapidPrivateKey?: string
 	/** Google Chat incoming webhook URL for ArgoCD Notifications. */
 	argocdGoogleChatWebhookUrl?: string
+	/** PEM private key of the `liverty-music-cluster-bot` GitHub App
+	 *  (Actions: write on `cloud-provisioning` only). ESO mints short-lived
+	 *  installation tokens from it for ArgoCD Notifications to dispatch the
+	 *  `incident-triage` workflow. See docs/runbooks/incident-triage.md. */
+	argocdClusterBotPrivateKey?: string
 	/** Email address to receive Cloud Billing Budget alerts. */
 	billingAlertEmail?: string
 	/** Monthly Cloud Billing Budget amount, JPY units (e.g., `"3000"` for ¥3,000).

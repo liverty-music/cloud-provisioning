@@ -15,6 +15,12 @@ export const Roles = {
 	},
 	Logging: {
 		LogWriter: 'roles/logging.logWriter',
+		Viewer: 'roles/logging.viewer',
+	},
+	Container: {
+		/** Read-only access to GKE clusters and Kubernetes objects (incl.
+		 *  CRDs and events). Excludes `pods/log`, `pods/exec` and Secrets. */
+		Viewer: 'roles/container.viewer',
 	},
 	Monitoring: {
 		MetricWriter: 'roles/monitoring.metricWriter',

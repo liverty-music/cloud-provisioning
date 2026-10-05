@@ -129,6 +129,7 @@ export class Gcp {
 	public readonly projectId: pulumi.Output<string>
 	public readonly region: string = Regions.Osaka
 	public readonly githubActionsSAEmail: pulumi.Output<string>
+	public readonly incidentTriageSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
 	/** Workload-tier resources — all defined together when
 	 *  `workloadEnabled=true`, or the whole group is undefined when the
@@ -570,6 +571,20 @@ export class Gcp {
 								},
 							]
 						: []),
+					// Private key of the `liverty-music-cluster-bot` GitHub App. The
+					// ESO `GithubAccessToken` generator in the `argocd` namespace
+					// mints 1-hour installation tokens (Actions: write) from it so
+					// ArgoCD Notifications can dispatch `incident-triage.yml`.
+					...(gcpConfig.argocdClusterBotPrivateKey
+						? [
+								{
+									name: 'argocd-cluster-bot-private-key',
+									value: pulumi.secret(
+										gcpConfig.argocdClusterBotPrivateKey,
+									),
+								},
+							]
+						: []),
 					// X.509 keypair for the Login V2 client (Zitadel chart 10.x). ESO
 					// mirrors both halves into the `zitadel-login-service-key` TLS
 					// Secret named by `login.loginServiceKeySecretName`.
@@ -703,6 +718,7 @@ export class Gcp {
 		})
 		this.githubWorkloadIdentityProvider = wif.githubProvider.name
 		this.githubActionsSAEmail = wif.githubActionsSA.email
+		this.incidentTriageSAEmail = wif.incidentTriageSA.email
 
 		// 8. Monitoring (Log-Based Alerts + Notification Channels).
 		// Runs in all envs (per `refactor-unify-env-dispatch` D4). The outer
