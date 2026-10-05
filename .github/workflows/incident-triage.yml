@@ -287,6 +287,13 @@ jobs:
             manual="[manual] "
           fi
 
+          # Claude has ended a report with a stray `</content>` line (an
+          # artifact of its file-writing tool, seen on 2026-10-05). Drop lines
+          # that consist only of such a tag before posting.
+          if [ -f "$report" ]; then
+            sed -i -E '/^[[:space:]]*<\/?content>[[:space:]]*$/d' "$report"
+          fi
+
           leaks_secret() {
             # Compare against the token without putting it on a command line.
             if [ -n "${OAUTH_TOKEN:-}" ] && grep -qF -f <(printenv OAUTH_TOKEN) "$1"; then
