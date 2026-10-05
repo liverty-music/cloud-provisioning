@@ -22,6 +22,53 @@ patches:
     kind: ConfigMap
     name: argocd-notifications-cm
 
+# Automated incident triage is prod-only (OpenSpec change
+# autonomous-incident-response). Without these patches a restarted dev cluster
+# would fail to sync argocd-notifications-secret (dev Secret Manager holds no
+# cluster-bot key, and the generator failure blocks the Google Chat URL too) and
+# would dispatch triage runs, which investigate prod, for dev Applications.
+# Drop the token generator, its key, the token from the notifications Secret,
+# and the webhook service and its subscription. The templates' webhook parts
+# stay but are inert without a subscribed `incident-triage` service.
+- target:
+    group: generators.external-secrets.io
+    kind: GithubAccessToken
+    name: argocd-cluster-bot-token
+  patch: |-
+    $patch: delete
+    apiVersion: generators.external-secrets.io/v1alpha1
+    kind: GithubAccessToken
+    metadata:
+      name: argocd-cluster-bot-token
+- target:
+    group: external-secrets.io
+    kind: ExternalSecret
+    name: argocd-cluster-bot-private-key
+  patch: |-
+    $patch: delete
+    apiVersion: external-secrets.io/v1
+    kind: ExternalSecret
+    metadata:
+      name: argocd-cluster-bot-private-key
+- target:
+    group: external-secrets.io
+    kind: ExternalSecret
+    name: argocd-notifications-secret
+  patch: |-
+    - op: remove
+      path: /spec/dataFrom
+- target:
+    kind: ConfigMap
+    name: argocd-notifications-cm
+  patch: |-
+    - op: remove
+      path: /data/service.webhook.incident-triage
+    - op: replace
+      path: /data/subscriptions
+      value: |
+        - recipients:
+          - googlechat:alertSpace
+
 # Right-size CPU/memory requests for dev
 - target:
     kind: StatefulSet
