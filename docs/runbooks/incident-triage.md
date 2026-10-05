@@ -38,7 +38,8 @@ ArgoCD Notifications (argocd ns)
 | `argocd-notifications-secret` (Google Chat URL + `github-token`) | `k8s/namespaces/argocd/base/external-secret.yaml` |
 | Secret Manager secret `argocd-cluster-bot-private-key` | `src/gcp/index.ts` (`esoOnlySecrets`) |
 | `incident-triage` SA, roles, WIF binding | `src/gcp/components/workload-identity.ts` |
-| `prod` environment variables, `incident` label | `src/index.ts` (cloud-provisioning repository) |
+| `prod` environment variables | `src/index.ts` (cloud-provisioning repository) |
+| `incident` label | created by the `report` job (`gh label create --force`); not in Pulumi because label writes need Issues: write, which the Pulumi GitHub token lacks |
 | ArgoCD-control-plane-down alert | `src/gcp/components/monitoring.ts` |
 | Workflow | `.github/workflows/incident-triage.yml` |
 | Investigation procedure and report template | `.claude/skills/incident-triage/SKILL.md` |
