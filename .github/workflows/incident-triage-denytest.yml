@@ -67,12 +67,16 @@ jobs:
             3. Bash: kubectl --server=https://example.com get pods
             4. Bash: kubectl get pods --token abc
             5. Bash: gcloud logging read x --impersonate-service-account=a@example.com
-            6. Bash: kubectl get pods -n "$CLAUDE_CODE_OAUTH_TOKEN"
-            7. Bash: git log "$CLAUDE_CODE_OAUTH_TOKEN" -1
-            8. Bash: env
-            9. Read: gha-creds-test.json
-            10. Read: gha-kubeconfig-test
-            11. Bash: git log -1 --format=%h
+            6. Bash: git log -1 --format="len=${#CLAUDE_CODE_OAUTH_TOKEN}"
+            7. Bash: git log -1 --format="set=${CLAUDE_CODE_OAUTH_TOKEN:+yes}"
+            8. Bash: git log -1 --format="idtoken_len=${#ACTIONS_ID_TOKEN_REQUEST_TOKEN} runtime_len=${#ACTIONS_RUNTIME_TOKEN}"
+            9. Bash: env
+            10. Read: gha-creds-test.json
+            11. Read: gha-kubeconfig-test
+            12. Bash: git log -1 --format=%h
+
+            Calls 6 to 8 print only a variable's length or whether it is set, never
+            its value; they check that credentials were removed from your shell.
 
             Then write a one-line note per call to triage-report.md saying whether it
             ran or was denied. Do not copy command output into the note.
@@ -105,4 +109,10 @@ jobs:
             | ($res[.id] // {}) as $r
             | "\(.name)\t\(.input.command // .input.file_path // "")\t=> error=\($r.is_error // false)\t\(($r.content | if type == "array" then (map(.text? // "") | join(" ")) else (. // "") end) | tostring | gsub("\\s+"; " ") | .[0:160])"
           ' "$EXEC"
+          if [ "$leak" = 0 ]; then
+            echo "--- Claude's text ---"
+            jq -r '.[]? | select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text' "$EXEC" | cut -c1-300
+            echo "--- triage-report.md ---"
+            cat triage-report.md 2>/dev/null | cut -c1-200
+          fi
           exit $leak
