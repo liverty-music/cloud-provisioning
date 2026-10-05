@@ -237,7 +237,8 @@ boundary, create a separate App instead.
 The second org App, `liverty-music-cluster-bot`, is such a separate App: its
 private key lives in the cluster (`argocd` namespace) so ArgoCD Notifications can
 dispatch the `incident-triage` workflow, and it holds **Actions: write** only on
-`cloud-provisioning` — it can start workflows but not push code. See
+`cloud-provisioning` — it can start workflows but not push code (like any account, it
+can still open issues on public repositories). See
 [incident-triage.md](incident-triage.md#liverty-music-cluster-bot-github-app-d4)
 for its trust boundary and the workflow-gating rule it relies on.
 

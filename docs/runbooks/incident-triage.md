@@ -202,9 +202,15 @@ of that App's permissions: ci-bot's key would let a cluster compromise push to
    stay valid until they expire (at most 1 hour).
 
 A compromised key lets the holder start, re-run, cancel or disable workflows in
-`cloud-provisioning` (see the gating rule below), not push code. If compromise is
-suspected, also review **Actions** run history for runs started by
-`liverty-music-cluster-bot[bot]`.
+`cloud-provisioning` (see the gating rule below), not push code: a contents write with
+a cluster-bot token returns `403 Resource not accessible by integration` (verified
+2026-10-05). Like any GitHub account, the bot can also open issues and comments on
+**public** repositories, including `cloud-provisioning`; App permissions cannot remove
+that (GitHub: "any actor, including a GitHub App using an installation access token,
+can open an issue in a public repository unless the repository has disabled the
+'Issues' feature", community discussion #157656). A verification token did create an
+issue (#574). If compromise is suspected, also review **Actions** run history and
+issues or comments by `liverty-music-cluster-bot[bot]`.
 
 ## Workflow-gating rule (D3)
 
