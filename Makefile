@@ -3,10 +3,11 @@
 ## lint: all linters — TypeScript (biome + tsc) and K8s manifests (kustomize + kube-linter + spot check)
 lint: lint-ts lint-k8s
 
-## lint-ts: biome check + typecheck for Pulumi code
+## lint-ts: biome check + typecheck for Pulumi code and the lint scripts
 lint-ts:
-	npx biome check src
+	npx biome check src scripts
 	npx tsc --noEmit
+	npx tsc --noEmit -p scripts
 
 ## lint-k8s: render + kube-linter + spot nodeSelector check + CRD version/schema validation for K8s manifests
 ## Renders all four overlay groups (11 namespaces × 2 envs + 1 cluster × 2 envs = 24 overlays).
@@ -21,7 +22,8 @@ lint-ts:
 # CRDS_CATALOG_REF: datreeio/CRDs-catalog pinned to a commit, used only for
 # kinds whose CRDs are not rendered here (Gateway API, NACK, GKE-managed).
 # Rendered CRDs are checked against their own served versions first by
-# scripts/check-crd-versions.py, which is what catches an unserved apiVersion.
+# scripts/check-crd-versions.ts, which is what catches an unserved apiVersion.
+# The check scripts are TypeScript run directly by Node (needs `npm ci`).
 KUBERNETES_VERSION ?= 1.35.0
 CRDS_CATALOG_REF ?= ad3b08c5045129d7bb1eeffd8e61719b2c8dd1e2
 # Downloaded schemas are cached so a flaky network (the pre-commit gate runs
@@ -39,9 +41,9 @@ lint-k8s:
 		kustomize build --enable-helm --load-restrictor=LoadRestrictionsNone "$$overlay" > "/tmp/rendered/$${namespace}-$${env}.yaml" || exit 1; \
 	done
 	kube-linter lint /tmp/rendered --config .kube-linter.yaml
-	./scripts/check-spot-nodeselector.sh /tmp/rendered
+	node scripts/check-spot-nodeselector.ts /tmp/rendered
 	rm -rf /tmp/crd-schemas
-	./scripts/check-crd-versions.py /tmp/rendered /tmp/crd-schemas
+	node scripts/check-crd-versions.ts /tmp/rendered /tmp/crd-schemas
 	mkdir -p $(KUBECONFORM_CACHE)
 	kubeconform -summary -strict -cache $(KUBECONFORM_CACHE) \
 		-kubernetes-version $(KUBERNETES_VERSION) \
@@ -53,7 +55,7 @@ lint-k8s:
 
 ## fix: auto-fix formatting (biome)
 fix:
-	npx biome check --write src
+	npx biome check --write src scripts
 
 ## test: vitest unit tests
 test:

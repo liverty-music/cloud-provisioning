@@ -67,7 +67,7 @@ PATH="$HOME/.local/share/mise/installs/helm/3.17.0/linux-amd64:$PATH" \
 
 # Lint.
 kube-linter lint /tmp/rendered --config .kube-linter.yaml
-./scripts/check-spot-nodeselector.sh /tmp/rendered
+node scripts/check-spot-nodeselector.ts /tmp/rendered
 ```
 
 Or run the full project lint:
