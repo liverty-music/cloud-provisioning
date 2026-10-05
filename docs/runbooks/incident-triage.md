@@ -105,6 +105,15 @@ ArgoCD Notifications is the only trigger. Not covered:
   stay on the Cloud Monitoring → Slack / Google Chat path.
 - Pulumi-managed resources (Cloud SQL, IAM, networking, Secret Manager).
 - A CronJob that has never succeeded (no custom Lua health check).
+- A container that passes readiness, runs for a while and then exits (OOM under load,
+  a panic after some minutes, a dropped dependency). Argo CD reports a Deployment as
+  Healthy whenever its replicas are available at evaluation time, so every restart
+  flips the Application back to Healthy and resets the 15-minute
+  `on-health-progressing-stuck` timer. Confirmed in the 2026-10-05 end-to-end test.
+  The **Container Crash Loop** Cloud Monitoring alert (more than 3 restarts in 30
+  minutes, any namespace) covers it for humans; dispatch a triage by hand if needed.
+  A container that crashes before readiness on every restart stays Progressing and
+  is caught.
 - ArgoCD itself being down — covered instead by the **ArgoCD Control Plane Down** Cloud
   Monitoring alert, routed to the human channels. While it is open, triage is blind.
 
