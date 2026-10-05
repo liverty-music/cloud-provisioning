@@ -173,6 +173,16 @@ jobs:
             --max-turns 25
           # Allowlist (D9). Everything not allowed is denied in headless mode;
           # deny rules win over allow rules.
+          #
+          # With CLAUDE_CODE_SUBPROCESS_ENV_SCRUB the Read deny rules also become
+          # the bubblewrap sandbox's OS-level read denials for every Bash
+          # subprocess. So never deny a path an allowed command needs: `.git`
+          # (git log/show), `~/.kube` (kubectl) and `~/.config/gcloud` (gcloud).
+          # Those stay out of the Read tool's reach anyway, since Read is allowed
+          # only inside the workspace (`./**`), and the checkout keeps no token in
+          # `.git` (persist-credentials: false). The workspace credential files
+          # stay denied: nothing reads them after setup-gcloud and the kubeconfig
+          # copy.
           settings: |
             {
               "permissions": {
@@ -211,11 +221,8 @@ jobs:
                   "Bash(env *)",
                   "Bash(printenv)",
                   "Bash(printenv *)",
-                  "Read(./.git/**)",
                   "Read(**/gha-creds-*.json)",
                   "Read(**/gha-kubeconfig-*)",
-                  "Read(~/.kube/**)",
-                  "Read(~/.config/gcloud/**)",
                   "WebFetch",
                   "WebSearch",
                   "mcp__github",
