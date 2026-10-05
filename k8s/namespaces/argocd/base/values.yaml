@@ -144,13 +144,44 @@ notifications:
     service.googlechat: |
       webhooks:
         alertSpace: $google-chat-webhook-url
+    # Dispatches the cloud-provisioning `incident-triage.yml` workflow, in which
+    # Claude investigates the incident read-only and reports it as a GitHub
+    # Issue. `github-token` is a 1-hour `liverty-music-cluster-bot` installation
+    # token (Actions: write on cloud-provisioning only) that ESO mints into
+    # argocd-notifications-secret every 30m (see github-access-token.yaml).
+    # See docs/runbooks/incident-triage.md.
+    service.webhook.incident-triage: |
+      url: https://api.github.com
+      headers:
+      - name: Authorization
+        value: Bearer $github-token
+      - name: Accept
+        value: application/vnd.github+json
+      - name: X-GitHub-Api-Version
+        value: "2022-11-28"
 
+  # Each template carries a Google Chat `message` and a `webhook.incident-triage`
+  # section; every service reads only its own part, so one template per trigger
+  # reaches both. (A webhook-only template would make Google Chat post an empty
+  # message, and a message-only one would make the webhook service send a GET.)
+  # The dispatch body hard-codes the trigger name because the template context
+  # does not carry it. `payload` is a JSON string, truncated to stay within the
+  # workflow_dispatch input limits.
   templates:
     template.app-sync-failed: |
       message: |
         Application {{.app.metadata.name}} sync has failed.
         Error: {{ if .app.status.operationState }}{{.app.status.operationState.message}}{{ else }}unknown{{ end }}
         Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-sync-failed","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
     template.app-health-degraded: |
       message: |
         Application {{.app.metadata.name}} health has degraded.
@@ -159,6 +190,15 @@ notifications:
         - {{$c.type}}: {{$c.message}}
         {{end}}
         Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-health-degraded","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
     template.app-sync-status-unknown: |
       message: |
         Application {{.app.metadata.name}} sync status is Unknown.
@@ -166,6 +206,32 @@ notifications:
         - {{$c.type}}: {{$c.message}}
         {{end}}
         Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-sync-status-unknown","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
+    template.app-health-progressing-stuck: |
+      message: |
+        Application {{.app.metadata.name}} has been Progressing for 15 minutes (likely crash-looping or unable to become available).
+        Health Status: {{.app.status.health.status}}{{ if .app.status.health.message }} — {{.app.status.health.message}}{{ end }}
+        {{range $c := .app.status.conditions}}
+        - {{$c.type}}: {{$c.message}}
+        {{end}}
+        Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-health-progressing-stuck","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
 
   triggers:
     trigger.on-sync-failed: |
@@ -183,14 +249,29 @@ notifications:
         send:
         - app-sync-status-unknown
         when: app.status.sync.status == 'Unknown'
+    # A Deployment whose Pods start crash-looping after a completed rollout
+    # stays Progressing forever and never turns Degraded (Argo CD
+    # getAppsv1DeploymentHealth). 15m sits above the 600s default
+    # progressDeadlineSeconds (so an in-flight rollout failure is reported once,
+    # by on-health-degraded), Spot preemption recovery and KEDA 0→1 scale-up.
+    trigger.on-health-progressing-stuck: |
+      - description: Application health has been Progressing for 15 minutes
+        send:
+        - app-health-progressing-stuck
+        when: app.status.health.status == 'Progressing' && now() - date(app.status.health.lastTransitionTime) >= duration("15m")
     defaultTriggers: |
       - on-sync-failed
       - on-health-degraded
+      - on-health-progressing-stuck
       - on-sync-status-unknown
 
   subscriptions:
   - recipients:
     - googlechat:alertSpace
+    # Service name only: `service.webhook.incident-triage` registers the
+    # service as `incident-triage` (a `webhook:` prefix would name a
+    # non-existent `webhook` service).
+    - incident-triage
 
 applicationSet:
   resources:
