@@ -49,22 +49,28 @@ Not available, by design: Secrets (`kubectl get secret` is Forbidden), `kubectl 
 Monitoring metrics, the GitHub API. Never pass `--server`, `-s`, `--kubeconfig`, `--token`,
 `--access-token-file` or `--impersonate-service-account`.
 
+**Always write the subcommand right after the program name and put every flag after
+it**: `kubectl get pods -n backend`, not `kubectl -n backend get pods`;
+`git log -n 5`, not `git -C <dir> log`. The allowlist matches the command text as a
+prefix, so a flag before the subcommand makes an allowed command "require approval",
+which in this headless run means denied.
+
 Batch independent reads into one turn (several tool calls at once): your turn budget is
 small.
 
 ## Investigation order
 
-1. **ArgoCD state.** `kubectl -n argocd get application <app> -o yaml` — health, sync,
+1. **ArgoCD state.** `kubectl get application <app> -n argocd -o yaml` — health, sync,
    `status.operationState`, `status.conditions`, and the `status.resources` entries that
    are not `Healthy` / `Synced`. Note the destination namespace (`spec.destination.namespace`)
    and the source path. Compare with `payload`.
 2. **Workload objects and events.** For each unhealthy resource:
-   - `kubectl -n <ns> get deploy,statefulset,job,cronjob,pod -o wide`
-   - `kubectl -n <ns> describe <kind>/<name>` (look at conditions, `Last State`, `Reason`,
+   - `kubectl get deploy,statefulset,job,cronjob,pod -n <ns> -o wide`
+   - `kubectl describe <kind>/<name> -n <ns>` (look at conditions, `Last State`, `Reason`,
      exit codes, `OOMKilled`, image pull errors, probe failures, scheduling failures)
-   - `kubectl -n <ns> events --for <kind>/<name>` or `kubectl -n <ns> get events --sort-by=.lastTimestamp`
-   - For KEDA / ESO resources: `kubectl -n <ns> describe scaledobject <name>`,
-     `kubectl -n <ns> describe externalsecret <name>`.
+   - `kubectl events --for <kind>/<name> -n <ns>` or `kubectl get events -n <ns> --sort-by=.lastTimestamp`
+   - For KEDA / ESO resources: `kubectl describe scaledobject <name> -n <ns>`,
+     `kubectl describe externalsecret <name> -n <ns>`.
 3. **Container logs (Cloud Logging).** Logs of crashed containers survive there even after
    the Pod is gone:
    ```
