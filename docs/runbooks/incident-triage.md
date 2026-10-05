@@ -67,8 +67,16 @@ To also stop dispatches at the source (e.g. a notification storm), remove
 - Title `[incident] <app>: <trigger>`. Later dispatches for the same Application add a
   comment to the open Issue instead of opening a new one; close the Issue once the
   incident is resolved so the next one starts fresh.
-- Each post links its workflow run. **Truncated** means the triage job hit the turn cap
-  (`--max-turns 25`), the timeout, or an error; the report may be the early draft.
+- Runs started by hand (any actor other than `liverty-music-cluster-bot[bot]`) are
+  titled `[incident] [manual] <app>: <trigger>`, so they never merge with a real
+  incident for the same Application. Close them when done.
+- Each post links its workflow run and ends with the ArgoCD status at dispatch time
+  (collapsed), which is there even when Claude produced nothing.
+- A **warning** at the top means the run did not succeed and names the stage: setup
+  before Claude (checkout, GCP auth, GKE credentials, dependency install), Claude Code
+  failing to start, Claude not finishing (error or the `--max-turns 25` cap), or the job
+  timing out. With a partial report it may be the early draft; otherwise the post says
+  no report was produced.
 - **Report withheld** means the report contained the Claude OAuth token or a GCP access
   token pattern (`ya29.`) and was not posted. Treat it as a possible prompt-injection
   attempt: open the run, check what the triage did, and rotate `CLAUDE_CODE_OAUTH_TOKEN`
@@ -85,6 +93,8 @@ Re-run a triage by hand (e.g. after widening the allowlist):
 gh workflow run incident-triage.yml --repo liverty-music/cloud-provisioning \
   -f app=<application> -f trigger=manual -f payload='{}'
 ```
+
+It runs only while the kill switch is `true`, and posts to a `[manual]` Issue.
 
 ## Known detection gaps (D1)
 
