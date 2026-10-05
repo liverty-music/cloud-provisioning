@@ -83,16 +83,18 @@ liverty-music/cloud-provisioning/common  ← project-level shared config
 └── liverty-music/cloud-provisioning/prod
 ```
 
-### `esc env set` vs `pulumi config set`
+### `pulumi env set` vs `pulumi config set`
 
 This distinction is critical — using the wrong command stores secrets in the wrong location:
 
 - **`pulumi config set --secret`**: Writes to the stack YAML file or common ESC environment. Wrong for environment-specific secrets.
-- **`esc env set`**: Writes directly to a specific ESC environment. This is the correct approach.
+- **`pulumi env set`**: Writes directly to a specific ESC environment. This is the correct approach. (The standalone `esc` CLI is retired; `esc env set` takes the same arguments.)
+
+Pass a secret value with `--file` (a file path, or `-` for stdin), never as a command-line argument. An argument lands in shell history and process listings, and a value starting with `-` (a PEM key, `-----BEGIN ...`) is parsed as a flag: the CLI then prints the whole value in its error message.
 
 ```bash
-# Correct: writes to liverty-music/dev ESC environment
-esc env set liverty-music/dev pulumiConfig.gcp.someSecret "value" --secret
+# Correct: writes to liverty-music/dev ESC environment; the value never appears on the command line
+pulumi env set liverty-music/dev pulumiConfig.gcp.someSecret --file ./some-secret.txt --secret --string
 
 # Wrong: may write to common env or stack file
 pulumi -s dev config set --secret --path 'liverty-music:gcp.someSecret' "value"
@@ -117,7 +119,7 @@ Store secrets in Pulumi ESC — hardcoded secrets in code are exposed in version
 
 ## Review criteria (flag violations)
 
-- Environment-specific secrets use `esc env set`, never `pulumi config set --secret` or a hardcoded value.
+- Environment-specific secrets use `pulumi env set ... --file`, never `pulumi config set --secret`, a command-line value, or a hardcoded value.
 - Renaming a lifecycle-sensitive resource (MachineKey, IAM/SA keys) uses `aliases: [{ name: 'old-urn' }]` to avoid replace-delete.
 
 </agent-rules>

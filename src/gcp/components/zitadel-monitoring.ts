@@ -322,6 +322,9 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 		// must be re-derived because the GCP default scales with tier
 		// memory. The line is observational guidance, not an alert
 		// threshold.
+		// Zero-valued tile positions (`xPos`/`yPos` of 0) are left out on
+		// purpose: the Monitoring API omits zero values when it returns the
+		// dashboard, so writing them made every `pulumi up` report a diff.
 		this.connectionPoolDashboard = new gcp.monitoring.Dashboard(
 			'dashboard-zitadel-observability',
 			{
@@ -332,8 +335,6 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
     "columns": 12,
     "tiles": [
       {
-        "xPos": 0,
-        "yPos": 0,
         "width": 12,
         "height": 4,
         "widget": {
@@ -368,7 +369,6 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
         }
       },
       {
-        "xPos": 0,
         "yPos": 4,
         "width": 6,
         "height": 4,

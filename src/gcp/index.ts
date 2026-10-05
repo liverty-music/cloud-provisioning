@@ -894,6 +894,24 @@ export class Gcp {
 				},
 				{ parent: this.project, dependsOn: [cloudQuotasApi] },
 			)
+
+			// The project-wide vCPU cap. Once SSD-TOTAL-GB was raised, node
+			// creation hit this one next (CPUS_ALL_REGIONS 32/32 during the
+			// 2026-10-05 node upgrade). The project runs in one region, so match
+			// the regional CPUS limit (100) instead of leaving a lower global cap.
+			new gcp.cloudquota.SQuotaPreference(
+				'cpus-all-regions-quota',
+				{
+					parent: pulumi.interpolate`projects/${this.projectId}`,
+					service: 'compute.googleapis.com',
+					quotaId: 'CPUS-ALL-REGIONS-per-project',
+					quotaConfig: { preferredValue: '100' },
+					contactEmail: gcpConfig.quotaContactEmail,
+					justification:
+						'GKE Autopilot node auto-upgrade surge and scale-up in the single region this project uses.',
+				},
+				{ parent: this.project, dependsOn: [cloudQuotasApi] },
+			)
 		}
 	}
 }

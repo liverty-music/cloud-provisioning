@@ -237,7 +237,8 @@ boundary, create a separate App instead.
 The second org App, `liverty-music-cluster-bot`, is such a separate App: its
 private key lives in the cluster (`argocd` namespace) so ArgoCD Notifications can
 dispatch the `incident-triage` workflow, and it holds **Actions: write** only on
-`cloud-provisioning` — it can start workflows but not push code. See
+`cloud-provisioning` — it can start workflows but not push code (like any account, it
+can still open issues on public repositories). See
 [incident-triage.md](incident-triage.md#liverty-music-cluster-bot-github-app-d4)
 for its trust boundary and the workflow-gating rule it relies on.
 
@@ -259,9 +260,13 @@ One-time setup:
    empty `environment:`, so it needs a repo-level secret). All
    via `actions/create-github-app-token`:
    ```bash
-   esc env set liverty-music/prod pulumiConfig.github.ciBotAppId "<app-id>"
-   esc env set liverty-music/prod pulumiConfig.github.ciBotAppPrivateKey "$(cat liverty-music-ci-bot.*.private-key.pem)" --secret
+   pulumi env set liverty-music/prod pulumiConfig.github.ciBotAppId "<app-id>" --string
+   pulumi env set liverty-music/prod pulumiConfig.github.ciBotAppPrivateKey \
+     --file liverty-music-ci-bot.<date>.private-key.pem --secret --string
    ```
+   Pass the key with `--file`, never as `"$(cat key.pem)"`: the value starts with
+   `-----BEGIN`, the CLI parses it as a flag, and the error message prints the
+   whole key.
    Then run a prod `pulumi up`; `GitHubRepositoryComponent` creates the secrets
    (no-op if the config is absent).
 5. **Confirm the bypass scope**: after the ruleset applies (§2), the ci-bot App
