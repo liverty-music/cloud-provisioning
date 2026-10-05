@@ -853,5 +853,47 @@ export class Gcp {
 				{ parent: this.project, dependsOn: [billingBudgetsApi] },
 			)
 		}
+
+		// 10. Compute Engine quota for GKE nodes.
+		// Autopilot manages the nodes, but their VMs and boot disks still draw
+		// on this project's Compute Engine quota, and GKE "can only provision
+		// infrastructure for your workloads if your project has enough quota"
+		// (GKE Autopilot overview). Every Autopilot node boots from a
+		// pd-balanced disk of about 100 GB, which counts against the regional
+		// SSD-TOTAL-GB quota. At the new-project default of 500 GB, the four prod
+		// nodes (~437 GB) left no room for a fifth, so every node auto-upgrade
+		// (which surges one extra node) and every scale-up failed with
+		// QUOTA_EXCEEDED from 2026-09-27. 1000 GB fits about nine nodes,
+		// including the upgrade surge.
+		//
+		// Requested through the Cloud Quotas API; an increase needs a contact
+		// email, so the preference exists only where `quotaContactEmail` is set
+		// in ESC.
+		if (gcpConfig.quotaContactEmail) {
+			const cloudQuotasApi = new gcp.projects.Service(
+				'cloudquotas',
+				{
+					project: this.projectId,
+					service: 'cloudquotas.googleapis.com',
+					disableOnDestroy: environment !== 'dev',
+				},
+				{ parent: this.project },
+			)
+
+			new gcp.cloudquota.SQuotaPreference(
+				'ssd-total-gb-quota',
+				{
+					parent: pulumi.interpolate`projects/${this.projectId}`,
+					service: 'compute.googleapis.com',
+					quotaId: 'SSD-TOTAL-GB-per-project-region',
+					dimensions: { region: this.region },
+					quotaConfig: { preferredValue: '1000' },
+					contactEmail: gcpConfig.quotaContactEmail,
+					justification:
+						'GKE Autopilot node boot disks (pd-balanced) need room for node auto-upgrade surge and scale-up.',
+				},
+				{ parent: this.project, dependsOn: [cloudQuotasApi] },
+			)
+		}
 	}
 }
