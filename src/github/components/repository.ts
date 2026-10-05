@@ -60,6 +60,17 @@ export interface GitHubRepositoryComponentArgs {
 	 * to `main` with.
 	 */
 	repositorySecrets?: Record<string, pulumi.Input<string>>
+	/**
+	 * Environment variables whose value Pulumi sets on create only, so that
+	 * operators can change them in the GitHub UI and the next `pulumi up` does
+	 * not revert them. Used for the `INCIDENT_TRIAGE_ENABLED` kill switch,
+	 * which must take effect immediately. See OpenSpec change
+	 * `autonomous-incident-response` D10.
+	 */
+	operatorOwnedVariables?: Record<string, pulumi.Input<string>>
+	/** Issue labels managed on the repository (repository-wide, so set them
+	 *  from one stack only). */
+	issueLabels?: { name: string; color: string; description: string }[]
 }
 
 export class GitHubRepositoryComponent extends pulumi.ComponentResource {
@@ -92,6 +103,8 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			mainBranchBotBypass,
 			botBypassAppId,
 			repositorySecrets,
+			operatorOwnedVariables,
+			issueLabels,
 		} = args
 
 		// Use a new provider instance to ensure we can use it in any stack
@@ -174,6 +187,38 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 					},
 					{ provider, parent: this },
 				),
+			)
+		}
+
+		// Operator-owned variables: created with an initial value, then left
+		// to the GitHub UI (`ignoreChanges: ['value']`).
+		for (const [key, value] of Object.entries(
+			operatorOwnedVariables ?? {},
+		)) {
+			this.variables.push(
+				new github.ActionsEnvironmentVariable(
+					`${repositoryName}-env-${key}`,
+					{
+						repository: repositoryName,
+						environment: this.environment.environment,
+						variableName: key,
+						value: value,
+					},
+					{ provider, parent: this, ignoreChanges: ['value'] },
+				),
+			)
+		}
+
+		for (const label of issueLabels ?? []) {
+			new github.IssueLabel(
+				`${repositoryName}-label-${label.name}`,
+				{
+					repository: repositoryName,
+					name: label.name,
+					color: label.color,
+					description: label.description,
+				},
+				{ provider, parent: this },
 			)
 		}
 

@@ -234,6 +234,13 @@ trade-off note. Grow this App's permissions/installs only deliberately; if a
 future automation needs materially higher privilege or a different trust
 boundary, create a separate App instead.
 
+The second org App, `liverty-music-cluster-bot`, is such a separate App: its
+private key lives in the cluster (`argocd` namespace) so ArgoCD Notifications can
+dispatch the `incident-triage` workflow, and it holds **Actions: write** only on
+`cloud-provisioning` — it can start workflows but not push code. See
+[incident-triage.md](incident-triage.md#liverty-music-cluster-bot-github-app-d4)
+for its trust boundary and the workflow-gating rule it relies on.
+
 One-time setup:
 1. Register a GitHub App in the `liverty-music` org: **Your organizations →
    Settings → Developer settings → GitHub Apps → New GitHub App**. Name

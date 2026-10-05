@@ -398,7 +398,33 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.CLOUD_PROVISIONING,
 	environment: env,
-	variables: sharedVariables,
+	// `incident-triage.yml` (prod only) reads these from the `prod`
+	// environment, alongside the shared WORKLOAD_IDENTITY_PROVIDER and
+	// PROJECT_ID. Environment-scoped because the Pulumi GitHub token cannot
+	// create repository-level variables (see the repositorySecrets note below).
+	// See docs/runbooks/incident-triage.md.
+	variables:
+		env === 'prod'
+			? {
+					...sharedVariables,
+					INCIDENT_TRIAGE_SA_EMAIL: gcp.incidentTriageSAEmail,
+				}
+			: sharedVariables,
+	// Kill switch for automated incident triage. Created disabled; operators
+	// flip it in the GitHub UI and Pulumi does not revert it.
+	operatorOwnedVariables:
+		env === 'prod' ? { INCIDENT_TRIAGE_ENABLED: 'false' } : undefined,
+	issueLabels:
+		env === 'prod'
+			? [
+					{
+						name: 'incident',
+						color: 'b60205',
+						description:
+							'Automated incident triage report (incident-triage workflow)',
+					},
+				]
+			: undefined,
 	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
 	// Admin-reviewer gate for the `bump-prod-pin.yml` manual recovery path.

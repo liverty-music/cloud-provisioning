@@ -135,3 +135,26 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 # 2. Port Forward
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
+
+## Notifications
+
+`argocd-notifications-cm` is configured in `base/values.yaml` (`notifications:`). Every
+Application is subscribed to the default triggers:
+
+| Trigger | Fires when |
+|---|---|
+| `on-sync-failed` | the last sync operation ended in `Error` or `Failed` |
+| `on-health-degraded` | health has been `Degraded` for 3 minutes (30 minutes in the dev overlay) |
+| `on-health-progressing-stuck` | health has been `Progressing` for 15 minutes — e.g. Pods crash-looping after a completed rollout, which never turns `Degraded` |
+| `on-sync-status-unknown` | sync status is `Unknown` |
+
+Each trigger sends one template with two parts: a Google Chat `message` (to the
+`alertSpace` webhook) and a `webhook.incident-triage` request that dispatches
+`.github/workflows/incident-triage.yml` in `cloud-provisioning`, where Claude
+investigates read-only and reports a GitHub Issue. The webhook authenticates with a
+short-lived `liverty-music-cluster-bot` installation token that ESO mints into
+`argocd-notifications-secret` (`base/github-access-token.yaml`,
+`base/external-secret.yaml`).
+
+See [docs/runbooks/incident-triage.md](../../../docs/runbooks/incident-triage.md) for the
+architecture, the kill switch and key rotation.

@@ -14,6 +14,7 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 	public readonly provider: gcp.iam.WorkloadIdentityPoolProvider
 	public readonly githubProvider: gcp.iam.WorkloadIdentityPoolProvider
 	public readonly githubActionsSA: gcp.serviceaccount.Account
+	public readonly incidentTriageSA: gcp.serviceaccount.Account
 
 	private readonly iamService: IamService
 	private readonly PULUMI_ORG = 'pannpers'
@@ -175,6 +176,38 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 			`${githubActionsSAName}-cloud-provisioning`,
 			`attribute.repository/liverty-music/cloud-provisioning`,
 			this.githubActionsSA,
+			this.pool,
+			this,
+		)
+
+		// 8. Read-only identity for the cloud-provisioning `incident-triage.yml`
+		// workflow, in which Claude investigates ArgoCD-detected incidents.
+		// Exactly two roles: Kubernetes objects/events and Cloud Logging. No
+		// `pods/log`, `pods/exec` or Secret access (every predefined GKE role
+		// with `getLogs` also grants those); container logs come from Cloud
+		// Logging instead. Kept separate from `github-actions` so the Artifact
+		// Registry writer does not also gain read-everything. See OpenSpec
+		// change `autonomous-incident-response` (D8).
+		const incidentTriageSAName = 'incident-triage'
+		this.incidentTriageSA = this.iamService.createServiceAccount(
+			incidentTriageSAName,
+			incidentTriageSAName,
+			'Incident Triage Service Account',
+			'Read-only identity for the incident-triage GitHub Actions workflow',
+			this,
+		)
+
+		this.iamService.bindProjectRoles(
+			[Roles.Container.Viewer, Roles.Logging.Viewer],
+			incidentTriageSAName,
+			this.incidentTriageSA.email,
+			this,
+		)
+
+		this.iamService.bindWifUser(
+			`${incidentTriageSAName}-cloud-provisioning`,
+			`attribute.repository/liverty-music/cloud-provisioning`,
+			this.incidentTriageSA,
 			this.pool,
 			this,
 		)

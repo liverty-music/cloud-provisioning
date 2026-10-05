@@ -48,6 +48,7 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly goroutineLeakAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly clusterSecretStoreNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly externalSecretNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly argocdControlPlaneDownAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
 	public readonly webPushDeliveryFailureMetric: gcp.logging.Metric
@@ -599,6 +600,104 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 			{ parent: this },
 		)
 		this.alertPolicies.push(this.externalSecretNotReadyAlertPolicy)
+
+		// ArgoCD control-plane-down alert (OpenSpec change
+		// `autonomous-incident-response` D12).
+		//
+		// ArgoCD Notifications is the only trigger for automated incident triage,
+		// so it cannot report its own outage: if the application-controller stops,
+		// Application health is no longer evaluated; if the notifications-controller
+		// stops, nothing is sent. This alert watches both from outside ArgoCD and
+		// routes to the human channels only — it must not depend on the component
+		// it watches.
+		//
+		// GKE metrics are reduced to SYSTEM_COMPONENTS (no kube-state-metrics), but
+		// the `kubernetes.io/container/*` system metrics are still exported:
+		//   - `uptime` absent for 10m: no running container of that name (pod
+		//     gone, unschedulable, or stuck in image pull / init). Grouped by
+		//     `container_name` so a replacement pod keeps the series alive.
+		//   - `restart_count` delta > 3 in 15m: a crash loop that keeps some
+		//     uptime samples flowing and so never trips the absence condition.
+		const argocdControllerFilter = pulumi.interpolate`resource.type="k8s_container" AND resource.labels.project_id="${projectId}" AND resource.labels.location="${clusterLocation}" AND resource.labels.cluster_name="${clusterName}" AND resource.labels.namespace_name="argocd" AND resource.labels.container_name=one_of("application-controller","notifications-controller")`
+		this.argocdControlPlaneDownAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-argocd-control-plane-down',
+			{
+				displayName: 'ArgoCD Control Plane Down',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'ArgoCD controller container absent for 10m',
+						conditionAbsent: {
+							filter: pulumi.interpolate`metric.type="kubernetes.io/container/uptime" AND ${argocdControllerFilter}`,
+							aggregations: [
+								{
+									alignmentPeriod: '300s',
+									perSeriesAligner: 'ALIGN_MEAN',
+									crossSeriesReducer: 'REDUCE_COUNT',
+									groupByFields: [
+										'resource.label.container_name',
+									],
+								},
+							],
+							duration: '600s',
+							trigger: { count: 1 },
+						},
+					},
+					{
+						displayName:
+							'ArgoCD controller restarted more than 3 times in 15m',
+						conditionThreshold: {
+							filter: pulumi.interpolate`metric.type="kubernetes.io/container/restart_count" AND ${argocdControllerFilter}`,
+							aggregations: [
+								{
+									alignmentPeriod: '900s', // 15-minute window
+									perSeriesAligner: 'ALIGN_DELTA',
+									crossSeriesReducer: 'REDUCE_SUM',
+									groupByFields: [
+										'resource.label.container_name',
+									],
+								},
+							],
+							comparison: 'COMPARISON_GT',
+							thresholdValue: 3,
+							duration: '0s',
+							trigger: { count: 1 },
+						},
+					},
+				],
+				alertStrategy: {
+					// notificationRateLimit is rejected by the GCP API on
+					// metric (non-log-based) policies.
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## ArgoCD Control Plane Down Alert',
+						'',
+						'The ArgoCD `application-controller` or `notifications-controller` in the `argocd` namespace has had no running container for 10 minutes, or has restarted more than 3 times in 15 minutes.',
+						'',
+						'While this alert is open, **automated incident triage is blind**: ArgoCD Notifications is the only trigger for the `incident-triage` workflow, and Application health / sync failures are neither evaluated (application-controller) nor reported to Google Chat or GitHub (notifications-controller). Check prod Applications manually until it resolves.',
+						'',
+						'### Alert Labels',
+						'- `container_name`: `application-controller` or `notifications-controller`.',
+						'',
+						'### Triage Steps',
+						'1. Get cluster credentials (docs/runbooks/prod-cluster-credentials.md), then check the pods: `kubectl -n argocd get pods` and `kubectl -n argocd describe pod <pod>` (look at `Last State`, `Reason`, events).',
+						'2. Read the crashed container\'s output: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="argocd" AND resource.labels.container_name="<container_name>"\' --limit=100 --freshness=1h`.',
+						'3. Common causes: OOMKilled (raise the memory request in `k8s/namespaces/argocd/base/values.yaml`), Spot preemption with no capacity to reschedule (pod `Pending`), or a bad chart / values change (check recent commits under `k8s/namespaces/argocd/`).',
+						'4. After recovery, review Application state for anything that broke during the outage: `kubectl -n argocd get applications` — notifications for conditions that became true while the controllers were down may not have been sent.',
+						'',
+						'See docs/runbooks/incident-triage.md.',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(this.argocdControlPlaneDownAlertPolicy)
 
 		// Sales-reminder delivery outcome metric.
 		//
