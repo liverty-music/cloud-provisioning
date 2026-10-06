@@ -5,9 +5,18 @@ Autopilot general profile set to `no-performance`. That turns off
 proactive capacity provisioning: the pre-provisioned on-demand nodes that
 hold only system Pods and `gke-system-balloon-pod`s.
 
-The `@pulumi/gcp` provider (9.37) has no field for this setting, so it is
-applied with gcloud and recorded here. Pulumi does not read it, so
-`pulumi up` neither reverts it nor shows drift.
+No Pulumi provider can declare this setting yet. `@pulumi/gcp` is generated
+from the Terraform Google provider, which does not support it (open
+upstream request:
+[hashicorp/terraform-provider-google#26958](https://github.com/hashicorp/terraform-provider-google/issues/26958));
+`@pulumi/gcp` 9.37 and 10.0.0 have no field for it. So it is applied with
+gcloud and recorded here. Pulumi does not read it, so `pulumi up` neither
+reverts it nor shows drift.
+
+A `command.local.Command` wrapping the gcloud call was rejected: it would
+run only when its inputs change, never detect drift, and require gcloud in
+the Pulumi Deployments runner, so it would add a resource without making
+the setting any more declarative.
 
 OpenSpec change: `optimize-prod-gke-cost` (D6).
 
@@ -53,6 +62,7 @@ gcloud container clusters update autopilot-cluster-osaka \
   --autopilot-general-profile=none
 ```
 
-If the cluster is ever re-created, apply the setting again. When the
-provider gains a field for it, move the setting into
-`src/gcp/components/kubernetes.ts` and delete this runbook.
+If the cluster is ever re-created, apply the setting again. When
+hashicorp/terraform-provider-google#26958 ships and `@pulumi/gcp` picks it
+up, move the setting into `src/gcp/components/kubernetes.ts` and delete
+this runbook.
