@@ -1,0 +1,45 @@
+# A bare Pod, not a Deployment: nothing runs (or costs) while nobody is
+# connected, and a deleted or expired Pod is never re-created.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-proxy
+  labels:
+    app.kubernetes.io/name: db-proxy
+spec:
+  serviceAccountName: db-proxy
+  # Ends a forgotten Pod (and its tunnel) after two hours.
+  activeDeadlineSeconds: 7200
+  restartPolicy: Never
+  nodeSelector:
+    cloud.google.com/gke-spot: "true"
+  containers:
+  - name: cloud-sql-proxy
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+    args:
+    # The instances are PSC-only (no public or private IP).
+    - --psc
+    # Reachable only through `kubectl port-forward`, never from other Pods.
+    - --address=127.0.0.1
+    - --port=5432
+    # Deliberately NO --auto-iam-authn: the proxy only authorizes and encrypts
+    # the connection. The client logs in as the developer's own Cloud SQL IAM
+    # user with a `gcloud sql generate-login-token` password (or as `postgres`
+    # for break-glass).
+    - INSTANCE_CONNECTION_NAME # set by overlay
+    ports:
+    - containerPort: 5432
+      name: postgres
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      allowPrivilegeEscalation: false
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+        ephemeral-storage: 100Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+        ephemeral-storage: 100Mi

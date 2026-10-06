@@ -648,6 +648,31 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 
+		// Developer database access proxy. The ephemeral `db-proxy` Pod
+		// (k8s/tools/db-proxy) runs as this identity. It holds only
+		// `cloudsql.client`: enough for the Cloud SQL Auth Proxy to authorize
+		// and encrypt the connection, but no `cloudsql.instanceUser` role and
+		// no Cloud SQL user, so it can never log in itself. Developers log in
+		// as their own Cloud SQL IAM user with a token. If someone added
+		// `--auto-iam-authn` to the Pod, the login fails closed instead of
+		// silently becoming an application identity. See OpenSpec change
+		// `unify-cloud-sql-access` (D3).
+		const dbProxyApp = 'db-proxy'
+		const dbProxySa = iamSvc.createServiceAccount(
+			dbProxyApp,
+			dbProxyApp,
+			'DB Proxy Service Account',
+			'Connect-only identity for the ephemeral developer Cloud SQL Auth Proxy Pod',
+			this,
+		)
+		iamSvc.bindProjectRoles(
+			[Roles.CloudSql.Client],
+			dbProxyApp,
+			dbProxySa.email,
+			this,
+		)
+		iamSvc.bindKubernetesSaUser(dbProxyApp, dbProxySa, namespace, this)
+
 		// Expose ESO SA email so callers (Zitadel secrets component) can attach
 		// per-secret accessor bindings without re-creating the ESO SA.
 		this.esoServiceAccountEmail = esoSa.email

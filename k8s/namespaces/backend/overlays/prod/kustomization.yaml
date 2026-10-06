@@ -23,8 +23,10 @@ resources:
   # NOTE: the prod `cloud-sql-proxy` Deployment was removed
   # (optimize-prod-gke-cost D5). It was a dev-only tool (dev-db-local-access)
   # copied to prod: no Service, bound to 127.0.0.1, zero connections in 30 days,
-  # and its prod IAM-authn path never worked. Developer DB access is redesigned
-  # in a separate change. The `backend-app` KSA stays (workloads use it).
+  # and its prod IAM-authn path never worked. Developer DB access now uses the
+  # ephemeral, non-ArgoCD `k8s/tools/db-proxy` Pod (unify-cloud-sql-access; see
+  # docs/runbooks/cloud-sql-access.md). The `backend-app` KSA stays (workloads
+  # use it).
   # prod-only: the GSM key it reads is created by the prod Pulumi stack, and
   # dev has no Stripe environment (see the file's own comment).
   - fan-api/stripe-webhook-external-secret.yaml
