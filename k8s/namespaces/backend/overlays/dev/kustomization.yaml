@@ -198,7 +198,7 @@ patches:
 - path: cronjob/suspend-gemini-discovery_patch.yaml
   target:
     kind: CronJob
-    name: (concert|sales-phase)-discovery-app
+    name: concert-discovery-app
 
 # Right-size resources for event-consumer in dev
 - target:

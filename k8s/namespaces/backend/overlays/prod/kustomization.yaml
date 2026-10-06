@@ -86,12 +86,6 @@ patches:
   - path: spot-vm_patch_cronjob.yaml
     target:
       kind: CronJob
-  # TEMPORARY suspend of the sales-phase discovery job (see patch file header).
-  # concert-discovery resumed with the tune-concert-search-grounding rollout.
-  - path: cronjob/suspend-gemini-discovery_patch.yaml
-    target:
-      kind: CronJob
-      name: sales-phase-discovery-app
   # fan-api — pre-launch (optimize-prod-gke-cost D3): a single replica with no
   # topology spread and no PodDisruptionBudget. The hard hostname spread forced
   # the second replica onto an on-demand node, and a minAvailable: 1 PDB on one
