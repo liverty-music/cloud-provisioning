@@ -1,0 +1,58 @@
+# GKE Autopilot general profile (out-of-band setting)
+
+The prod Autopilot cluster `autopilot-cluster-osaka` runs with the
+Autopilot general profile set to `no-performance`. That turns off
+proactive capacity provisioning: the pre-provisioned on-demand nodes that
+hold only system Pods and `gke-system-balloon-pod`s.
+
+The `@pulumi/gcp` provider (9.37) has no field for this setting, so it is
+applied with gcloud and recorded here. Pulumi does not read it, so
+`pulumi up` neither reverts it nor shows drift.
+
+OpenSpec change: `optimize-prod-gke-cost` (D6).
+
+## Why
+
+- **Billing:** no change. Under Pod-based billing, nodes and unallocated
+  capacity are not billed.
+- **Quota:** the balloon-held nodes consume `IN_USE_ADDRESSES` (limit 8),
+  `SSD-TOTAL-GB` and `CPUS-ALL-REGIONS`. That quota pressure once blocked
+  node upgrades and scale-up.
+- **Cost of the change:** general-purpose Pods scale up more slowly when
+  no spare node exists.
+
+## Apply
+
+Requires `container.clusters.update` on `liverty-music-prod`.
+
+```bash
+gcloud container clusters update autopilot-cluster-osaka \
+  --project liverty-music-prod \
+  --location asia-northeast2 \
+  --autopilot-general-profile=no-performance
+```
+
+## Verify
+
+```bash
+# The cluster reports the profile
+gcloud container clusters describe autopilot-cluster-osaka \
+  --project liverty-music-prod --location asia-northeast2 \
+  --format=json | jq '.autopilot'
+
+# Within a day, no balloon Pods remain
+kubectl get pods -A | grep gke-system-balloon-pod || echo "none"
+```
+
+## Revert
+
+```bash
+gcloud container clusters update autopilot-cluster-osaka \
+  --project liverty-music-prod \
+  --location asia-northeast2 \
+  --autopilot-general-profile=none
+```
+
+If the cluster is ever re-created, apply the setting again. When the
+provider gains a field for it, move the setting into
+`src/gcp/components/kubernetes.ts` and delete this runbook.

@@ -28,7 +28,7 @@ Cost recovery time when re-enabling: **~20–30 min** end-to-end. Faster than th
 │                                                                        │
 │   PRESERVED (always-on, ~¥300/mo)                                      │
 │   ├─ ProjectComponent       project, folder                            │
-│   ├─ NetworkComponent       VPC, DNS zones, certMap, static IP         │
+│   ├─ NetworkComponent       VPC, DNS zones, certMap, certificates      │
 │   ├─ Artifact Registry      backend + frontend Docker images           │
 │   ├─ WorkloadIdentity       GitHub Actions OIDC                        │
 │   ├─ GitHub repo bindings   env vars, status check policy              │
@@ -47,6 +47,10 @@ Cost recovery time when re-enabling: **~20–30 min** end-to-end. Faster than th
 │   ├─ KubernetesComponent    cluster, node pool, cluster-subnet,        │
 │   │                          workload SAs + IAM bindings, K8s GSM      │
 │   │                          secrets bound to those SAs                │
+│   ├─ Gateway static IP      api-gateway-static-ip + the Cloudflare     │
+│   │                          hostname A records pointing at it. A      │
+│   │                          restart reserves a new address; the A     │
+│   │                          records follow it automatically.          │
 │   ├─ PSC consumer endpoint  forwarding rule + 10.10.10.10 address      │
 │   │                          (created inside PostgresComponent under   │
 │   │                          if (workloadEnabled), bound to            │
@@ -212,13 +216,14 @@ The preview comment must show **only** resources from the **Guarded**
 set above. Verify:
 
 - ✅ GKE cluster, node pool, cluster-subnet listed for destroy
+- ✅ `api-gateway-static-ip` and the `*-a-record` Cloudflare records listed for destroy
 - ✅ PSC consumer endpoint (forwarding rule + 10.10.10.10 address) listed for destroy
 - ✅ Cluster-SA Cloud SQL IAM users (`backend-app`, `zitadel`) listed for destroy
 - ✅ Monitoring + ZitadelMonitoring alert policies listed for destroy
 - ✅ Zitadel orchestrator resources listed for destroy (API delete clears the Cloud SQL Zitadel rows while the cluster is still up)
 - ✅ Secret IAM bindings on `zitadel-masterkey` + `zitadel-machine-key-for-pulumi-admin` listed for destroy
 - ✅ `gcp:sql:DatabaseInstance postgres-osaka` listed as **update** (not destroy) with `~settings.activationPolicy: ALWAYS → NEVER`
-- ❌ **NOT** in the destroy set: GCP project, VPC, DNS zones, Artifact Registry, WIF, certMap, static IP, GitHub repo bindings, cost budget, Cloud SQL instance, Cloud SQL databases (`liverty-music`, `zitadel`), postgres admin user, `zitadel-masterkey` Secret + Version, `zitadel-machine-key-for-pulumi-admin` Secret
+- ❌ **NOT** in the destroy set: GCP project, VPC, DNS zones, Artifact Registry, WIF, certMap, certificates, GitHub repo bindings, cost budget, Cloud SQL instance, Cloud SQL databases (`liverty-music`, `zitadel`), postgres admin user, `zitadel-masterkey` Secret + Version, `zitadel-machine-key-for-pulumi-admin` Secret
 
 If anything from the **Preserved** set is in the destroy plan, **stop
 and investigate** — this is the [§13.4 cascade signal](pulumi-state-recovery.md).

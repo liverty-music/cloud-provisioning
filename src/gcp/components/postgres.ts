@@ -208,6 +208,10 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					diskSize: 10,
 					diskType: 'PD_SSD',
 					diskAutoresize: true,
+					// Cap autoresize: Cloud SQL storage only grows and is
+					// billed for its size even after data shrinks. Prod used
+					// ~0.3 GB of 10 GB on 2026-10-06 (optimize-prod-gke-cost D8).
+					diskAutoresizeLimit: 20,
 					deletionProtectionEnabled: true,
 					backupConfiguration: {
 						enabled: true,
