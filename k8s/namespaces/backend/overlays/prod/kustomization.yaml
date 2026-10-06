@@ -3,7 +3,7 @@ kind: Kustomization
 # Prod backend overlay. Env-divergent fields per design D2 / spec Requirement 3:
 #   - GSA: backend-app@liverty-music-prod (vs liverty-music-dev)
 #   - Cloud SQL: liverty-music-prod:asia-northeast2:postgres-osaka
-#     (sql-proxy/deployment.yaml + ConfigMap DATABASE_HOST / DATABASE_INSTANCE_CONNECTION_NAME)
+#     (ConfigMap DATABASE_HOST / DATABASE_INSTANCE_CONNECTION_NAME)
 #   - PSC DNS: 298474959c18.25pf3r4b6sfkn.asia-northeast2.sql.goog
 #   - DATABASE_USER: backend-app@liverty-music-prod.iam
 #   - CORS_ALLOWED_ORIGINS: https://liverty-music.app (apex)
@@ -20,8 +20,11 @@ kind: Kustomization
 # Fridays-only patch), because prod's concert ingestion should be regular.
 resources:
   - ../../base
-  - sql-proxy/deployment.yaml
-  - fan-api-pdb.yaml
+  # NOTE: the prod `cloud-sql-proxy` Deployment was removed
+  # (optimize-prod-gke-cost D5). It was a dev-only tool (dev-db-local-access)
+  # copied to prod: no Service, bound to 127.0.0.1, zero connections in 30 days,
+  # and its prod IAM-authn path never worked. Developer DB access is redesigned
+  # in a separate change. The `backend-app` KSA stays (workloads use it).
   # prod-only: the GSM key it reads is created by the prod Pulumi stack, and
   # dev has no Stripe environment (see the file's own comment).
   - fan-api/stripe-webhook-external-secret.yaml
