@@ -1,5 +1,19 @@
 prewarmDevDB: false
 
+# Keep Secrets out of the operator ClusterRole. The operator reads the
+# credential Secret and stores AtlasMigration state in a Secret it owns, so a
+# namespaced Role (secret-role.yaml) grants it get/create/update on Secrets in
+# atlas-operator only. watchSecrets defaults to this value, so rotating a Secret
+# no longer triggers a reconcile; the next reconcile reads the new value.
+rbac:
+  clusterWideSecretAccess: false
+
+# Only the backend-migration AtlasMigration lives here. Rendered as the
+# manager's --namespace arg, which the Deployment patch in kustomization.yaml
+# must repeat because it replaces the args list.
+watchNamespaces:
+  - atlas-operator
+
 resources:
   limits:
     cpu: 100m
