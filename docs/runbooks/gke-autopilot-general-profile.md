@@ -13,10 +13,22 @@ upstream request:
 gcloud and recorded here. Pulumi does not read it, so `pulumi up` neither
 reverts it nor shows drift.
 
-A `command.local.Command` wrapping the gcloud call was rejected: it would
-run only when its inputs change, never detect drift, and require gcloud in
-the Pulumi Deployments runner, so it would add a resource without making
-the setting any more declarative.
+A `command.local.Command` wrapping the gcloud call was considered and not
+adopted. It would not detect drift either; that is the same as this manual
+step. Its one real advantage: with the cluster ID in its `triggers`, it
+would re-apply the setting automatically when the cluster is re-created,
+where this runbook relies on someone remembering to. That advantage is
+small here, because the prod cluster has `deletionProtection: true` and
+irreversible settings (CMEK, regional Autopilot), so re-creation is not an
+expected event. Against it:
+
+- it needs gcloud in the Pulumi Deployments runner, plus the runner's GCP
+  OIDC credentials handed to gcloud;
+- a `pulumi up` would run a long cluster update that can contend with other
+  cluster changes in the same update.
+
+Revisit the choice if the cluster is ever re-created or if upstream support
+stays unavailable for long.
 
 OpenSpec change: `optimize-prod-gke-cost` (D6).
 
