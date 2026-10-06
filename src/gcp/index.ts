@@ -217,6 +217,7 @@ export class Gcp {
 			regionName: RegionNames.Osaka,
 			project: this.project,
 			environment,
+			gatewayEnabled: workloadEnabled,
 			cloudflareConfig,
 			postmarkConfig,
 		})
