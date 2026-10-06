@@ -9,7 +9,7 @@ resources:
 helmCharts:
 - name: atlas-operator
   repo: oci://ghcr.io/ariga/charts
-  version: 0.7.23
+  version: 0.8.0
   releaseName: atlas-operator
   namespace: atlas-operator
   includeCRDs: true
