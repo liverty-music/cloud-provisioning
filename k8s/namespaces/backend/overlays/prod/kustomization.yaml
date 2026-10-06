@@ -92,10 +92,15 @@ patches:
     target:
       kind: CronJob
       name: sales-phase-discovery-app
-  # fan-api — HA (prod): 2 replicas hard-spread across nodes (DoNotSchedule — a
-  # soft spread lost to the prefer-Spot nodeAffinity) so a single node loss
-  # (Spot preemption / drain / upgrade) can't drop the fan-facing API. Safe:
-  # >=3 on-demand nodes always exist. Pairs with the fan-api PodDisruptionBudget.
+  # fan-api — pre-launch (optimize-prod-gke-cost D3): a single replica with no
+  # topology spread and no PodDisruptionBudget. The hard hostname spread forced
+  # the second replica onto an on-demand node, and a minAvailable: 1 PDB on one
+  # replica blocks every voluntary eviction (drain, active migration back to
+  # Spot). A Spot preemption now drops the API briefly, accepted with no users.
+  #
+  # At launch, restore HA: replicas: 2, a topologySpreadConstraint on
+  # kubernetes.io/hostname with whenUnsatisfiable: ScheduleAnyway and
+  # nodeTaintsPolicy: Honor, and a minAvailable: 1 PodDisruptionBudget.
   - target:
       kind: Deployment
       name: fan-api
@@ -105,16 +110,7 @@ patches:
       metadata:
         name: fan-api
       spec:
-        replicas: 2
-        template:
-          spec:
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: kubernetes.io/hostname
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app: fan-api
+        replicas: 1
   - target:
       kind: Deployment
       name: fan-api
