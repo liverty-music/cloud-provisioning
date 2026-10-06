@@ -63,6 +63,9 @@ configs:
     # OutOfSync for K8s server-side defaults (protocol, imagePullPolicy, etc.).
     controller.diff.server.side: "true"
 
+# ephemeral-storage on every component below (optimize-prod-gke-cost D4):
+# without an explicit request Autopilot bills a 1 GiB default per container.
+# 100Mi unless a component's measured usage needs more (repoServer, controller).
 server:
   service:
     type: ClusterIP
@@ -72,18 +75,28 @@ server:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 500m
       memory: 256Mi
+      ephemeral-storage: 100Mi
 
 repoServer:
+  # ephemeral-storage (optimize-prod-gke-cost D4): explicit instead of the
+  # Autopilot 1 GiB default. repo-server keeps Git clones and rendered Helm
+  # charts in its `tmp` emptyDir and the copied argocd binary in `var-files`;
+  # the prod 30-day max was ~373 MiB, so it keeps 1Gi for headroom. Exceeding
+  # the limit evicts the Pod, and repo-server is the sync path for everything.
+  # The copyutil initContainer inherits these resources (chart default).
   resources:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 1Gi
     limits:
       cpu: 500m
       memory: 256Mi
+      ephemeral-storage: 1Gi
 
 controller:
   enableStatefulSet: true
@@ -95,13 +108,18 @@ controller:
   # working set (~286Mi observed) with margin — 512Mi, not the peak — so we don't
   # over-bill on Autopilot (which charges on requests); bursts up to the 2Gi
   # limit are Burstable.
+  #
+  # ephemeral-storage: the prod 30-day max was ~43 MiB (container writes plus
+  # the `argocd-application-controller-tmp` emptyDir); 256Mi leaves headroom.
   resources:
     requests:
       cpu: 250m
       memory: 512Mi
+      ephemeral-storage: 256Mi
     limits:
       cpu: "1"
       memory: 2Gi
+      ephemeral-storage: 256Mi
 
 redis:
   enabled: true
@@ -109,9 +127,11 @@ redis:
     requests:
       cpu: 50m
       memory: 52Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 128Mi
+      ephemeral-storage: 100Mi
 
 redisSecretInit:
   enabled: true
@@ -119,9 +139,11 @@ redisSecretInit:
     requests:
       cpu: 50m
       memory: 52Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 128Mi
+      ephemeral-storage: 100Mi
 
 dex:
   enabled: false
@@ -132,9 +154,11 @@ notifications:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 128Mi
+      ephemeral-storage: 100Mi
 
   secret:
     # ESO creates argocd-notifications-secret via ExternalSecret
@@ -278,6 +302,8 @@ applicationSet:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 256Mi
+      ephemeral-storage: 100Mi

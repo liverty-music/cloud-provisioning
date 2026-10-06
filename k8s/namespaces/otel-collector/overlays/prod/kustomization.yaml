@@ -51,6 +51,8 @@ patches:
                 # pod evictable under node memory pressure; raise the request
                 # above the working set. Limit stays 128Mi (headroom for bursts).
                 memory: 96Mi
+                ephemeral-storage: 100Mi
               limits:
                 cpu: 200m
                 memory: 128Mi
+                ephemeral-storage: 100Mi

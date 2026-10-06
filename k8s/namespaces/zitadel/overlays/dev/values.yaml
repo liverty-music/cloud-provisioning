@@ -39,9 +39,11 @@ zitadel:
       requests:
         cpu: 10m
         memory: 32Mi
+        ephemeral-storage: 100Mi
       limits:
         cpu: 100m
         memory: 64Mi
+        ephemeral-storage: 100Mi
   # bootstrap-uploader sidecar (from the pre-chart era) was removed
   # because the chart's setup Job writes the FirstInstance admin SA
   # key into an EPHEMERAL setup Pod (`/machinekey/sa.json`) — not into
