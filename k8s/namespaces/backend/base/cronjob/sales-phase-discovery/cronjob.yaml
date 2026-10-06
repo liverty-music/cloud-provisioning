@@ -5,6 +5,10 @@ metadata:
 spec:
   schedule: "0 12 * * *" # 21:00 JST daily
   concurrencyPolicy: Forbid
+  # Explicit so lifting a suspend patch is applied: ArgoCD does not reset a
+  # field that disappears from the manifest, so removing the patch alone left
+  # the live CronJob suspended.
+  suspend: false
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
