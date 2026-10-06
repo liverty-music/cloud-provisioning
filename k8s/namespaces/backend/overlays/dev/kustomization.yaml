@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
 - ../../base
-- sql-proxy/deployment.yaml
 
 namespace: backend
 

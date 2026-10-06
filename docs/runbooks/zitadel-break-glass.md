@@ -227,32 +227,34 @@ its key:
    built-in `postgres` superuser instead — same approach as
    [`k8s/namespaces/zitadel/base/job-grant-db.yaml`](../../k8s/namespaces/zitadel/base/job-grant-db.yaml).
 
-   Start a Cloud SQL Auth Proxy *without* `--auto-iam-authn` and a
-   psql client pod, both pointed at the `postgres` database (not
-   `zitadel`):
+   Use the ephemeral `db-proxy` Pod (no `--auto-iam-authn`) from
+   [`cloud-sql-access.md`](cloud-sql-access.md#break-glass-login-as-postgres)
+   and connect to the `postgres` database (not `zitadel`):
 
    ```bash
+   ENV=dev   # or prod
+
    # Fetch the postgres admin password from GSM. The secret name
    # matches the ESC-managed `gcp.postgresAdminPassword` value.
    PG_ADMIN_PASSWORD=$(gcloud secrets versions access latest \
-     --project=liverty-music-dev --secret=postgres-admin-password)
+     --project=liverty-music-$ENV --secret=postgres-admin-password)
 
-   # In one terminal: port-forward Cloud SQL Auth Proxy to localhost.
-   kubectl -n zitadel run sql-proxy-rescue \
-     --rm -i --restart=Never --image=gcr.io/cloud-sql-connectors/cloud-sql-proxy:2 \
-     --command -- \
-     --psc --port=5432 --address=0.0.0.0 \
-     liverty-music-dev:asia-northeast2:postgres-osaka &
+   # Create the proxy Pod and forward its port to localhost.
+   kubectl apply -k k8s/tools/db-proxy/overlays/$ENV
+   kubectl wait --for=condition=Ready pod/db-proxy -n backend --timeout=5m
+   kubectl port-forward pod/db-proxy 5432:5432 -n backend &
 
-   kubectl -n zitadel port-forward pod/sql-proxy-rescue 5432:5432 &
-
-   # In another terminal: connect to the `postgres` DB (not zitadel).
+   # Connect to the `postgres` DB (not zitadel).
    PGPASSWORD="$PG_ADMIN_PASSWORD" psql \
      -h 127.0.0.1 -p 5432 -U postgres -d postgres \
      -v ON_ERROR_STOP=1 <<'SQL'
    DROP DATABASE zitadel;
    CREATE DATABASE zitadel;
    SQL
+
+   # Stop the port-forward and delete the Pod.
+   kill %1
+   kubectl delete -k k8s/tools/db-proxy/overlays/$ENV
    ```
 
    The new database is owned by `cloudsqlsuperuser`. ArgoCD's

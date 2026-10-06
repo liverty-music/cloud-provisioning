@@ -1,0 +1,21 @@
+# Ephemeral Cloud SQL Auth Proxy Pod for developer database access.
+#
+# NOT managed by ArgoCD: no Application sources `k8s/tools/`, so ArgoCD never
+# re-creates or prunes this Pod. Developers create it on demand and delete it
+# after use:
+#
+#   kubectl apply -k k8s/tools/db-proxy/overlays/<env>
+#   kubectl port-forward pod/db-proxy 5432:5432 -n backend
+#   PGPASSWORD=$(gcloud sql generate-login-token) psql "host=127.0.0.1 ..."
+#   kubectl delete -k k8s/tools/db-proxy/overlays/<env>
+#
+# See docs/runbooks/cloud-sql-access.md and OpenSpec change
+# `unify-cloud-sql-access`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: backend
+
+resources:
+- serviceaccount.yaml
+- pod.yaml
