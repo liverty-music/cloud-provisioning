@@ -12,6 +12,8 @@ kind: Kustomization
 
 resources:
 - ../../base
+# Prod only: dev is a Standard cluster with its own Spot node pool.
+- compute-class-default.yaml
 
 patches:
 - path: cluster-secret-store-patch.yaml
