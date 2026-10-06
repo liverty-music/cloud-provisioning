@@ -1,6 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Purpose: Atlas Operator applies the backend schema migrations (the
+# `backend-migration` AtlasMigration synced by the `backend-migrations`
+# Application) to Cloud SQL. It is the only migration path in prod.
+#
 # Atlas Operator is a singleton controller with no env-divergent state (no
 # ESC secrets mounted, no hostnames, no per-env config). The dev overlay's
 # spot-nodeSelector and right-sized resource requests are the right baseline

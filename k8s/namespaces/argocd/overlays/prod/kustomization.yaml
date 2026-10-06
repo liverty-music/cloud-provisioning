@@ -16,10 +16,14 @@ patches:
   target:
     kind: ConfigMap
     name: argocd-cmd-params-cm
-# argocd-server: scale down from base HA (2 replicas) to single replica in
+# argocd-server: serves only the Argo CD UI/API that operators reach through
+# `kubectl port-forward`; syncing does not depend on it (application-controller
+# and repo-server do the work). Kept for the UI at a small cost.
+#
+# Scaled down from base HA (2 replicas) to a single replica in
 # prod. Cost-optimization decision: at launch-phase traffic levels the
 # UI/API has no SLA that requires HA, and Autopilot bills per Pod at a
-# minimum of 50m CPU + 64 MiB memory + 1 GiB ephemeral storage per Pod.
+# minimum of 50m CPU + 52 MiB memory per Pod.
 # Revert to 2 once steady-state SLA on the Argo CD control plane is
 # required.
 - patch: |-

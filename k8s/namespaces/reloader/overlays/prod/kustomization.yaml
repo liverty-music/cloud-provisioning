@@ -3,6 +3,13 @@ kind: Kustomization
 
 # Prod Reloader overlay. Reloader is a singleton controller with no
 # env-divergent state. Spot label + resource sizing match dev exactly.
+#
+# Purpose: Reloader rolls a workload when a ConfigMap or Secret it mounts
+# changes. It implements the Secret-rotation decision of the `secret-manager`
+# spec (Decision 5): ESO refreshes a Secret from Secret Manager, and Reloader
+# restarts the Pods that read it. Nine prod workloads carry
+# `reloader.stakater.com/auto: "true"` (backend, frontend, otel-collector), so
+# removing it would leave rotated secrets unused until the next rollout.
 
 resources:
 - ../../base
