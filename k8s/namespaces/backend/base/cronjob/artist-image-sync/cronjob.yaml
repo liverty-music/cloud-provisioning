@@ -9,6 +9,10 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      # Delete finished Jobs (and their Pods) after a day so completed and
+      # failed runs stop accumulating (optimize-prod-gke-cost D7). The history
+      # limits above still cap the count within that day.
+      ttlSecondsAfterFinished: 86400
       template:
         spec:
           terminationGracePeriodSeconds: 120
