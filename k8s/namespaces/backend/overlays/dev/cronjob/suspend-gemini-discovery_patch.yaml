@@ -1,6 +1,8 @@
-# TEMPORARY: suspend the Gemini-backed discovery CronJobs (concert-discovery,
-# sales-phase-discovery) so the October Gemini quota is reserved for validating
-# the latest Gemini flash model before the regular jobs consume it.
+# TEMPORARY: suspend the Gemini-backed concert-discovery CronJob so the October
+# Gemini quota is reserved for validating the latest Gemini flash model before
+# the regular job consumes it. sales-phase-discovery was resumed by the
+# tune-sales-phase-search rollout (kustomization.yaml targets
+# concert-discovery-app only).
 # Resume by deleting this patch (and its kustomization.yaml entry) once the
 # validation is done. Note: on resume, the most recent missed schedule fires
 # immediately because the CronJobs set no startingDeadlineSeconds.
