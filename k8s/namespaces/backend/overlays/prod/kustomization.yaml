@@ -335,6 +335,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - cronjob/artist-image-sync/configmap.env
+  - name: official-site-refresh-job-config
+    behavior: merge
+    envs:
+      - cronjob/official-site-refresh/configmap.env
   - name: sales-phase-discovery-job-config
     behavior: merge
     envs:
@@ -404,6 +408,9 @@ images:
     newTag: v1.57.0 # commit 3e8e8a8a4199322ee783aec7e72ae995aacad595
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
+    newTag: v1.57.0 # commit 3e8e8a8a4199322ee783aec7e72ae995aacad595
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/official-site-refresh
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/official-site-refresh
     newTag: v1.57.0 # commit 3e8e8a8a4199322ee783aec7e72ae995aacad595
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
