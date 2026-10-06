@@ -3,6 +3,10 @@ kind: Kustomization
 
 # Prod otel-collector overlay. Env-divergent fields:
 #   - ServiceAccount GSA email: otel-collector@liverty-music-prod (vs dev).
+#
+# Purpose: the in-cluster OTLP endpoint. Backend and Zitadel push traces and
+# metrics here (OpenTelemetry SDK autoexport), and the collector forwards them
+# to Cloud Trace and Cloud Monitoring. There is no scrape path to replace it.
 # Resource sizing + spot label match dev exactly.
 
 resources:
@@ -51,6 +55,8 @@ patches:
                 # pod evictable under node memory pressure; raise the request
                 # above the working set. Limit stays 128Mi (headroom for bursts).
                 memory: 96Mi
+                ephemeral-storage: 100Mi
               limits:
                 cpu: 200m
                 memory: 128Mi
+                ephemeral-storage: 100Mi

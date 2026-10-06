@@ -48,20 +48,25 @@ serviceAccount:
   create: false
   name: zitadel
 
+# Explicit ephemeral-storage (optimize-prod-gke-cost D4): without it Autopilot
+# bills a 1 GiB default per container. Measured zitadel usage is ~1 MiB (30-day
+# max in prod); Autopilot sets the limit equal to the request.
 resources:
   requests:
     cpu: 100m
     memory: 256Mi
+    ephemeral-storage: 100Mi
   limits:
     cpu: 1000m
     memory: 1Gi
+    ephemeral-storage: 100Mi
 
+# No PDB on the single-replica API (optimize-prod-gke-cost D3). The chart drops
+# `minAvailable: 0` (falsy), which rendered a PDB with neither minAvailable nor
+# maxUnavailable and `disruptionsAllowed: 0`, blocking node drains and active
+# migration. Re-enable with `minAvailable: 1` once the API runs 2 replicas.
 pdb:
-  enabled: true
-  # minAvailable=0 lets the single replica be voluntarily evicted
-  # (Spot preemption, drain, rollout). Both dev and prod use 1 replica
-  # currently — flip to a non-zero value if replica count >1.
-  minAvailable: 0
+  enabled: false
 
 revisionHistoryLimit: 10
 
@@ -294,13 +299,16 @@ login:
     requests:
       cpu: 50m
       memory: 128Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 500m
       memory: 512Mi
+      ephemeral-storage: 100Mi
 
+  # Disabled for the same reason as the API `pdb` above: `minAvailable: 0`
+  # rendered an empty PDB that allowed 0 disruptions.
   pdb:
-    enabled: true
-    minAvailable: 0
+    enabled: false
 
   service:
     type: ClusterIP
@@ -326,18 +334,22 @@ initJob:
     requests:
       cpu: 100m
       memory: 256Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 500m
       memory: 512Mi
+      ephemeral-storage: 100Mi
 
 setupJob:
   resources:
     requests:
       cpu: 100m
       memory: 256Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 500m
       memory: 512Mi
+      ephemeral-storage: 100Mi
   # Chart-side machineKey writer: enabled so catastrophic-restore can
   # extract the FirstInstance admin SA key from the ephemeral setup
   # Pod. Under normal operation (`FirstInstance.Skip: true` above) the
@@ -374,6 +386,8 @@ tools:
       requests:
         cpu: 10m
         memory: 32Mi
+        ephemeral-storage: 100Mi
       limits:
         cpu: 100m
         memory: 64Mi
+        ephemeral-storage: 100Mi

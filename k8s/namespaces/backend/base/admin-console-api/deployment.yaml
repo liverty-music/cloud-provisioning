@@ -109,6 +109,8 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+            ephemeral-storage: 100Mi
           limits:
             cpu: 200m
             memory: 256Mi
+            ephemeral-storage: 100Mi

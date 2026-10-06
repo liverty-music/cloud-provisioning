@@ -1,36 +1,19 @@
 # Prod-specific Helm values, layered on top of `../../base/values.yaml`.
 # See `../dev/values.yaml` for the full structural commentary.
 
-# Prod runs 2 `zitadel-api` replicas (base is single-replica for dev
-# cost-simplicity). A single wedged process (zitadel/zitadel#10103,
-# in-process projection-trigger deadlock) otherwise takes down ALL login
-# because neither readiness (/debug/ready) nor liveness (/debug/healthz)
-# detects the wedge — both stay 200 while auth-flow requests hang. Two
-# replicas bound the blast radius: one replica keeps login serving while
-# an operator manually restarts the wedged pod (`kubectl rollout restart
-# deploy/zitadel-api`). PDB `minAvailable: 1` (overrides base's 0) keeps
-# one replica up during voluntary disruptions.
-replicaCount: 2
-pdb:
-  minAvailable: 1
-
-# Spread the 2 zitadel-api replicas across nodes so a single node loss (Spot
-# preemption / drain / upgrade) can't take down both at once. HARD spread
-# (DoNotSchedule): a soft (ScheduleAnyway) constraint was overridden by the
-# weight-100 prefer-Spot nodeAffinity and both replicas still co-located on the
-# Spot node (observed 2026-09). Safe because the cluster always keeps >=3
-# on-demand nodes, so placing 2 replicas on distinct hosts is always
-# satisfiable — the on-demand pool is never the scarce resource (only Spot is,
-# which the prefer-Spot fallback already handles).
-topologySpreadConstraints:
-  - maxSkew: 1
-    topologyKey: kubernetes.io/hostname
-    whenUnsatisfiable: DoNotSchedule
-    labelSelector:
-      matchLabels:
-        app.kubernetes.io/name: zitadel
-        app.kubernetes.io/instance: zitadel
-        app.kubernetes.io/component: start
+# Pre-launch (optimize-prod-gke-cost D3): prod runs the base single replica
+# with no topology spread and no PDB (base `pdb.enabled: false`). The hard
+# hostname spread forced the second replica onto an on-demand node, and a PDB on
+# one replica blocks node drains and active migration back to Spot.
+#
+# At launch, restore HA here: `replicaCount: 2`, `pdb.enabled: true` with
+# `minAvailable: 1`, and a hostname topologySpreadConstraint with
+# `whenUnsatisfiable: ScheduleAnyway` + `nodeTaintsPolicy: Honor` (labelSelector
+# app.kubernetes.io/{name: zitadel, instance: zitadel, component: start}). Two
+# replicas bound the blast radius of the zitadel/zitadel#10103 projection-trigger
+# wedge: readiness and liveness stay 200 while auth flows hang, so one replica
+# keeps login serving while an operator runs
+# `kubectl rollout restart deploy/zitadel-api`.
 
 zitadel:
   configmapConfig:
@@ -111,7 +94,9 @@ zitadel:
       requests:
         cpu: 10m
         memory: 32Mi
+        ephemeral-storage: 100Mi
       limits:
         cpu: 100m
         memory: 64Mi
+        ephemeral-storage: 100Mi
   # See ../dev/values.yaml for the bootstrap-uploader removal rationale.

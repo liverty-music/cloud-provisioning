@@ -53,48 +53,8 @@ patches:
               requests:
                 cpu: 10m
                 memory: 64Mi
+                ephemeral-storage: 100Mi
               limits:
                 cpu: 200m
                 memory: 256Mi
-
-- target:
-    kind: Deployment
-    name: external-secrets-cert-controller
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: external-secrets-cert-controller
-    spec:
-      template:
-        spec:
-          containers:
-          - name: cert-controller
-            resources:
-              requests:
-                cpu: 10m
-                memory: 52Mi
-              limits:
-                cpu: 100m
-                memory: 128Mi
-
-- target:
-    kind: Deployment
-    name: external-secrets-webhook
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: external-secrets-webhook
-    spec:
-      template:
-        spec:
-          containers:
-          - name: webhook
-            resources:
-              requests:
-                cpu: 10m
-                memory: 52Mi
-              limits:
-                cpu: 100m
-                memory: 128Mi
+                ephemeral-storage: 100Mi
