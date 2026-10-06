@@ -773,6 +773,10 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			//     Autopilot. Spot scheduling is per-Pod via the
 			//     `cloud.google.com/gke-spot: "true"` nodeSelector.
 			//
+			// Out-of-band: the Autopilot general profile is `no-performance`
+			// (no pre-provisioned capacity). The provider has no field for
+			// it; see docs/runbooks/gke-autopilot-general-profile.md.
+			//
 			// See also docs/PROD_BOOTSTRAP_DECISIONS.md and
 			// docs/GKE_CLUSTER_MODE_DECISION.md.
 			if (!etcdCmekKeyName) {
@@ -799,10 +803,20 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 					// Autopilot auto-provisioning uses this SA for node-level
 					// logging/monitoring; workloads still bind to their own GCP
 					// SAs via Workload Identity (which Autopilot enforces).
+					//
+					// `defaultComputeClassEnabled` makes the cluster autoscaler
+					// apply the ComputeClass named `default` (k8s/cluster) to
+					// every Pod that selects no class: Spot first, on-demand
+					// fallback, active migration back to Spot. A cluster-level
+					// default avoids the 0.5 vCPU minimum that a named or
+					// namespace-default class would impose on podFamily rules
+					// (optimize-prod-gke-cost D1). Only Pods created after the
+					// class exists are affected.
 					clusterAutoscaling: {
 						autoProvisioningDefaults: {
 							serviceAccount: gkeNodeSa.email,
 						},
+						defaultComputeClassEnabled: true,
 					},
 					// Minimum monitoring config — see leading block comment
 					// for rationale + GCP doc citations. `advancedDatapath

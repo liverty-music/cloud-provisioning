@@ -217,6 +217,7 @@ export class Gcp {
 			regionName: RegionNames.Osaka,
 			project: this.project,
 			environment,
+			gatewayEnabled: workloadEnabled,
 			cloudflareConfig,
 			postmarkConfig,
 		})
@@ -231,6 +232,32 @@ export class Gcp {
 		const dockerConfig =
 			environment !== 'dev' ? { immutableTags: true } : undefined
 
+		// Cleanup policies (optimize-prod-gke-cost D8). Every push leaves a
+		// version behind (hundreds per package by 2026-10), and storage is
+		// billed per GB. KEEP wins over DELETE, so each package always keeps
+		// its most recent versions: prod keeps 10 (rollback re-pins an
+		// earlier semver tag, see docs/runbooks/prod-image-tag-pinning.md)
+		// and drops anything else after 60 days; dev keeps 5 and drops the
+		// rest after 14 days. Starts in dry-run: the policies only log what
+		// they would delete until `cleanupPolicyDryRun` is turned off.
+		const retention =
+			environment === 'prod'
+				? { keepCount: 10, olderThan: '5184000s' } // 60 days
+				: { keepCount: 5, olderThan: '1209600s' } // 14 days
+		const cleanupPolicies = [
+			{
+				id: 'keep-most-recent',
+				action: 'KEEP',
+				mostRecentVersions: { keepCount: retention.keepCount },
+			},
+			{
+				id: 'delete-old',
+				action: 'DELETE',
+				condition: { tagState: 'ANY', olderThan: retention.olderThan },
+			},
+		]
+		const cleanupPolicyDryRun = true
+
 		const backendArtifactRegistry = new gcp.artifactregistry.Repository(
 			'github-backend-repository',
 			{
@@ -240,6 +267,8 @@ export class Gcp {
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Backend Repository',
 				dockerConfig,
+				cleanupPolicies,
+				cleanupPolicyDryRun,
 			},
 			{ parent: this.project },
 		)
@@ -253,6 +282,8 @@ export class Gcp {
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Frontend Repository',
 				dockerConfig,
+				cleanupPolicies,
+				cleanupPolicyDryRun,
 			},
 			{ parent: this.project },
 		)
