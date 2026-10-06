@@ -211,7 +211,14 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					// Cap autoresize: Cloud SQL storage only grows and is
 					// billed for its size even after data shrinks. Prod used
 					// ~0.3 GB of 10 GB on 2026-10-06 (optimize-prod-gke-cost D8).
-					diskAutoresizeLimit: 20,
+					//
+					// Only while the instance runs: a STOPPED instance rejects
+					// every settings change except activationPolicy and
+					// deletionProtectionEnabled unless the same operation
+					// starts it. Leaving the field unset keeps the stored value,
+					// and a restart (activationPolicy -> ALWAYS) applies the
+					// limit in that same update.
+					diskAutoresizeLimit: workloadEnabled ? 20 : undefined,
 					deletionProtectionEnabled: true,
 					backupConfiguration: {
 						enabled: true,
