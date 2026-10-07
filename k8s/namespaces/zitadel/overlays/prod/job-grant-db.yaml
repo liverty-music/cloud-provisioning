@@ -33,8 +33,6 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: zitadel
-      nodeSelector:
-        cloud.google.com/gke-spot: "true"
       initContainers:
       - name: cloud-sql-proxy
         restartPolicy: Always
