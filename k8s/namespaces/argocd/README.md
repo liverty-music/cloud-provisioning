@@ -14,17 +14,17 @@ This directory contains the Kubernetes manifests for setting up ArgoCD in the `l
 ```
 k8s/
 ├── argocd-apps/            # App of Apps definitions
-│   └── dev/                # Dev environment applications
+│   ├── dev/                # Dev environment applications
+│   └── prod/               # Prod environment applications
 ├── cluster/                # Core cluster resources
 │   └── namespaces.yaml     # Namespace definitions
 └── namespaces/             # Workload manifests
     └── argocd/             # ArgoCD manifests
         ├── base/           # Shared Kustomize base (OCI Helm Chart: argo-cd)
-        │   ├── kustomization.yaml
-        │   └── root-app.yaml # Bootstrap Root Application
+        │   └── kustomization.yaml
         └── overlays/
-            ├── dev/        # Dev environment
-            └── prod/       # Prod environment
+            ├── dev/        # Dev environment (root-app.yaml → argocd-apps/dev)
+            └── prod/       # Prod environment (root-app.yaml → argocd-apps/prod)
 ```
 
 ## Bootstrap Instructions
@@ -105,11 +105,10 @@ Warning: autopilot-default-resources-mutator:Autopilot updated Job argocd/argocd
 job.batch/argocd-redis-secret-init serverside-applied
 ````
 
-# 3. Apply Root Application
-
-kubectl apply -f k8s/namespaces/argocd/base/root-app.yaml
-
-````
+The overlay includes the env's Root Application (`root-app.yaml`), so this
+apply also bootstraps the App of Apps: `root-app` syncs every Application
+under `k8s/argocd-apps/<env>`, including the `argocd` Application that keeps
+`root-app` itself in sync. No separate root-app apply is needed.
 
 ### 3. Production Environment
 
@@ -119,11 +118,8 @@ kubectl apply -f k8s/namespaces/argocd/base/root-app.yaml
 # 1. Switch context to prod cluster
 gcloud container clusters get-credentials cluster-prod --region <REGION> --project <PROJECT_ID>
 
-# 2. Apply ArgoCD Manifests
+# 2. Apply ArgoCD Manifests (includes the prod root-app → k8s/argocd-apps/prod)
 kubectl kustomize --enable-helm k8s/namespaces/argocd/overlays/prod | kubectl apply --server-side -f -
-
-# 3. Apply Root Application
-kubectl apply -f k8s/namespaces/argocd/base/root-app.yaml
 ````
 
 **Access UI:**
