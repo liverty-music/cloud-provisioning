@@ -15,18 +15,10 @@ resources:
 - ../../base
 
 patches:
-- target:
-    kind: Deployment
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: reloader
-    spec:
-      template:
-        spec:
-          nodeSelector:
-            cloud.google.com/gke-spot: "true"
+# No Spot nodeSelector in prod: the Deployments select no ComputeClass, so the
+# cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
+# places them on Spot with on-demand fallback and migrates them back
+# (optimize-prod-gke-cost D1).
 
 - target:
     kind: Deployment
