@@ -426,13 +426,9 @@ Install ArgoCD using Kustomize with Helm support. This uses the `dev` overlay by
 kubectl kustomize --enable-helm k8s/namespaces/argocd/overlays/dev | kubectl apply --server-side --force-conflicts -f -
 ```
 
-### 4. Apply Root Application
-
-Bootstrap the "App of Apps" pattern by applying the Root Application:
-
-```bash
-kubectl apply -f k8s/namespaces/argocd/base/root-app.yaml
-```
+The overlay includes the Root Application (`overlays/<env>/root-app.yaml`),
+so this apply also bootstraps the "App of Apps" pattern: `root-app` syncs every
+Application under `k8s/argocd-apps/<env>`.
 
 ## Accessing Infrastructure
 

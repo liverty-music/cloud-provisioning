@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
 - ../../base
+- root-app.yaml
 
 patches:
 # Enable HA for Prod
