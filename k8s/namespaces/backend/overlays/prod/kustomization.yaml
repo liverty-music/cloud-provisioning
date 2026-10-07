@@ -81,13 +81,10 @@ patches:
     target:
       kind: ServiceAccount
       name: media-consumer
-  # Global Spot VM patch for all Deployments
-  - path: spot-vm_patch.yaml
-    target:
-      kind: Deployment
-  - path: spot-vm_patch_cronjob.yaml
-    target:
-      kind: CronJob
+  # No Spot patch: the Deployments and CronJobs select no ComputeClass, so the
+  # cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
+  # places them on Spot, falls back to on-demand, and migrates them back
+  # (optimize-prod-gke-cost D1).
   # fan-api — pre-launch (optimize-prod-gke-cost D3): a single replica with no
   # topology spread and no PodDisruptionBudget. The hard hostname spread forced
   # the second replica onto an on-demand node, and a minAvailable: 1 PDB on one
