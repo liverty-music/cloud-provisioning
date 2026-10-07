@@ -4,7 +4,8 @@ kind: Kustomization
 #   - HTTPRoute hostname: liverty-music.app (apex) vs dev's dev.liverty-music.app
 #   - Runtime config (web-app-runtime-config ConfigMap) — prod hostnames,
 #     prod OIDC client/org IDs, prod VAPID key, `info` log level.
-# Resource sizing matches dev exactly; spot label matches.
+# Resource sizing matches dev exactly. Spot placement comes from the cluster
+# default ComputeClass, not a per-Deployment patch.
 resources:
   - ../../base
   # admin-console-web: the admin console workload (unify-workload-naming),
@@ -39,15 +40,10 @@ labels:
     includeSelectors: false
     includeTemplates: true
 patches:
-  # Prefer-Spot patch for the Deployments not yet on the cluster default
-  # ComputeClass. organizer-console-web-app is excluded: it is the first
-  # workload moved to the `default` class (optimize-prod-gke-cost D9 V3),
-  # which places it on Spot with on-demand fallback and migrates it back.
-  # The other Deployments follow in task 4.3, which removes this patch.
-  - path: spot-vm_patch.yaml
-    target:
-      kind: Deployment
-      name: (fan-web-app|admin-console-web-app)
+  # No Spot patch: every frontend Deployment selects no ComputeClass, so the
+  # cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
+  # places it on Spot, falls back to on-demand, and migrates it back
+  # (optimize-prod-gke-cost D1).
   # Match dev's resource sizing exactly (design D2).
   - target:
       kind: Deployment
