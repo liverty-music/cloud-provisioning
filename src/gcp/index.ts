@@ -232,18 +232,26 @@ export class Gcp {
 		const dockerConfig =
 			environment !== 'dev' ? { immutableTags: true } : undefined
 
-		// Cleanup policies (optimize-prod-gke-cost D8). Every push leaves a
-		// version behind (hundreds per package by 2026-10), and storage is
-		// billed per GB. KEEP wins over DELETE, so each package always keeps
-		// its most recent versions: prod keeps 10 (rollback re-pins an
-		// earlier semver tag, see docs/runbooks/prod-image-tag-pinning.md)
-		// and drops anything else after 60 days; dev keeps 5 and drops the
-		// rest after 14 days. Starts in dry-run: the policies only log what
-		// they would delete until `cleanupPolicyDryRun` is turned off.
+		// Cleanup policies (optimize-prod-gke-cost D8). Every push leaves
+		// versions behind (hundreds per package by 2026-10), and storage is
+		// billed per GB. KEEP wins over DELETE, so each package keeps its most
+		// recent versions and drops the rest once older than the age limit.
+		//
+		// keepCount counts versions, not releases: each release pushes an OCI
+		// index plus an image manifest and an attestation manifest, so 30
+		// versions keep about 10 releases (prod rollback re-pins an earlier
+		// semver tag, see docs/runbooks/prod-image-tag-pinning.md) and 15 keep
+		// about 5 in dev. AR never deletes a manifest that a kept index still
+		// references, so a kept image is never left without its children.
+		//
+		// Enforced since 2026-10-07. The dry run logged nothing (Data Access
+		// audit logs are off), so the policies were checked by replaying them
+		// over the version listings instead: every image running in prod is
+		// kept, and about 6 GB (prod) / 30 GB (dev) of old versions go.
 		const retention =
 			environment === 'prod'
-				? { keepCount: 10, olderThan: '5184000s' } // 60 days
-				: { keepCount: 5, olderThan: '1209600s' } // 14 days
+				? { keepCount: 30, olderThan: '5184000s' } // 60 days
+				: { keepCount: 15, olderThan: '1209600s' } // 14 days
 		const cleanupPolicies = [
 			{
 				id: 'keep-most-recent',
@@ -256,7 +264,7 @@ export class Gcp {
 				condition: { tagState: 'ANY', olderThan: retention.olderThan },
 			},
 		]
-		const cleanupPolicyDryRun = true
+		const cleanupPolicyDryRun = false
 
 		const backendArtifactRegistry = new gcp.artifactregistry.Repository(
 			'github-backend-repository',
