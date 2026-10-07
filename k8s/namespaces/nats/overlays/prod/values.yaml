@@ -10,7 +10,12 @@ config:
       pvc:
         enabled: true
         size: 10Gi
-        storageClassName: premium-rwo
+        # pd-balanced, not premium-rwo (pd-ssd): JetStream used under 3 MiB of
+        # 10 GiB and needs no SSD IOPS (optimize-prod-gke-cost D8). The class is
+        # in the StatefulSet's immutable volumeClaimTemplates, so changing it
+        # means deleting the StatefulSet and PVC (JetStream data is recreated;
+        # NACK re-creates streams and consumers from Git).
+        storageClassName: standard-rwo
 
 container:
   # NATS 2.12 changed its memory usage pattern; without a soft limit the Go
