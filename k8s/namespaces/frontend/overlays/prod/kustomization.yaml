@@ -14,8 +14,8 @@ resources:
   # organizer-console-web: the organizer console workload (unify-workload-naming),
   # successor to the deleted `organizer` workload. Owns organizer.liverty-music.app
   # via organizer-console-web-route. Prod-only (no dev environment runs the
-  # organizer console). The Spot VM patch targets `kind: Deployment`, so it applies
-  # to this Deployment automatically; the `app.kubernetes.io/version` label and the
+  # organizer console). It runs on the cluster default ComputeClass (no Spot
+  # patch); the `app.kubernetes.io/version` label and the
   # `organizer-console-web` image pin below track the frontend release.
   - ../../base/organizer-console-web
   - fan-web-configmap.yaml
@@ -39,9 +39,15 @@ labels:
     includeSelectors: false
     includeTemplates: true
 patches:
+  # Prefer-Spot patch for the Deployments not yet on the cluster default
+  # ComputeClass. organizer-console-web-app is excluded: it is the first
+  # workload moved to the `default` class (optimize-prod-gke-cost D9 V3),
+  # which places it on Spot with on-demand fallback and migrates it back.
+  # The other Deployments follow in task 4.3, which removes this patch.
   - path: spot-vm_patch.yaml
     target:
       kind: Deployment
+      name: (fan-web-app|admin-console-web-app)
   # Match dev's resource sizing exactly (design D2).
   - target:
       kind: Deployment
