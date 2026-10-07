@@ -15,6 +15,13 @@
 # keeps login serving while an operator runs
 # `kubectl rollout restart deploy/zitadel-api`.
 
+# No Spot nodeSelector in prod (optimize-prod-gke-cost D1): null drops the
+# base `cloud.google.com/gke-spot: "true"` from the API Deployment and the
+# init/setup Jobs (top-level `nodeSelector`) and from the Login Deployment, so
+# they select no ComputeClass and the cluster default class places them on
+# Spot with on-demand fallback. Dev keeps the base Spot selector.
+nodeSelector: null
+
 zitadel:
   configmapConfig:
     ExternalDomain: auth.liverty-music.app
@@ -100,3 +107,7 @@ zitadel:
         memory: 64Mi
         ephemeral-storage: 100Mi
   # See ../dev/values.yaml for the bootstrap-uploader removal rationale.
+
+login:
+  # See the top-level `nodeSelector: null` above.
+  nodeSelector: null
