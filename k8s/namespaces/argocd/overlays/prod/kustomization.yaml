@@ -83,19 +83,15 @@ patches:
 # argocd-notifications-cm. Losing those alerts would impair prod
 # operability, which exceeds the ~¥300/month savings from disabling
 # the controller.
-# Spot VM nodeSelector — required by `check-spot-nodeselector.ts` on every
-# Pod template in prod overlays (per spec Requirement 4 of the
-# prod-k8s-manifests change). Matches dev's pattern; needed because the
-# ArgoCD Helm-rendered base lacks a Spot nodeSelector that would otherwise
-# survive to the prod overlay. Targets ALL Deployments / StatefulSets /
-# Jobs so child resources (argocd-image-updater-controller, redis-secret-init,
-# application-controller, etc.) are covered without per-resource patches.
-- path: spot-vm_patch_deployment.yaml
+# Remove the Helm base's Spot pin from every Deployment / StatefulSet / Job
+# (argocd-image-updater-controller, redis-secret-init, application-controller,
+# etc.) so the cluster default ComputeClass applies (optimize-prod-gke-cost D1).
+- path: unpin-spot_patch_deployment.yaml
   target:
     kind: Deployment
-- path: spot-vm_patch_statefulset.yaml
+- path: unpin-spot_patch_statefulset.yaml
   target:
     kind: StatefulSet
-- path: spot-vm_patch_job.yaml
+- path: unpin-spot_patch_job.yaml
   target:
     kind: Job
