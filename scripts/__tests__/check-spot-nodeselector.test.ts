@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { findNonSpotWorkloads } from '../check-spot-nodeselector.ts'
+import {
+	defaultComputeClassIsSpot,
+	findNonSpotWorkloads,
+} from '../check-spot-nodeselector.ts'
 import { parseManifests } from '../rendered-manifests.ts'
 
 describe('findNonSpotWorkloads', () => {
@@ -71,5 +74,49 @@ metadata: {name: unquoted}
 spec: {template: {spec: {nodeSelector: {cloud.google.com/gke-spot: true}}}}
 `)
 		expect(findNonSpotWorkloads(docs)).toEqual(['Deployment/unquoted'])
+	})
+
+	it('accepts a Pod that selects no class when the default class is Spot', () => {
+		const docs = parseManifests(`
+kind: Deployment
+metadata: {name: unselected}
+spec: {template: {spec: {}}}
+---
+kind: Deployment
+metadata: {name: on-demand}
+spec: {template: {spec: {nodeSelector: {cloud.google.com/gke-spot: "false"}}}}
+---
+kind: Deployment
+metadata: {name: other-class}
+spec: {template: {spec: {nodeSelector: {cloud.google.com/compute-class: autopilot}}}}
+`)
+		expect(findNonSpotWorkloads(docs, true)).toEqual([
+			'Deployment/on-demand',
+			'Deployment/other-class',
+		])
+		expect(findNonSpotWorkloads(docs)).toContain('Deployment/unselected')
+	})
+})
+
+describe('defaultComputeClassIsSpot', () => {
+	it('is true only for a `default` class whose first rule is Spot', () => {
+		const spotFirst = parseManifests(`
+kind: ComputeClass
+metadata: {name: default}
+spec: {priorities: [{podFamily: general-purpose, spot: true}, {podFamily: general-purpose}]}
+`)
+		const onDemandFirst = parseManifests(`
+kind: ComputeClass
+metadata: {name: default}
+spec: {priorities: [{podFamily: general-purpose}, {podFamily: general-purpose, spot: true}]}
+`)
+		const named = parseManifests(`
+kind: ComputeClass
+metadata: {name: batch}
+spec: {priorities: [{podFamily: general-purpose, spot: true}]}
+`)
+		expect(defaultComputeClassIsSpot(spotFirst)).toBe(true)
+		expect(defaultComputeClassIsSpot(onDemandFirst)).toBe(false)
+		expect(defaultComputeClassIsSpot(named)).toBe(false)
 	})
 })
