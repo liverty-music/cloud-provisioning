@@ -252,16 +252,19 @@ export class Gcp {
 			environment === 'prod'
 				? { keepCount: 30, olderThan: '5184000s' } // 60 days
 				: { keepCount: 15, olderThan: '1209600s' } // 14 days
+		// Listed in id order, the order the API returns them in; any other
+		// order shows as a diff on every preview. Order does not affect
+		// precedence: KEEP always wins over DELETE.
 		const cleanupPolicies = [
-			{
-				id: 'keep-most-recent',
-				action: 'KEEP',
-				mostRecentVersions: { keepCount: retention.keepCount },
-			},
 			{
 				id: 'delete-old',
 				action: 'DELETE',
 				condition: { tagState: 'ANY', olderThan: retention.olderThan },
+			},
+			{
+				id: 'keep-most-recent',
+				action: 'KEEP',
+				mostRecentVersions: { keepCount: retention.keepCount },
 			},
 		]
 		const cleanupPolicyDryRun = false
