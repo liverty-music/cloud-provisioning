@@ -32,6 +32,11 @@ export interface OrganizerMediaArgs {
 	 *  served bucket (`organizer-media`, to write processed variants under
 	 *  `cdn/{org}/{mediaId}/{variant}.webp`). No project-level storage role. */
 	mediaConsumerSaEmail: pulumi.Input<string>
+	/** GCP Service Account email for the admin-console-api workload. Receives
+	 *  `roles/storage.objectUser` bucket-scoped on BOTH buckets so the admin
+	 *  `OrganizerService.Delete` can remove a deleted Organizer's originals and
+	 *  served variants. No project-level storage role. */
+	adminConsoleApiSaEmail: pulumi.Input<string>
 	/** Cloudflare provider config (API token + zone id). Reused to create the
 	 *  `media.<publicDomain>` A record and the ACME DNS-01 challenge CNAME in
 	 *  the single Cloudflare-authoritative zone (`liverty-music.app`), matching
@@ -133,6 +138,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 			location,
 			organizerConsoleApiSaEmail,
 			mediaConsumerSaEmail,
+			adminConsoleApiSaEmail,
 			cloudflareConfig,
 		} = args
 
@@ -297,6 +303,30 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				parent: this,
 				aliases: [{ name: 'organizer-media-processor-write' }],
 			},
+		)
+
+		// admin-console-api delete on BOTH buckets — the admin
+		// `OrganizerService.Delete` removes a deleted Organizer's originals
+		// (`{org}/{mediaId}`) and served variants (`cdn/{org}/{mediaId}/`).
+		// `objectUser` covers list + get + delete without bucket IAM rights.
+		// Bucket-scoped bindings only; no project-level storage role.
+		new gcp.storage.BucketIAMMember(
+			'organizer-media-admin-delete',
+			{
+				bucket: bucket.name,
+				role: Roles.Storage.ObjectUser,
+				member: pulumi.interpolate`serviceAccount:${adminConsoleApiSaEmail}`,
+			},
+			{ parent: this },
+		)
+		new gcp.storage.BucketIAMMember(
+			'organizer-media-internal-admin-delete',
+			{
+				bucket: internalBucket.name,
+				role: Roles.Storage.ObjectUser,
+				member: pulumi.interpolate`serviceAccount:${adminConsoleApiSaEmail}`,
+			},
+			{ parent: this },
 		)
 
 		// Cloud CDN backend bucket over the PRIVATE bucket. `FORCE_CACHE_ALL`
