@@ -120,12 +120,32 @@ zitadel:
           # Username set in overlay (same value as User.Username).
           SSL:
             Mode: disable
-        # Cloud SQL is db-f1-micro tier (25 conn cap); backend uses ~12.
-        # Replicas=1 * MaxOpen=3 = 3 leaves headroom for Atlas + manual psql.
-        MaxOpenConns: 3
-        MaxIdleConns: 1
+        # Cloud SQL is db-f1-micro tier (25 conn cap); the other workloads
+        # use ~12. Replicas=1 * MaxOpen=6 = 6 still leaves headroom for
+        # Atlas + manual psql.
+        #
+        # MaxOpen is NOT just a connection budget here: when
+        # Projections.MaxParallelTriggers is unset, Zitadel sizes its
+        # projection-trigger worker pool as MaxOpenConns / 3. At MaxOpen=3
+        # that is ONE worker, and a reducer that triggers another projection
+        # with WithAwaitRunning (e.g. the notifications handler's
+        # reducePasswordChanged → NotificationPolicyByOrg(shouldTriggerBulk))
+        # blocks forever on the unbuffered trigger queue its own worker is
+        # holding. Every later trigger — including AuthRequestByID on each
+        # login — then hangs, and a restart re-enters the same deadlock when
+        # the spooler replays the event. Prod login was down this way on
+        # 2026-10-08 after a user.human.password.changed event.
+        MaxOpenConns: 6
+        MaxIdleConns: 2
         MaxConnLifetime: 30m
         MaxConnIdleTime: 5m
+
+    # Projection-trigger worker pool. Must stay below Database.MaxOpenConns
+    # (Zitadel refuses to start otherwise) and at least 2, so a reducer that
+    # awaits a nested trigger always has a second worker to run it (see the
+    # MaxOpenConns comment above).
+    Projections:
+      MaxParallelTriggers: 2
 
     Machine:
       Identification:
