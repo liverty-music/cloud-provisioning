@@ -16,7 +16,6 @@ import { MachineUserComponent } from './components/machine-user.js'
 import { OrganizerConsoleComponent } from './components/organizer-console.js'
 import { OrganizerProvisionerComponent } from './components/organizer-provisioner.js'
 import { SmtpComponent } from './components/smtp.js'
-import { WatchdogProbeComponent } from './components/watchdog-probe.js'
 import {
 	adminOrgIdMap,
 	BACKEND_WEBHOOK_BASE_URL,
@@ -74,7 +73,6 @@ export * from './components/organizer-console.js'
 export * from './components/organizer-provisioner.js'
 export * from './components/secrets.js'
 export * from './components/smtp.js'
-export * from './components/watchdog-probe.js'
 export * from './constants.js'
 export * from './dynamic/index.js'
 
@@ -192,9 +190,6 @@ export class Zitadel {
 	/** Password-based Playwright E2E test user (every environment). */
 	public readonly e2eTestUser: E2eTestUserComponent
 
-	/** Watchdog probe machine user + PAT for the self-healing CronJob. */
-	public readonly watchdogProbe: WatchdogProbeComponent
-
 	/** Shared `organizer-console` project (`owner` role + OIDC/API apps) in
 	 *  the product org, the static scaffolding for the Organizer B2B tenancy. */
 	public readonly organizerConsole: OrganizerConsoleComponent
@@ -209,10 +204,6 @@ export class Zitadel {
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
-
-	/** Personal Access Token for the watchdog CronJob bearer token.
-	 *  Store in Secret Manager and sync to the `zitadel` namespace via ExternalSecret. */
-	public readonly watchdogProbeToken: pulumi.Output<string>
 
 	constructor(name: string, args: ZitadelArgs) {
 		const {
@@ -446,20 +437,6 @@ export class Zitadel {
 		})
 
 		this.machineKeyDetails = this.machineUser.keyDetails
-
-		// Watchdog probe identity — least-privilege machine user in the product
-		// org (co-located with the project it probes), granted PROJECT_OWNER_VIEWER
-		// on the product project. The PAT is stored in GSM via
-		// `zitadelWatchdogProbePat` (threaded through GcpArgs → KubernetesComponent
-		// esoOnlySecrets) and synced to the `zitadel` namespace by an ExternalSecret.
-		// See OpenSpec change `zitadel-watchdog-readonly-probe`.
-		this.watchdogProbe = new WatchdogProbeComponent(name, {
-			productOrgId: this.productOrg.id,
-			productProjectId: this.project.id,
-			provider: this.provider,
-		})
-
-		this.watchdogProbeToken = this.watchdogProbe.token
 
 		// Organizer B2B tenancy scaffolding — the shared `organizer-console`
 		// project (its `owner` role + OIDC/API apps) owned by the product org.
