@@ -106,15 +106,14 @@ export interface ZitadelArgs {
 	 */
 	pannpersGoogleSub: pulumi.Input<string>
 	/**
-	 * Initial password for the dev-only Playwright E2E test user.
+	 * Initial password for the Playwright E2E test user.
 	 * Sourced from ESC `pulumiConfig.zitadel.e2eTestUser.password`
-	 * (secret). Consumed by `E2eTestUserComponent`. See OpenSpec
-	 * change `playwright-password-test-user` for rationale.
-	 *
-	 * Required only when `env === 'dev'`. Other envs do not provision
-	 * the E2E test user; this arg is ignored.
+	 * (secret) of each environment. Consumed by `E2eTestUserComponent`.
+	 * See OpenSpec change `playwright-password-test-user` for rationale;
+	 * prod adopted the user for authenticated verification of
+	 * `public-event-page` against production.
 	 */
-	e2eTestUserPassword?: pulumi.Input<string>
+	e2eTestUserPassword: pulumi.Input<string>
 }
 
 /**
@@ -161,11 +160,10 @@ export interface ZitadelArgs {
  * `Record<Environment, T>` maps in `constants.ts` and downstream
  * leaf components.
  *
- * The only env-conditional resource at this layer is `E2eTestUserComponent`,
- * which is dev-only by product decision (not env-dispatch anti-pattern):
- * E2E test infrastructure is dev-scoped per `playwright-password-test-user`
- * and `enable-zitadel-prod-e2e-user` (the future change planning prod
- * adoption).
+ * No resource at this layer is env-conditional: the password-based
+ * `E2eTestUserComponent` (first dev-only per `playwright-password-test-user`)
+ * is provisioned in prod too, so authenticated Playwright runs can verify
+ * production (adopted for `public-event-page`).
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider
@@ -191,8 +189,8 @@ export class Zitadel {
 	public readonly adminOrgConfig: AdminOrgConfigComponent
 	public readonly humanAdmin: HumanAdminComponent
 	public readonly adminRoleGrant: zitadel.UserGrant
-	/** E2E test user — dev-only. `undefined` in prod (and any future env). */
-	public readonly e2eTestUser: E2eTestUserComponent | undefined
+	/** Password-based Playwright E2E test user (every environment). */
+	public readonly e2eTestUser: E2eTestUserComponent
 
 	/** Watchdog probe machine user + PAT for the self-healing CronJob. */
 	public readonly watchdogProbe: WatchdogProbeComponent
@@ -565,28 +563,16 @@ export class Zitadel {
 		// for the `ZitadelHumanUserPasswordPermanent` marker resource that
 		// makes the user's password permanent at provision time.
 		//
-		// **Dev-only by product decision**, not env-dispatch anti-pattern:
-		// prod E2E test infra is a separate concern tracked under the
-		// future `enable-zitadel-prod-e2e-user` change. This is the one
-		// remaining env-conditional resource in the unified class; per
-		// `refactor-unify-env-dispatch` spec, env-conditional leaf
-		// instantiation is acceptable when the leaf component is truly
-		// env-scoped at the product layer.
-		if (env === 'dev') {
-			if (!e2eTestUserPassword) {
-				throw new Error(
-					'e2eTestUserPassword is required when env === "dev". ' +
-						'Seed `pulumiConfig.zitadel.e2eTestUser.password` in dev ESC.',
-				)
-			}
-			this.e2eTestUser = new E2eTestUserComponent(name, {
-				env,
-				orgId: this.productOrg.id,
-				initialPassword: e2eTestUserPassword,
-				domain,
-				jwtProfileJson,
-				provider: this.provider,
-			})
-		}
+		// Provisioned in every environment so authenticated Playwright runs
+		// can drive both dev and prod (prod adopted it for the
+		// public-event-page verification).
+		this.e2eTestUser = new E2eTestUserComponent(name, {
+			env,
+			orgId: this.productOrg.id,
+			initialPassword: e2eTestUserPassword,
+			domain,
+			jwtProfileJson,
+			provider: this.provider,
+		})
 	}
 }
