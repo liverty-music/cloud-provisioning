@@ -20,6 +20,17 @@ export const baseDomainMap: Record<Environment, string> = {
 }
 
 /**
+ * Username and email of the password-based Playwright E2E test user per
+ * environment (`E2eTestUserComponent`). The `e2e-test-password@` local-part
+ * keeps the user recognizable in the console list; the domain follows the
+ * environment's base domain.
+ */
+export const e2eTestUserEmailMap: Record<Environment, string> = {
+	dev: `e2e-test-password@${baseDomainMap.dev}`,
+	prod: `e2e-test-password@${baseDomainMap.prod}`,
+}
+
+/**
  * Zitadel issuer hostname per environment.
  *
  *     https://auth.dev.liverty-music.app

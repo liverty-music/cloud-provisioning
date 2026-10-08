@@ -239,13 +239,11 @@ const zitadel = workloadEnabled
 			pannpersGoogleSub: zitadelConfig.apply(
 				(z) => z.adminGoogleSubs.pannpers,
 			),
-			// E2E test user password — only consumed when `env === 'dev'` inside
-			// the unified class; the class's `if (env === 'dev')` gate validates
-			// presence at instantiation time.
-			e2eTestUserPassword:
-				env === 'dev'
-					? zitadelConfig.apply((z) => z.e2eTestUser.password)
-					: undefined,
+			// E2E test user password (ESC `pulumiConfig.zitadel.e2eTestUser`,
+			// seeded in every environment).
+			e2eTestUserPassword: zitadelConfig.apply(
+				(z) => z.e2eTestUser.password,
+			),
 		})
 	: undefined
 const zitadelMachineKey = zitadel?.machineKeyDetails

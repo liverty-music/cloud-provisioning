@@ -1,14 +1,12 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../../config.js'
+import { e2eTestUserEmailMap } from '../constants.js'
 import { ZitadelHumanUserPasswordPermanent } from '../dynamic/permanent-password.js'
 
 export interface E2eTestUserComponentArgs {
-	/** Pulumi stack environment. The component throws synchronously if
-	 *  `env !== 'dev'` — the E2E test user is dev-only and the parent
-	 *  `Zitadel` class also gates self-hosted topology to dev, so this
-	 *  guard is defensive depth in case the component is ever lifted
-	 *  out of the dev-only constructor. */
+	/** Pulumi stack environment; selects the user's email
+	 *  (`e2eTestUserEmailMap`). */
 	env: Environment
 	/** ID of the `liverty-music` product org. The E2E test user lives
 	 *  alongside end-user identities; the product org's `LoginPolicy`
@@ -131,8 +129,15 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 	) {
 		super('zitadel:liverty-music:E2eTestUser', name, {}, opts)
 
-		const { orgId, initialPassword, domain, jwtProfileJson, provider } =
-			args
+		const {
+			env,
+			orgId,
+			initialPassword,
+			domain,
+			jwtProfileJson,
+			provider,
+		} = args
+		const email = e2eTestUserEmailMap[env]
 
 		// Env guard removed per `refactor-unify-env-dispatch` D2: the parent
 		// `Zitadel` class gates instantiation via `if (env === 'dev')`. The
@@ -146,8 +151,8 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 				// userName + email aligned so Login V2's username field accepts
 				// the email directly. The `e2e-test-password@` local-part makes
 				// the user immediately recognizable in the admin console list.
-				userName: 'e2e-test-password@dev.liverty-music.app',
-				email: 'e2e-test-password@dev.liverty-music.app',
+				userName: email,
+				email,
 				firstName: 'E2E',
 				lastName: 'Password Test User',
 				preferredLanguage: 'en',
