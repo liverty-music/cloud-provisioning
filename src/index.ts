@@ -247,7 +247,6 @@ const zitadel = workloadEnabled
 		})
 	: undefined
 const zitadelMachineKey = zitadel?.machineKeyDetails
-const zitadelWatchdogProbePat = zitadel?.watchdogProbeToken
 const zitadelOrganizerProvisionerKey = zitadel?.organizerProvisionerKeyDetails
 
 // 2. GCP Infrastructure (All Environments)
@@ -267,7 +266,6 @@ const gcp = new Gcp({
 	postmarkConfig,
 	zitadelMachineKey,
 	zitadelEnabled: zitadel !== undefined,
-	zitadelWatchdogProbePat,
 	zitadelOrganizerProvisionerKey,
 	// HMAC signing key Zitadel generated for the login-event Target
 	// (PAYLOAD_TYPE_JSON). Plumbed to the backend as GSM secret
