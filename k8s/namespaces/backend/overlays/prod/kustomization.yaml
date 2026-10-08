@@ -161,6 +161,11 @@ patches:
               # via envFrom). Matching IAM SQL user provisioned in postgres.ts.
               - name: DATABASE_USER
                 value: "admin-console-api@liverty-music-prod.iam"
+              # The admin OrganizerService.Delete removes a deleted Organizer's
+              # uploaded originals from this bucket (the served bucket arrives
+              # through fan-api-config's ORGANIZER_MEDIA_BUCKET).
+              - name: ORGANIZER_MEDIA_INTERNAL_BUCKET
+                value: "liverty-music-prod-organizer-media-internal"
   # organizer-console-api — single replica (matches admin-console-api sizing).
   - target:
       kind: Deployment

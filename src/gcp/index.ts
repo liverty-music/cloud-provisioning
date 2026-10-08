@@ -680,6 +680,8 @@ export class Gcp {
 						kubernetes.organizerConsoleApiServiceAccountEmail,
 					mediaConsumerSaEmail:
 						kubernetes.mediaConsumerServiceAccountEmail,
+					adminConsoleApiSaEmail:
+						kubernetes.adminConsoleApiServiceAccountEmail,
 					cloudflareConfig,
 				},
 			)
