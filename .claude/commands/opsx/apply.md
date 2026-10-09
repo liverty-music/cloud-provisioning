@@ -150,7 +150,7 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! You can archive this change with `/opsx:archive`.
+All tasks complete! You can archive this change by running `openspec archive "<name>"`.
 ```
 
 **Output On Pause (Issue Encountered)**
