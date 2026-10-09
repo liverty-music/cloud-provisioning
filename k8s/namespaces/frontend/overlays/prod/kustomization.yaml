@@ -19,9 +19,14 @@ resources:
   # patch); the `app.kubernetes.io/version` label and the
   # `organizer-console-web` image pin below track the frontend release.
   - ../../base/organizer-console-web
+  # reception-web: the venue reception web app, built and served apart from the
+  # organizer console (isolate-venue-reception). Owns reception.liverty-music.app
+  # via reception-web-route.
+  - ../../base/reception-web
   - fan-web-configmap.yaml
   - admin-console-web-configmap.yaml
   - organizer-console-web-configmap.yaml
+  - reception-web-configmap.yaml
 namespace: frontend
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource. Value SHALL be the bare semver without the leading `v`
@@ -111,6 +116,14 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["organizer.liverty-music.app"]
+  # Prod reception HTTPRoute hostname (reception-web-route).
+  - target:
+      kind: HTTPRoute
+      name: reception-web-route
+    patch: |-
+      - op: add
+        path: /spec/hostnames
+        value: ["reception.liverty-music.app"]
 # Pin the web-app image to prod Artifact Registry with an immutable
 # semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags` +
 # the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -167,4 +180,9 @@ images:
   # pin-bump, which pins all three bundles atomically (routed in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-console-web
+    newTag: v1.77.0 # commit 58b12381045a9d8f6484cc390a9991b7dbb10bce
+  # reception-web (isolate-venue-reception): the reception app's own image,
+  # published by the same frontend release and pinned by the same pin-bump.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/reception-web
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/reception-web
     newTag: v1.77.0 # commit 58b12381045a9d8f6484cc390a9991b7dbb10bce

@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# reception-web: the venue reception web app, a separately built frontend
+# served on its own origin (reception.liverty-music.app via reception-web-route,
+# hostname set per overlay), away from the organizer console's origin and
+# tokens. See OpenSpec change `isolate-venue-reception`.
+
+resources:
+- deployment.yaml
+- service.yaml
+- httproute.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+namePrefix: reception-web-
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: reception-web
+
+images:
+- name: reception-web
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/reception-web
+  newTag: latest

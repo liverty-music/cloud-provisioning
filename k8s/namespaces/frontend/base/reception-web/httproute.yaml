@@ -1,0 +1,15 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  # namePrefix reception-web- -> reception-web-route; backendRef svc ->
+  # reception-web-svc (kustomizeconfig nameReference).
+  name: route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  rules:
+  - backendRefs:
+    - name: svc
+      port: 80
+  # hostname (reception.{base-domain}) is patched per overlay.
