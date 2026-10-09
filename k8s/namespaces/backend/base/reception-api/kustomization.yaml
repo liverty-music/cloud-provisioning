@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# reception-api: the unauthenticated venue-reception API (ReceptionService:
+# Open, Admit) for staff phones at the door, kept apart from the organizer
+# console's workload, service account and database role. See OpenSpec change
+# `isolate-venue-reception`.
+resources:
+- serviceaccount.yaml
+- deployment.yaml
+- service.yaml
+- health-check-policy.yaml
+- httproute.yaml
+
+configurations:
+- kustomizeconfig.yaml
+
+# Sub-base-scoped `app: reception-api` label (with selector): the
+# selector-isolation boundary, as in organizer-console-api.
+labels:
+- includeSelectors: true
+  pairs:
+    app: reception-api
+
+# Shared API-server binary image (backend/api), as fan-api, admin-console-api
+# and organizer-console-api; the prod overlay pins it.
+images:
+- name: server
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
+  newTag: latest

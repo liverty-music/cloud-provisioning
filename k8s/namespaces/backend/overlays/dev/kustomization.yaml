@@ -32,6 +32,12 @@ patches:
     kind: ServiceAccount
     name: organizer-console-api
 
+# Bind KSA reception-api to its dedicated dev GSA (Workload Identity).
+- path: serviceaccount_reception_api_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: reception-api
+
 # Bind KSA media-consumer to its dedicated dev GSA (Workload Identity).
 - path: serviceaccount_media_consumer_patch.yaml
   target:
@@ -157,6 +163,26 @@ patches:
             - name: DATABASE_USER
               value: "organizer-console-api@liverty-music-dev.iam"
 
+# reception-api in dev: one replica and its own IAM DB user. Dev is stopped,
+# so this is kept coherent with prod but is inert.
+- target:
+    kind: Deployment
+    name: reception-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: reception-api
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: server
+            env:
+            - name: DATABASE_USER
+              value: "reception-api@liverty-music-dev.iam"
+
 - target:
     kind: HTTPRoute
     name: fan-api-route
@@ -180,6 +206,14 @@ patches:
     - op: add
       path: /spec/hostnames
       value: ["api.organizer.dev.liverty-music.app"]
+
+- target:
+    kind: HTTPRoute
+    name: reception-api-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["api.reception.dev.liverty-music.app"]
 
 # CronJob: run concert discovery only on Fridays in dev
 - path: cronjob/concert-discovery/schedule_patch.yaml

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reception-api
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    spec:
+      terminationGracePeriodSeconds: 75
+      serviceAccountName: reception-api
+      volumes:
+      # The shared binary's DI initializes the backend-app Zitadel client from
+      # this key at boot, even though the reception path never calls Zitadel.
+      - name: zitadel-machine-key
+        secret:
+          secretName: backend-secrets
+          items:
+          - key: zitadel-machine-key-for-backend-app.json
+            path: zitadel-machine-key-for-backend-app.json
+      containers:
+      - name: server
+        image: server
+        imagePullPolicy: Always
+        ports:
+        # The single backend binary starts every listener; only the reception
+        # listener (8092) is declared and routed, via reception-api-svc.
+        - containerPort: 8092
+          name: http-reception
+        env:
+        # Authenticate to Cloud SQL as this workload's OWN reception-only IAM DB
+        # user (overrides fan-api-config's DATABASE_USER). Set per overlay.
+        - name: DATABASE_USER
+          value: REPLACE_ME_IN_OVERLAY
+        envFrom:
+        # fan-api-config carries RECEPTION_SERVER_PORT and
+        # RECEPTION_CORS_ALLOWED_ORIGINS (overridden per overlay).
+        - configMapRef:
+            name: fan-api-config
+        - secretRef:
+            name: backend-secrets
+        volumeMounts:
+        - name: zitadel-machine-key
+          mountPath: /secrets/zitadel
+          readOnly: true
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
+        readinessProbe:
+          grpc:
+            port: 8092
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          grpc:
+            port: 8092
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+            ephemeral-storage: 100Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+            ephemeral-storage: 100Mi

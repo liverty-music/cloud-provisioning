@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: reception-api-svc
+spec:
+  type: ClusterIP
+  # Selects ONLY reception-api Pods (`app: reception-api` from this sub-base's
+  # labels transformer) and routes ONLY the reception listener.
+  ports:
+  - port: 80
+    targetPort: 8092
+    protocol: TCP
+    name: http-reception
+    appProtocol: kubernetes.io/h2c # HTTP/2 Cleartext
