@@ -67,6 +67,13 @@ export interface GcpArgs {
 	 * Omitted → handler fails closed (503) until configured.
 	 */
 	stripeWebhookSigningSecret?: pulumi.Output<string>
+	/**
+	 * Postmark Server API token — the same token Zitadel's SMTP uses. Seeds a
+	 * GSM secret (`postmark-server-token`) consumed as POSTMARK_SERVER_TOKEN by
+	 * the event-consumer, which sends the purchase confirmation email
+	 * (first-come-ticket-sales). Omitted → the consumer's no-op sender.
+	 */
+	postmarkServerToken?: string
 	/** HMAC signing key Zitadel generated for the login-event Actions v2 Target
 	 *  (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
 	 *  `webhook-login-event-signing-key` and synced into `backend-secrets` as
@@ -184,6 +191,7 @@ export class Gcp {
 			pocketSignToken,
 			stripeSecretKey,
 			stripeWebhookSigningSecret,
+			postmarkServerToken,
 			loginEventSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
@@ -559,6 +567,19 @@ export class Gcp {
 									value: pulumi.secret(
 										stripeWebhookSigningSecret,
 									),
+								},
+							]
+						: []),
+					// Postmark Server API token for the purchase confirmation email
+					// (first-come-ticket-sales). Consumed as POSTMARK_SERVER_TOKEN by
+					// the event-consumer via the `backend-secrets` ExternalSecret, whose
+					// entry is added only after this GSM secret exists (ESO fails the
+					// whole bundle on a missing referenced key).
+					...(postmarkServerToken
+						? [
+								{
+									name: 'postmark-server-token',
+									value: pulumi.secret(postmarkServerToken),
 								},
 							]
 						: []),

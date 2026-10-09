@@ -265,6 +265,7 @@ const gcp = new Gcp({
 	geminiSearchApiKey,
 	pocketSignToken,
 	stripeSecretKey,
+	postmarkServerToken: postmarkConfig.serverApiToken,
 	stripeWebhookSigningSecret,
 	cloudflareConfig,
 	postmarkConfig,
