@@ -32,6 +32,10 @@ spec:
         - containerPort: 8092
           name: http-reception
         env:
+        # The API deployment this process runs as (backend API_WORKLOAD).
+        # reception neither runs the payment sweepers nor provisions tenants.
+        - name: API_WORKLOAD
+          value: reception
         # Authenticate to Cloud SQL as this workload's OWN reception-only IAM DB
         # user (overrides fan-api-config's DATABASE_USER). Set per overlay.
         - name: DATABASE_USER
@@ -43,6 +47,10 @@ spec:
             name: fan-api-config
         - secretRef:
             name: backend-secrets
+        # Stripe credentials: the shared binary refuses to start outside local
+        # without them, although the reception path never calls Stripe.
+        - secretRef:
+            name: api-stripe-secrets
         volumeMounts:
         - name: zitadel-machine-key
           mountPath: /secrets/zitadel
