@@ -68,6 +68,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly adminConsoleApiServiceAccountEmail: pulumi.Output<string>
 	/** Organizer Console API GCP SA email — least-privilege read-only backend workload; exposed so Postgres can create its dedicated IAM SQL user. */
 	public readonly organizerConsoleApiServiceAccountEmail: pulumi.Output<string>
+	/** Reception API GCP SA email — the unauthenticated venue-reception backend workload; exposed so Postgres can create its dedicated IAM SQL user. */
+	public readonly receptionApiServiceAccountEmail: pulumi.Output<string>
 	/** Media Consumer GCP SA email — the long-running KEDA-scaled consumer that
 	 *  reads uploaded originals and writes processed variants; exposed so
 	 *  OrganizerMediaComponent can grant it bucket-scoped storage.objectAdmin on
@@ -353,6 +355,47 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				member: pulumi.interpolate`serviceAccount:${organizerConsoleApiSa.email}`,
 			},
 			{ parent: this },
+		)
+
+		// 2c-2. Reception API Service Account (reception-api)
+		// The workload serving the reception Connect server (ReceptionService:
+		// Open, Admit), used by venue staff phones without a sign-in. It is kept
+		// apart from organizer-console-api so the unauthenticated surface never
+		// runs with the console's database role. It holds no provisioner key, no
+		// SignBlob binding and no bucket access; its Cloud SQL IAM DB user is
+		// granted only the reception reads and writes (see the backend grant
+		// migration). See OpenSpec change `isolate-venue-reception`.
+		const receptionApi = 'reception-api'
+		const receptionApiSa = iamSvc.createServiceAccount(
+			`liverty-music-${receptionApi}`,
+			receptionApi,
+			'Liverty Music Reception API Service Account',
+			'Venue reception backend workload; authenticates to Cloud SQL as its own reception-only IAM DB user',
+			this,
+		)
+		this.receptionApiServiceAccountEmail = receptionApiSa.email
+		// Bind Kubernetes Service Account to Workload Identity (ns/backend/sa/reception-api)
+		iamSvc.bindKubernetesSaUser(
+			receptionApi,
+			receptionApiSa,
+			namespace,
+			this,
+		)
+		// Operational project roles of the shared backend binary, including the
+		// Cloud SQL connect + IAM login pair. Vertex AI is not granted: the
+		// reception path never calls it.
+		iamSvc.bindProjectRoles(
+			[
+				Roles.Logging.LogWriter,
+				Roles.Monitoring.MetricWriter,
+				Roles.CloudTrace.Agent,
+				Roles.CloudSql.Client,
+				Roles.CloudSql.InstanceUser,
+				Roles.ServiceUsage.ServiceUsageConsumer,
+			],
+			receptionApi,
+			receptionApiSa.email,
+			this,
 		)
 
 		// 2d. Media Consumer Service Account (media-consumer)

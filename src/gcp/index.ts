@@ -148,6 +148,8 @@ export class Gcp {
 				adminConsoleApiEmail: pulumi.Output<string>
 				/** Organizer Console API GCP SA email (least-privilege read-only). */
 				organizerConsoleApiEmail: pulumi.Output<string>
+				/** Reception API GCP SA email. */
+				receptionApiEmail: pulumi.Output<string>
 				/** Self-hosted Zitadel GCP SA email. */
 				zitadelEmail: pulumi.Output<string>
 				/** External Secrets Operator GCP SA email. */
@@ -694,6 +696,7 @@ export class Gcp {
 					kubernetes.adminConsoleApiServiceAccountEmail,
 				organizerConsoleApiEmail:
 					kubernetes.organizerConsoleApiServiceAccountEmail,
+				receptionApiEmail: kubernetes.receptionApiServiceAccountEmail,
 				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
 				esoEmail: kubernetes.esoServiceAccountEmail,
 				subnetId: kubernetes.subnet.id,
@@ -726,6 +729,7 @@ export class Gcp {
 			adminServiceAccountEmail: this.workloadSAs?.adminConsoleApiEmail,
 			organizerServiceAccountEmail:
 				this.workloadSAs?.organizerConsoleApiEmail,
+			receptionServiceAccountEmail: this.workloadSAs?.receptionApiEmail,
 			zitadelServiceAccountEmail: this.workloadSAs?.zitadelEmail,
 			fanApiServiceAccountEmail: this.workloadSAs?.fanApiEmail,
 			mediaConsumerServiceAccountEmail:
