@@ -77,6 +77,13 @@ export interface PostgresComponentArgs {
 	 */
 	organizerServiceAccountEmail?: pulumi.Input<string>
 	/**
+	 * GCP Service Account email for the reception-api workload. When provided, a
+	 * matching IAM SQL user (reception-api@<project>.iam) is created; its
+	 * reception-only app-schema grant is applied by a backend grant migration.
+	 * Only meaningful when `workloadEnabled` is true.
+	 */
+	receptionServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * GCP Service Account email for self-hosted Zitadel. When provided, a
 	 * dedicated `zitadel` database and matching IAM SQL user are created so
 	 * Zitadel can connect through Cloud SQL Auth Proxy with IAM authentication.
@@ -149,6 +156,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			appServiceAccountEmail,
 			adminServiceAccountEmail,
 			organizerServiceAccountEmail,
+			receptionServiceAccountEmail,
 			zitadelServiceAccountEmail,
 			fanApiServiceAccountEmail,
 			mediaConsumerServiceAccountEmail,
@@ -421,6 +429,25 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					'organizer-console-api',
 					{
 						name: organizerIamUserName,
+						project: project.projectId,
+						instance: instance.name,
+						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+					},
+					{ parent: this, dependsOn: [instance] },
+				)
+			}
+
+			// reception-api IAM SQL user — only when the reception SA exists. Same
+			// pattern as the users above; the grant is a backend migration.
+			if (receptionServiceAccountEmail) {
+				const receptionIamUserName = pulumi
+					.output(receptionServiceAccountEmail)
+					.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+				new gcp.sql.User(
+					'reception-api',
+					{
+						name: receptionIamUserName,
 						project: project.projectId,
 						instance: instance.name,
 						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
