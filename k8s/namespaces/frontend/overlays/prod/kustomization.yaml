@@ -36,7 +36,7 @@ namespace: frontend
 #   on the Deployment so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.75.0"
+      app.kubernetes.io/version: "1.76.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -150,7 +150,7 @@ images:
   # release (routed to fan-web in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
-    newTag: v1.75.0 # commit 1f63e9526d75b60ed39be695b3bab37729188e35
+    newTag: v1.76.0 # commit 90a82ad8b99d260f04b688c4d890aeb7eab652b3
   # admin-console-web (unify-workload-naming): the admin console bundle, successor
   # to admin-app. Now ACTIVE — the admin-console-web-app Deployment (create-new)
   # references it. Pinned at v1.52.0 (the release that first published
@@ -159,7 +159,7 @@ images:
   # (the fan-out that `batch-frontend-prod-pin-dispatch` later collapsed).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-console-web
-    newTag: v1.75.0 # commit 1f63e9526d75b60ed39be695b3bab37729188e35
+    newTag: v1.76.0 # commit 90a82ad8b99d260f04b688c4d890aeb7eab652b3
   # organizer-console-web (unify-workload-naming): successor to organizer-app. Now
   # ACTIVE — the organizer-console-web-app Deployment references it.
   # Pinned at v1.53.0 (the release that first published organizer-console-web to
@@ -167,4 +167,4 @@ images:
   # pin-bump, which pins all three bundles atomically (routed in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-console-web
-    newTag: v1.75.0 # commit 1f63e9526d75b60ed39be695b3bab37729188e35
+    newTag: v1.76.0 # commit 90a82ad8b99d260f04b688c4d890aeb7eab652b3
