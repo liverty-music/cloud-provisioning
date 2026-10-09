@@ -152,15 +152,16 @@ jobs:
               IMAGES="api consumer concert-discovery artist-image-sync official-site-refresh sales-phase-discovery sales-reminders media-consumer"
               BUMP_LABEL=true ;;
             frontend)
-              # One frontend release ships three web bundles from the same tag —
-              # fan-web (consumer), admin-console-web, organizer-console-web — so a
-              # single `frontend` dispatch pins all three in one atomic commit, the
-              # same way `backend` pins its images in one dispatch. The provenance,
-              # no-downgrade, and yq-rewrite loops below all iterate `${IMAGES}`, so
-              # listing the three bundles here is the only change needed. The
+              # One frontend release ships four web bundles from the same tag —
+              # fan-web (consumer), admin-console-web, organizer-console-web,
+              # reception-web — so a single `frontend` dispatch pins all four in
+              # one atomic commit, the same way `backend` pins its images in one
+              # dispatch. The provenance, no-downgrade, and yq-rewrite loops below
+              # all iterate `${IMAGES}`, so listing the bundles here is the only
+              # change needed. The
               # version label + fan-web-configmap track the consumer (fan-web).
               OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="fan-web admin-console-web organizer-console-web"
+              IMAGES="fan-web admin-console-web organizer-console-web reception-web"
               BUMP_LABEL=true ;;
           esac
 

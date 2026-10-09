@@ -12,6 +12,7 @@ resources:
 - fan-api
 - admin-console-api
 - organizer-console-api
+- reception-api
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
 - cronjob/official-site-refresh
