@@ -34,23 +34,21 @@ spec:
           name: http
         - containerPort: 9090
           name: webhook
+        env:
+        # The API deployment this process runs as (backend API_WORKLOAD). Every
+        # API deployment runs the same binary; fan is the one that runs the
+        # lottery draw, issuance and settlement sweepers.
+        - name: API_WORKLOAD
+          value: fan
         envFrom:
         - configMapRef:
             name: fan-api-config
         - secretRef:
             name: fan-api-backend-secrets
-        # Stripe webhook signing secret, isolated + optional. The Secret
-        # `fan-api-stripe-webhook-secret` is created by a dedicated ExternalSecret
-        # in the **prod overlay** — the GSM secret `stripe-webhook-signing-secret`
-        # is written by the prod Pulumi stack and dev has no Stripe environment.
-        # optional matters in dev, where the Secret is absent by design: the pod
-        # starts and the webhook handler fails closed (503) while
-        # STRIPE_WEBHOOK_SIGNING_SECRET is unset. Isolating
-        # it (vs. the all-or-nothing fan-api-backend-secrets bundle) also keeps a
-        # future signing-secret rotation fault from stranding every backend secret.
+        # Stripe credentials, shared by every API workload. Required: the backend
+        # refuses to start outside local without them.
         - secretRef:
-            name: fan-api-stripe-webhook-secret
-            optional: true
+            name: api-stripe-secrets
         volumeMounts:
         - name: zkp-verification-key
           mountPath: /configs/zkp/zkp-verification-key.json

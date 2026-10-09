@@ -58,7 +58,13 @@ spec:
         - containerPort: 8090
           name: http-admin
         env:
-        # Activates the organizer provisioner in THIS process only.
+        # The API deployment this process runs as (backend API_WORKLOAD). admin
+        # is the only workload that provisions organizer tenants, and the backend
+        # requires the provisioner credential below for it.
+        - name: API_WORKLOAD
+          value: admin
+        # The organizer-provisioner credential; the backend refuses it on any
+        # workload other than admin.
         - name: ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH
           value: /secrets/zitadel-organizer-provisioner/zitadel-machine-key-for-organizer-provisioner.json
         # Env-specific Zitadel project the provisioner grants tenant orgs into.
@@ -89,6 +95,10 @@ spec:
             name: fan-api-config
         - secretRef:
             name: backend-secrets
+        # Stripe credentials, for OrderService.Refund. Required: the backend refuses to
+        # start outside local without them.
+        - secretRef:
+            name: api-stripe-secrets
         volumeMounts:
         - name: zitadel-machine-key
           mountPath: /secrets/zitadel
