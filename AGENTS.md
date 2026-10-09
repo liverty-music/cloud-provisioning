@@ -65,7 +65,7 @@ clean preview) for when the cascade has already happened.
 
 ### Kubernetes Manifests
 
-Before committing changes under `k8s/`, follow the dry-run and dev cost checks in `k8s/CLAUDE.md`.
+Before committing changes under `k8s/`, follow the dry-run and dev cost checks in `k8s/AGENTS.md`.
 
 Do not commit if `kubectl kustomize` returns an error or patches are missing.
 
