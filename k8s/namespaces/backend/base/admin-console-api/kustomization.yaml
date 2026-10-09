@@ -10,6 +10,9 @@ resources:
 # admin-console-api-secrets (unify-workload-naming): the organizer-provisioner
 # key ExternalSecret, successor to the deleted admin-console-secrets.
 - external-secret-api.yaml
+# Stripe secret key for the admin OrderService.Refund, isolated from the
+# provisioner-key bundle (see the manifest for why).
+- external-secret-stripe.yaml
 
 configurations:
 - kustomizeconfig.yaml

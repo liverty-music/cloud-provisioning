@@ -78,6 +78,15 @@ spec:
         # for the same key. Set per overlay to the admin-console-api IAM user.
         - name: DATABASE_USER
           value: REPLACE_ME_IN_OVERLAY
+        # Stripe secret key for the admin OrderService.Refund. Optional so the
+        # Pod still starts (with the Noop payment ports, Refund → Unavailable)
+        # in an environment where the GSM secret is not provisioned.
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: admin-console-api-stripe-secret
+              key: STRIPE_SECRET_KEY
+              optional: true
         envFrom:
         # Config: admin borrows fan-api-config (successor to the deleted
         # server-config; identical content, DATABASE_USER overridden above).
