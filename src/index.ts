@@ -103,45 +103,49 @@ const env = pulumi.getStack() as Environment
 // STRIPE_WEBHOOK_SIGNING_SECRET. The subscribed event list is reviewable here
 // instead of living in Dashboard state.
 //
-// prod only: per the settlement change's environment decision there is no dev
-// Stripe environment, so there is no dev endpoint to register. "prod" is the
-// deployment stack, which points at the `pannpers.dev sandbox` preprod Stripe
-// account — no livemode account is involved anywhere in this change.
+// Registered in every stack whose ESC sets `stripeWebhookAdminKey`. The backend
+// refuses to start outside local without STRIPE_WEBHOOK_SIGNING_SECRET, so each
+// deployed environment needs its own endpoint: prod points at the
+// `pannpers.dev sandbox` preprod Stripe account, dev at the `dev` sandbox. No
+// livemode account is involved.
 //
 // NOTE: destroying this resource deletes the endpoint at Stripe and stops
 // delivery of the dispute/refund events the settlement flow depends on. Treat
 // removing it — or renaming it such that its URN changes — as a production change.
-const stripeWebhookEndpoint =
-	env === 'prod' && stripeWebhookAdminKey
-		? new StripeWebhookEndpoint(
-				'stripe-webhook-endpoint',
-				{
-					apiKey: stripeWebhookAdminKey,
-					url: 'https://api.liverty-music.app/stripe-webhook',
-					description:
-						'Liverty Music settlement/payout — transfer, payout, refund and dispute events',
-					enabledEvents: [
-						'charge.refunded',
-						'charge.dispute.created',
-						'charge.dispute.closed',
-						'transfer.created',
-						'transfer.reversed',
-						'payout.paid',
-						'payout.failed',
-					],
-				},
-				// protect: true — deleting the endpoint stops Stripe delivering the
-				// dispute and refund events the settlement flow depends on, and it
-				// would fail silently: money-out keeps working, only the clawback
-				// path goes dark. A `pulumi destroy --target`, a URN-changing rename
-				// or an operator slip should not be able to do that. Removal requires
-				// a deliberate `pulumi state unprotect` first — the same
-				// blast-radius-proportional barrier used on the prod-CI Artifact
-				// Registry grants. This does not change what `delete` does; it
-				// changes whether Pulumi will run it without being asked twice.
-				{ protect: true },
-			)
-		: undefined
+const stripeWebhookUrl =
+	env === 'prod'
+		? 'https://api.liverty-music.app/stripe-webhook'
+		: `https://api.${env}.liverty-music.app/stripe-webhook`
+const stripeWebhookEndpoint = stripeWebhookAdminKey
+	? new StripeWebhookEndpoint(
+			'stripe-webhook-endpoint',
+			{
+				apiKey: stripeWebhookAdminKey,
+				url: stripeWebhookUrl,
+				description:
+					'Liverty Music settlement/payout — transfer, payout, refund and dispute events',
+				enabledEvents: [
+					'charge.refunded',
+					'charge.dispute.created',
+					'charge.dispute.closed',
+					'transfer.created',
+					'transfer.reversed',
+					'payout.paid',
+					'payout.failed',
+				],
+			},
+			// protect: true — deleting the endpoint stops Stripe delivering the
+			// dispute and refund events the settlement flow depends on, and it
+			// would fail silently: money-out keeps working, only the clawback
+			// path goes dark. A `pulumi destroy --target`, a URN-changing rename
+			// or an operator slip should not be able to do that. Removal requires
+			// a deliberate `pulumi state unprotect` first — the same
+			// blast-radius-proportional barrier used on the prod-CI Artifact
+			// Registry grants. This does not change what `delete` does; it
+			// changes whether Pulumi will run it without being asked twice.
+			{ protect: true },
+		)
+	: undefined
 
 // Consumed as STRIPE_WEBHOOK_SIGNING_SECRET by the fan-api deployment via the
 // ESO ExternalSecret (GSM secret id `stripe-webhook-signing-secret`).

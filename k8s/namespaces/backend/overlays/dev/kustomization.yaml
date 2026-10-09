@@ -120,11 +120,6 @@ patches:
             # coherent with prod and the postgres.ts IAM SQL user.
             - name: DATABASE_USER
               value: "admin-console-api@liverty-music-dev.iam"
-            # The admin OrganizerService.Delete removes a deleted Organizer's
-            # uploaded originals from this bucket (the served bucket arrives
-            # through fan-api-config's ORGANIZER_MEDIA_BUCKET).
-            - name: ORGANIZER_MEDIA_INTERNAL_BUCKET
-              value: "liverty-music-dev-organizer-media-internal"
 
 # Reduce replicas to 1 for organizer-console-api in dev (low-volume traffic).
 - target:

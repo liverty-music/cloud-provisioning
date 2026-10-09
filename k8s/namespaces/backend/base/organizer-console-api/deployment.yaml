@@ -45,6 +45,10 @@ spec:
         - containerPort: 8091
           name: http-organizer
         env:
+        # The API deployment this process runs as (backend API_WORKLOAD).
+        # organizer neither runs the payment sweepers nor provisions tenants.
+        - name: API_WORKLOAD
+          value: organizer
         # Env-specific organizer-console Zitadel project id. The organizer server's
         # OrgScopedInterceptor requires this project id to appear in the token `aud`;
         # an empty value denies every request. Scoped to this Deployment's container
@@ -67,6 +71,10 @@ spec:
             name: fan-api-config
         - secretRef:
             name: backend-secrets
+        # Stripe credentials, for payout onboarding. Required: the backend refuses to
+        # start outside local without them.
+        - secretRef:
+            name: api-stripe-secrets
         volumeMounts:
         - name: zitadel-machine-key
           mountPath: /secrets/zitadel
