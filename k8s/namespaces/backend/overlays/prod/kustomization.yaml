@@ -27,9 +27,6 @@ resources:
   # ephemeral, non-ArgoCD `k8s/tools/db-proxy` Pod (unify-cloud-sql-access; see
   # docs/runbooks/cloud-sql-access.md). The `backend-app` KSA stays (workloads
   # use it).
-  # prod-only: the GSM key it reads is created by the prod Pulumi stack, and
-  # dev has no Stripe environment (see the file's own comment).
-  - fan-api/stripe-webhook-external-secret.yaml
   # NOTE: the `backend-server` PodMonitoring was deleted (unify-workload-naming).
   # It was mis-specified from the prod bootstrap (2026-05-14): selector
   # `app: server-app` never matched any pod (the server workload carried
@@ -161,11 +158,6 @@ patches:
               # via envFrom). Matching IAM SQL user provisioned in postgres.ts.
               - name: DATABASE_USER
                 value: "admin-console-api@liverty-music-prod.iam"
-              # The admin OrganizerService.Delete removes a deleted Organizer's
-              # uploaded originals from this bucket (the served bucket arrives
-              # through fan-api-config's ORGANIZER_MEDIA_BUCKET).
-              - name: ORGANIZER_MEDIA_INTERNAL_BUCKET
-                value: "liverty-music-prod-organizer-media-internal"
   # organizer-console-api — single replica (matches admin-console-api sizing).
   - target:
       kind: Deployment
@@ -200,13 +192,6 @@ patches:
                 value: "386069101153353860"
               - name: DATABASE_USER
                 value: "organizer-console-api@liverty-music-prod.iam"
-              # Originals bucket for CreateMediaUploadURL signing. organizer-console-api
-              # borrows fan-api-config (which carries ORGANIZER_MEDIA_BUCKET +
-              # ORGANIZER_MEDIA_CDN_BASE for the read path) but NOT the internal
-              # originals bucket — only the organizer signs direct uploads, so it is
-              # set here, scoped to this Deployment.
-              - name: ORGANIZER_MEDIA_INTERNAL_BUCKET
-                value: "liverty-music-prod-organizer-media-internal"
   # Prod fan API HTTPRoute hostname (fan-api-route replaces server-route).
   - target:
       kind: HTTPRoute

@@ -6,6 +6,7 @@ resources:
 # Shared `backend-secrets` Secret (ESO), relocated out of the deleted `server`
 # workload because consumer + cronjobs + admin-console-api all consume it.
 - backend-secrets-external-secret.yaml
+- api-stripe-external-secret.yaml
 # fan-api: the fan-facing backend workload (unify-workload-naming), successor to
 # the deleted `server` workload. Owns api.liverty-music.app via fan-api-route.
 - fan-api
