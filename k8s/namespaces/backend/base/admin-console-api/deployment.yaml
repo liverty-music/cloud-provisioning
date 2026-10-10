@@ -117,9 +117,22 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+        # DI waits up to 5 minutes for the database before the server (and its
+        # health service) starts, so liveness is held off until the process
+        # answers: 36 x 10 s = 6 minutes.
+        startupProbe:
+          grpc:
+            port: 8090
+            service: liveness
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 36
+        # The `liveness` health service reports only whether the process can
+        # answer; readiness (default service) reports the database.
         livenessProbe:
           grpc:
             port: 8090
+            service: liveness
           initialDelaySeconds: 10
           periodSeconds: 20
           timeoutSeconds: 5
