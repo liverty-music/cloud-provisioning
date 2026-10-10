@@ -4,7 +4,9 @@ metadata:
   name: fan-api-policy
 spec:
   default:
-    timeoutSec: 150
+    # Longer than SERVER_HANDLER_TIMEOUT (30s), so the server, not the load
+    # balancer, gives up a slow call and answers Unavailable.
+    timeoutSec: 60
     connectionDraining:
       drainingTimeoutSec: 60
   targetRef:
