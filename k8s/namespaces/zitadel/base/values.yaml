@@ -316,12 +316,29 @@ login:
   # externally owned Secret named by `login.loginServiceKeySecretName`
   # above; see external-secret-login-service-key.yaml.
   #
-  # CUSTOM_REQUEST_HEADERS comes from the chart-auto-generated
-  # login-config-dotenv ConfigMap as
-  # `Host:<ExternalDomain>,X-Zitadel-Public-Host:<ExternalDomain>`.
-  # DO NOT override inline — that would drop the X-Zitadel-Public-Host
-  # half that Zitadel's PublicHostHeaders default reads for instance
-  # discovery from cluster-internal callers.
+  # The login-config-dotenv ConfigMap (`/.env-file/.env`, sourced by the
+  # image entrypoint with allexport, so container `env` cannot override it).
+  # This is the chart 10.4.0 default restated line for line, with ONE change:
+  # the public-host header key is lowercase. The Login UI's
+  # GetSecuritySettings call (apps/login/src/lib/server/security-settings.ts)
+  # builds headers in a plain object, sets `x-zitadel-public-host` itself and
+  # then applies CUSTOM_REQUEST_HEADERS; the chart's `X-Zitadel-Public-Host`
+  # survived as a second key and fetch joined both into
+  # "auth.liverty-music.app, auth.liverty-music.app", which Zitadel rejects as
+  # an untrusted public domain (cloud-provisioning#629). A lowercase key
+  # overwrites instead. Every other consumer uses case-insensitive `Headers`,
+  # so the header still reaches cluster-internal calls as before.
+  #
+  # Keep both headers: dropping X-Zitadel-Public-Host breaks instance
+  # discovery for cluster-internal callers (see InstanceHostHeaders above).
+  # This replaces the chart's generated file, so re-check it against
+  # templates/configmap_login.yaml on chart upgrades, and delete this block
+  # once upstream builds those headers with `new Headers()`.
+  customConfigmapConfig: |-
+    ZITADEL_LOGINCLIENT_KEYFILE="/login-service-key/tls.key"
+    AUDIENCE="https://${ZITADEL_EXTERNALDOMAIN}"
+    ZITADEL_API_URL="http://zitadel-api:80"
+    CUSTOM_REQUEST_HEADERS="Host:${ZITADEL_EXTERNALDOMAIN},x-zitadel-public-host:${ZITADEL_EXTERNALDOMAIN}"
 
   resources:
     requests:
