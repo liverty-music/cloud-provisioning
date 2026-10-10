@@ -11,7 +11,14 @@
 
 fullnameOverride: zitadel-api
 
+# `repository` restates the chart default so Renovate's helm-values manager
+# can see this pin (it needs `repository` and `tag` side by side). The API
+# image, the Login image below and `service.version` in `env` move together
+# in the `zitadel` Renovate group, which is never automerged: an upgrade runs
+# boot-time Cloud SQL schema migrations, so it is applied by hand after a
+# backup.
 image:
+  repository: ghcr.io/zitadel/zitadel
   tag: v4.17.1
   pullPolicy: IfNotPresent
 
@@ -275,6 +282,7 @@ login:
   # HealthCheckPolicy targetRef are wired accordingly.
 
   image:
+    repository: ghcr.io/zitadel/zitadel-login
     tag: v4.17.1
     pullPolicy: IfNotPresent
 
