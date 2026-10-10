@@ -11,7 +11,10 @@ import {
 	RepositoryName,
 } from './github/index.js'
 import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
-import { StripeWebhookEndpoint } from './stripe/dynamic/index.js'
+import {
+	StripePaymentMethodDomain,
+	StripeWebhookEndpoint,
+} from './stripe/dynamic/index.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
@@ -149,6 +152,23 @@ const stripeWebhookEndpoint = stripeWebhookAdminKey
 			{ protect: true },
 		)
 	: undefined
+
+// Payment method domain for the fan web app, so the Payment Element shows Apple
+// Pay and Google Pay on the lottery entry and checkout screens. Stripe hides
+// both wallet buttons on an unregistered domain without any error, and each
+// Stripe account (each sandbox, live mode) needs its own registration.
+// Registered with `stripeSecretKey`: Stripe does not offer this permission to
+// restricted keys, so the webhook admin key cannot do it.
+const fanWebDomain =
+	env === 'prod' ? 'liverty-music.app' : `${env}.liverty-music.app`
+const stripePaymentMethodDomain = stripeSecretKey
+	? new StripePaymentMethodDomain('stripe-payment-method-domain-fan-web', {
+			apiKey: stripeSecretKey,
+			domainName: fanWebDomain,
+		})
+	: undefined
+export const stripeApplePayStatus = stripePaymentMethodDomain?.applePayStatus
+export const stripeGooglePayStatus = stripePaymentMethodDomain?.googlePayStatus
 
 // Consumed as STRIPE_WEBHOOK_SIGNING_SECRET by the fan-api deployment via the
 // ESO ExternalSecret (GSM secret id `stripe-webhook-signing-secret`).
