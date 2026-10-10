@@ -138,11 +138,12 @@ export const paymentMethodDomainProvider: pulumi.dynamic.ResourceProvider = {
 		news: PaymentMethodDomainInputs,
 	): Promise<pulumi.dynamic.DiffResult> {
 		// A new domain is a new registration. Rotating the API key changes only
-		// how we authenticate and must not touch the registration.
+		// how we authenticate: update stores the new key for later reads and
+		// deletes, without calling Stripe.
 		const replaces =
 			olds.domainName !== news.domainName ? ['domainName'] : []
 		return {
-			changes: replaces.length > 0,
+			changes: replaces.length > 0 || olds.apiKey !== news.apiKey,
 			replaces,
 			deleteBeforeReplace: false,
 		}

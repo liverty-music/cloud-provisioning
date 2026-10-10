@@ -139,13 +139,19 @@ describe('paymentMethodDomainProvider.diff', () => {
 		})
 	})
 
-	it('does not touch the registration when only the API key rotates', async () => {
-		const result = await provider.diff('pmd_1', outputs, {
+	it('stores a rotated API key without replacing the registration', async () => {
+		const diff = await provider.diff('pmd_1', outputs, {
+			...inputs,
+			apiKey: 'sk_test_rotated',
+		})
+		const updated = await provider.update('pmd_1', outputs, {
 			...inputs,
 			apiKey: 'sk_test_rotated',
 		})
 
-		expect(result.changes).toBe(false)
+		expect(diff).toMatchObject({ changes: true, replaces: [] })
+		expect(updated.outs?.apiKey).toBe('sk_test_rotated')
+		expect(mockedCall).not.toHaveBeenCalled()
 	})
 })
 
