@@ -13,6 +13,10 @@ spec:
       # failed runs stop accumulating (optimize-prod-gke-cost D7). The history
       # limits above still cap the count within that day.
       ttlSecondsAfterFinished: 86400
+      # A failed run is not retried: the job exits non-zero on a systemic
+      # failure (an unreachable dependency, an API quota) that a retry would
+      # hit again; the next scheduled run is the retry.
+      backoffLimit: 0
       template:
         spec:
           terminationGracePeriodSeconds: 120
