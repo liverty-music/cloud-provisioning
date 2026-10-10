@@ -123,8 +123,11 @@ const stripeWebhookEndpoint = stripeWebhookAdminKey
 				apiKey: stripeWebhookAdminKey,
 				url: stripeWebhookUrl,
 				description:
-					'Liverty Music settlement/payout — transfer, payout, refund and dispute events',
+					'Liverty Music — completed charges, transfer, payout, refund and dispute events',
 				enabledEvents: [
+					// A completed charge (checkout capture or lottery win) fulfils
+					// and announces the paid Order (first-come-ticket-sales D6).
+					'payment_intent.succeeded',
 					'charge.refunded',
 					'charge.dispute.created',
 					'charge.dispute.closed',
@@ -265,6 +268,7 @@ const gcp = new Gcp({
 	geminiSearchApiKey,
 	pocketSignToken,
 	stripeSecretKey,
+	postmarkServerToken: postmarkConfig.serverApiToken,
 	stripeWebhookSigningSecret,
 	cloudflareConfig,
 	postmarkConfig,

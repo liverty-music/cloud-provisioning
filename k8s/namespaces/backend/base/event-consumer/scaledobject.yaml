@@ -133,6 +133,23 @@ spec:
       consumer: "deliver-notification"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # ORDER stream: purchase confirmation and the ticket journey update
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "send-order-confirmation"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "mark-ticket-journey-paid"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   # TICKET_JOURNEY / TICKET_EMAIL streams
   - type: nats-jetstream
     metadata:

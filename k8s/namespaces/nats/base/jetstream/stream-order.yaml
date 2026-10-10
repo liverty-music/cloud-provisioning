@@ -1,0 +1,16 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Stream
+metadata:
+  name: order
+spec:
+  name: ORDER
+  # ORDER.paid: one event per paid Order (first-come checkout or won lottery),
+  # published by the backend's outbox relay with the Order id as Msg-Id.
+  subjects: ["ORDER.*"]
+  storage: file
+  retention: limits
+  maxAge: 168h
+  duplicateWindow: 2m
+  discard: old
+  replicas: 1
+  preventDelete: true

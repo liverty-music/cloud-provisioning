@@ -16,6 +16,7 @@ resources:
 - stream-ticket-email.yaml
 - stream-organizer.yaml
 - stream-media.yaml
+- stream-order.yaml
 - stream-poison.yaml
 - consumer-ingest-concert.yaml
 - consumer-notify-concert.yaml
@@ -39,3 +40,5 @@ resources:
 - consumer-notify-sales-reminder.yaml
 - consumer-log-poison.yaml
 - consumer-media-uploaded.yaml
+- consumer-send-order-confirmation.yaml
+- consumer-mark-ticket-journey-paid.yaml
