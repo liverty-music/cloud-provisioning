@@ -134,9 +134,13 @@ export const webhookEndpointProvider: pulumi.dynamic.ResourceProvider = {
 	): Promise<pulumi.dynamic.DiffResult> {
 		// Rotating the API key changes only how we authenticate, not the endpoint
 		// itself, so it must not force a replacement — replacing would mint a new
-		// signing secret and break delivery until the backend picks it up.
+		// signing secret and break delivery until the backend picks it up. It is
+		// still a change: update stores the new key, which later reads and deletes
+		// authenticate with. Without it the state keeps the old key and the next
+		// refresh fails once that key is revoked.
 		const replaces: string[] = []
 		const changed =
+			olds.apiKey !== news.apiKey ||
 			olds.url !== news.url ||
 			olds.description !== news.description ||
 			normalizeEvents(olds.enabledEvents).join(',') !==

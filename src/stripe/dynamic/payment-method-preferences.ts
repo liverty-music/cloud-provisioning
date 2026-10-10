@@ -169,12 +169,15 @@ export const paymentMethodPreferencesProvider: pulumi.dynamic.ResourceProvider =
 				...Object.keys(olds.preferences),
 				...Object.keys(news.preferences),
 			])
-			const changed = [...methods].some(
-				(method) =>
-					olds.preferences[method] !== news.preferences[method],
-			)
-			// The API key only authenticates; the configuration is the account's
-			// default, so nothing is ever replaced.
+			const changed =
+				olds.apiKey !== news.apiKey ||
+				[...methods].some(
+					(method) =>
+						olds.preferences[method] !== news.preferences[method],
+				)
+			// The configuration is the account's default, so nothing is ever
+			// replaced. A rotated API key is still a change: update stores it for
+			// later reads (re-applying the same preferences is harmless).
 			return {
 				changes: changed,
 				replaces: [],

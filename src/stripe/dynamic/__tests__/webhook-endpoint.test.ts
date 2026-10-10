@@ -136,15 +136,16 @@ describe('webhookEndpointProvider.read', () => {
 })
 
 describe('webhookEndpointProvider.diff', () => {
-	it('does not replace on an API-key rotation', async () => {
+	it('updates in place on an API-key rotation, so later calls use the new key', async () => {
 		// Replacing would mint a new signing secret and break delivery until the
-		// backend picked it up; the key only changes how we authenticate.
+		// backend picked it up; the key only changes how we authenticate, but the
+		// state must store it.
 		const result = await provider.diff('we_1', baseOutputs, {
 			...baseInputs,
 			apiKey: 'rk_live_rotated',
 		})
 
-		expect(result.changes).toBe(false)
+		expect(result.changes).toBe(true)
 		expect(result.replaces ?? []).toEqual([])
 	})
 

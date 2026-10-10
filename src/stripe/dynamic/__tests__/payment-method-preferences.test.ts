@@ -131,13 +131,13 @@ describe('paymentMethodPreferencesProvider.diff', () => {
 		expect(result).toMatchObject({ changes: true, replaces: [] })
 	})
 
-	it('does nothing when only the API key rotates', async () => {
+	it('updates in place when only the API key rotates, so later reads use the new key', async () => {
 		const result = await provider.diff('pmc_default', outputs, {
 			...inputs,
 			apiKey: 'sk_test_rotated',
 		})
 
-		expect(result.changes).toBe(false)
+		expect(result).toMatchObject({ changes: true, replaces: [] })
 	})
 })
 
