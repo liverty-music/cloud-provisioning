@@ -159,14 +159,20 @@ const stripeWebhookEndpoint = stripeWebhookAdminKey
 // Stripe account (each sandbox, live mode) needs its own registration.
 // Registered with `stripeSecretKey`: Stripe does not offer this permission to
 // restricted keys, so the webhook admin key cannot do it.
-const fanWebDomain =
-	env === 'prod' ? 'liverty-music.app' : `${env}.liverty-music.app`
-const stripePaymentMethodDomain = stripeSecretKey
-	? new StripePaymentMethodDomain('stripe-payment-method-domain-fan-web', {
-			apiKey: stripeSecretKey,
-			domainName: fanWebDomain,
-		})
-	: undefined
+//
+// Prod only. The dev stack's `stripeSecretKey` is a restricted key (`rk_test_…`)
+// and cannot register a domain, and the dev fan web app is stopped. Register
+// dev's domain here with a secret key when dev runs again.
+const stripePaymentMethodDomain =
+	env === 'prod' && stripeSecretKey
+		? new StripePaymentMethodDomain(
+				'stripe-payment-method-domain-fan-web',
+				{
+					apiKey: stripeSecretKey,
+					domainName: 'liverty-music.app',
+				},
+			)
+		: undefined
 export const stripeApplePayStatus = stripePaymentMethodDomain?.applePayStatus
 export const stripeGooglePayStatus = stripePaymentMethodDomain?.googlePayStatus
 
