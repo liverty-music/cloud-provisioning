@@ -33,6 +33,29 @@
         "asia-northeast2-docker.pkg.dev/liverty-music-*/**"
       ],
       "enabled": false
+    },
+    {
+      "description": "Zitadel server upgrades move as one pull request and are NEVER automerged. The API image, the Login V2 image and the OTEL `service.version` attribute in k8s/namespaces/zitadel/base/values.yaml carry the same version, and an upgrade runs boot-time Cloud SQL schema migrations on first start, so it is applied by a person after a database backup (see the commit that pinned v4.17.1, 6060419). The pin itself is what keeps the automerged Helm chart minors from upgrading the server: the chart's appVersion is overridden by these tags.",
+      "matchPackageNames": [
+        "ghcr.io/zitadel/zitadel",
+        "ghcr.io/zitadel/zitadel-login"
+      ],
+      "groupName": "zitadel server",
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "The OTEL `service.version` resource attribute in the Zitadel values restates the API image tag. No built-in manager reads an env value, so this regex binds it to the same dependency, and the `zitadel server` group moves it with the image.",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^k8s/namespaces/zitadel/base/values\\.yaml$/"
+      ],
+      "matchStrings": [
+        "service\\.version=(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "ghcr.io/zitadel/zitadel",
+      "datasourceTemplate": "docker"
     }
   ]
 }
