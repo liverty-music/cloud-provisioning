@@ -13,6 +13,7 @@ import {
 import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
 import {
 	StripePaymentMethodDomain,
+	StripePaymentMethodPreferences,
 	StripeWebhookEndpoint,
 } from './stripe/dynamic/index.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
@@ -175,6 +176,19 @@ const stripePaymentMethodDomain =
 		: undefined
 export const stripeApplePayStatus = stripePaymentMethodDomain?.applePayStatus
 export const stripeGooglePayStatus = stripePaymentMethodDomain?.googlePayStatus
+
+// The wallets must also be on in the account's default payment method
+// configuration: the PaymentIntents use `automatic_payment_methods`, which offer
+// only the methods turned on there, and Google Pay is off on a new account.
+// Prod only, for the same restricted-key reason as the domain above.
+const stripeWalletPreferences =
+	env === 'prod' && stripeSecretKey
+		? new StripePaymentMethodPreferences('stripe-wallet-payment-methods', {
+				apiKey: stripeSecretKey,
+				preferences: { apple_pay: 'on', google_pay: 'on' },
+			})
+		: undefined
+export const stripeWalletAvailability = stripeWalletPreferences?.available
 
 // Consumed as STRIPE_WEBHOOK_SIGNING_SECRET by the fan-api deployment via the
 // ESO ExternalSecret (GSM secret id `stripe-webhook-signing-secret`).
