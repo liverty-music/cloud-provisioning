@@ -14,6 +14,13 @@
       "groupName": "pulumi"
     },
     {
+      "description": "Opt out of the organization preset's lock file maintenance automerge. Every Pulumi provider is declared with a caret range (`@pulumi/gcp ^9.22.0`, …), so refreshing the lock moves them to newer minors — the very updates the rule above keeps for a reviewer who has run `pulumi preview`. Automerging the refresh would ship those provider versions without that preview. Lock file maintenance stays proposed and is merged by hand.",
+      "matchUpdateTypes": [
+        "lockFileMaintenance"
+      ],
+      "automerge": false
+    },
+    {
       "description": "HOLD typescript below 7 until Pulumi supports it. TypeScript 7 is the native (Go) compiler and its npm package ships no JavaScript API — `require('typescript').transpileModule` and `createProgram` are undefined — while Pulumi runs this program through ts-node, which is built on exactly that API. `@pulumi/pulumi` states it as a peer range, `typescript: \">= 3.8.3 < 7\"` (3.265.0), so the TypeScript 7 pull request could not even install (`npm ci` ERESOLVE). This is a cap on a known-incompatible major, not a pin: minor and patch updates within 5.x still flow. REMOVE THIS RULE when `@pulumi/pulumi` widens that peer range — at that point the upgrade also needs the tsconfig migration frontend went through (TypeScript 6 removed `moduleResolution: node` and `baseUrl`, and changed the `strict` and `types` defaults).",
       "matchPackageNames": [
         "typescript"
