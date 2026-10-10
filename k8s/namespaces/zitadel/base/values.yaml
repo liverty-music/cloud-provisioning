@@ -19,7 +19,7 @@ fullnameOverride: zitadel-api
 # backup.
 image:
   repository: ghcr.io/zitadel/zitadel
-  tag: v4.17.1
+  tag: v4.19.4
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -241,7 +241,7 @@ zitadel:
 # top-level `env`, NOT `zitadel.env`).
 #
 # OpenTelemetry SDK env vars carry forward from the prior
-# `configmap.env`. Zitadel v4 (v4.14.0+, incl. the pinned v4.17.1)
+# `configmap.env`. Zitadel v4 (v4.14.0+, incl. the pinned v4.19.4)
 # supports OTEL_* via autoexport (release notes). Without these,
 # Zitadel emits no observability output (v4 has no `/debug/metrics`
 # HTTP scrape endpoint — verified empirically on v4.14.0: the path
@@ -262,7 +262,7 @@ env:
 - name: OTEL_LOGS_EXPORTER
   value: none
 - name: OTEL_RESOURCE_ATTRIBUTES
-  value: service.name=zitadel,service.version=v4.17.1
+  value: service.name=zitadel,service.version=v4.19.4
 # 60s push interval matches `zitadel-observability` design D4 — alert
 # evaluation window is also 60s, so each evaluation cycle sees ~1 fresh
 # data point.
@@ -283,7 +283,7 @@ login:
 
   image:
     repository: ghcr.io/zitadel/zitadel-login
-    tag: v4.17.1
+    tag: v4.19.4
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -299,7 +299,7 @@ login:
   # NOTE: NEXT_PUBLIC_BASE_PATH override (to /ui/v2) was reverted —
   # `NEXT_PUBLIC_*` env vars in Next.js are INLINED AT BUILD TIME, not
   # runtime. The upstream zitadel-login image (v4.14.0 through the
-  # pinned v4.17.1) is built with the chart-default base path
+  # pinned v4.19.4) is built with the chart-default base path
   # /ui/v2/login baked in; setting
   # NEXT_PUBLIC_BASE_PATH=/ui/v2 at runtime is silently ignored by
   # the Next.js binary. Routes still live at /ui/v2/login/*, so our
