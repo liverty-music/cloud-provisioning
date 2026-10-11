@@ -26,9 +26,14 @@ Pulumi Cloud posts the preview as a comment on this pull request — NOT in the
 GitHub Actions output. Read it there; there is nothing to paste.
 
 It runs for every stack whose trigger `paths` your change touches
-(`Pulumi.{dev,prod}.deploy.yaml`). If no preview appears and you did change
-what the stack deploys, that is a gap in those `paths` — fix it there rather
-than pasting a local run, which proves nothing a reviewer can re-check.
+(`src/pulumi-cloud/deployment-settings.ts`). If no preview appears and you did
+change what the stack deploys, that is a gap in those `paths` — fix it there
+rather than pasting a local run, which proves nothing a reviewer can re-check.
+
+Exception: dependency pull requests (`package.json` / `package-lock.json`
+only) are deliberately not previewed (design D6). For a Pulumi provider update,
+the reviewer runs the `provider-upgrade` skill locally and posts its Upgrade
+Summary as a comment.
 -->
 
 ## 📦 State Changes
