@@ -1,10 +1,6 @@
 <poly-repo-context repo="cloud-provisioning">
-  <responsibilities>GCP infrastructure via Pulumi (TypeScript). Kubernetes manifests
-  managed by ArgoCD with Kustomize base/overlays. Multi-environment (dev/prod).</responsibilities>
-  <essential-commands>
-    pulumi preview         # Preview infra changes
-    pulumi up              # Deploy (requires user approval)
-  </essential-commands>
+  <responsibilities>GCP, Cloudflare, GitHub and Zitadel resources via Pulumi (TypeScript).
+  Kubernetes manifests applied by ArgoCD from Kustomize base/overlays. Stacks: dev, prod.</responsibilities>
 </poly-repo-context>
 
 <agent-rules>
@@ -25,103 +21,31 @@ This repository carries no planning of its own. `openspec/config.yaml` declares 
 
 This repo is one of four under `liverty-music/`: `specification` (proto schema + OpenSpec store), `backend`, `frontend`, `cloud-provisioning`. Infrastructure here is not gated by the proto release flow (that process lives in the specification repo's AGENTS.md). When a change spans repositories, keep this repo's PR independently mergeable and cite the same OpenSpec change in every PR so reviewers can follow the set.
 
-## Operating Protocols
+## Scope of this file
 
-### Pulumi Deployment Approval
+General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claude/settings.json` (`pulumi-best-practices`, `provider-upgrade`, `pulumi-debug-failed-operation`, ...). This file holds only what is specific to this repository; where it disagrees with a skill, this file wins.
 
-Before executing `pulumi up` or any deployment command, follow this workflow:
+## Deployments
 
-1. **Preview first**: Run `pulumi preview` (or `pulumi preview --diff`)
-2. **Present to user**: Show the preview output, highlight destructive operations (deletions, replacements)
-3. **Wait for explicit approval**: Do not proceed until the user says "yes", "proceed", or "approve"
-4. **Execute**: Only after approval, run `pulumi up`
+- **dev is stopped indefinitely** to save cost (`liverty-music:workloadEnabled: "false"` in `Pulumi.dev.yaml`): its cluster and workloads do not exist. Verify changes in prod with unit tests and read-only checks, and do not plan work that needs dev running.
+- **dev**: merging to `main` runs `pulumi up` via Pulumi Cloud Deployments. Agents may also run `pulumi up -s dev` locally after showing the preview and getting the user's approval; the next merge to `main` re-applies `main`, so a branch applied this way is temporary.
+- **prod**: agents run `pulumi preview` and read-only state commands only. The user triggers `pulumi up` from the Pulumi Cloud console (https://app.pulumi.com/pannpers/liverty-music/prod/deployments). Write out any `destroy`, `refresh`, `import` or `state` command for the user instead of running it.
+- **Pull-request previews** run on Pulumi Cloud Deployments, triggered by the `paths` in `src/pulumi-cloud/deployment-settings.ts`. Do not add a GitHub Actions preview or up job (design D6 of `automate-dependency-updates`), and do not add dependency manifests to `paths`.
 
-Never skip this workflow, even for small changes. Exception: the user has given explicit advance authorization for a specific deployment in the current session.
+## Changing Pulumi code
 
-### Pulumi Deployments (Automated)
+- Introduce a `ComponentResource` only after working out which resources outside it will need to reference its children. Moving an existing resource under a parent changes its URN and needs `aliases`. `Gcp` in `src/gcp/index.ts` stays a plain class on purpose.
+- Resource names are kebab-case. Regions and zones come from `src/gcp/region.ts`.
+- **Provider upgrades** (the Renovate `pulumi` group, which never automerges and is not previewed by Pulumi Cloud): run the `provider-upgrade` skill on the Renovate branch against both stacks, and post its Upgrade Summary as a comment on that pull request instead of opening a new one. Two resources show a perpetual `~ update` on every preview; see "A Pulumi preview reports resource changes" in `liverty-music/.github` `renovate-runbook.md` before attributing them to the upgrade.
 
-**dev**: Merging a PR to `main` with changes under `src/**` automatically
-triggers `pulumi up` via Pulumi Cloud Deployments.
-Never run `pulumi up` locally for dev — it conflicts with the automated job.
-Monitor: https://app.pulumi.com/pannpers/liverty-music/dev/deployments
+## Configuration and secrets
 
-**prod**: PRs trigger `pulumi preview` only. `pulumi up` does not run
-automatically on merge. Trigger manually from the Pulumi Cloud console:
-https://app.pulumi.com/pannpers/liverty-music/prod/deployments
+- Stacks import the ESC environments `liverty-music/dev` and `liverty-music/prod`, which both import `liverty-music/common`. ESC `pulumiConfig.<key>` is the config key `liverty-music:<key>`.
+- Set an environment-specific value with `pulumi env set liverty-music/<env> pulumiConfig.<key> --file <path|-> [--secret --string]`. Never use `pulumi config set --secret` (it writes to the stack file), and never pass a value as an argument: it lands in shell history, and a value starting with `-` (a PEM key) is parsed as a flag and echoed in the error.
 
-### Pulumi State Recovery
+## Before you act on
 
-Before considering `pulumi state delete --target-dependents` (its
-blast radius follows ALL transitive dependents, not just the
-ComponentResource subtree — the §13.4 cutover incident
-cascade-removed 87 resources from ~9 intended targets) **or**
-when recovering from a post-incident state cascade, read
-[`docs/runbooks/pulumi-state-recovery.md`](docs/runbooks/pulumi-state-recovery.md).
-The runbook documents the preferred path (`pulumi destroy --target`
-through normal `preview → up`, visible via Pulumi Cloud's
-`previewPullRequests`) and the five-step recovery procedure
-(snapshot, merge, import, scrub `__pulumi_raw_state_delta`, verify
-clean preview) for when the cascade has already happened.
-
-### Kubernetes Manifests
-
-Before committing changes under `k8s/`, follow the dry-run and dev cost checks in `k8s/AGENTS.md`.
-
-Do not commit if `kubectl kustomize` returns an error or patches are missing.
-
-## ESC Secret Management
-
-This project uses Pulumi ESC (Environment, Secrets, and Configuration) for all configuration and secrets.
-
-### ESC Environment Hierarchy
-
-```
-liverty-music/common          ← shared config inherited by all envs
-├── liverty-music/dev          ← dev-specific config (imports common)
-└── liverty-music/prod         ← prod-specific config (imports common)
-
-liverty-music/cloud-provisioning/common  ← project-level shared config
-├── liverty-music/cloud-provisioning/dev  ← project dev (imports above)
-└── liverty-music/cloud-provisioning/prod
-```
-
-### `pulumi env set` vs `pulumi config set`
-
-This distinction is critical — using the wrong command stores secrets in the wrong location:
-
-- **`pulumi config set --secret`**: Writes to the stack YAML file or common ESC environment. Wrong for environment-specific secrets.
-- **`pulumi env set`**: Writes directly to a specific ESC environment. This is the correct approach. (The standalone `esc` CLI is retired; `esc env set` takes the same arguments.)
-
-Pass a secret value with `--file` (a file path, or `-` for stdin), never as a command-line argument. An argument lands in shell history and process listings, and a value starting with `-` (a PEM key, `-----BEGIN ...`) is parsed as a flag: the CLI then prints the whole value in its error message.
-
-```bash
-# Correct: writes to liverty-music/dev ESC environment; the value never appears on the command line
-pulumi env set liverty-music/dev pulumiConfig.gcp.someSecret --file ./some-secret.txt --secret --string
-
-# Wrong: may write to common env or stack file
-pulumi -s dev config set --secret --path 'liverty-music:gcp.someSecret' "value"
-```
-
-### ESC Path Mapping
-
-| ESC Path | Pulumi Config Key |
-|----------|-------------------|
-| `pulumiConfig.gcp.billingAccount` | `liverty-music:gcp.billingAccount` |
-| `pulumiConfig.gcp.postgresAdminPassword` | `liverty-music:gcp.postgresAdminPassword` |
-| `pulumiConfig.github.token` | `liverty-music:github.token` |
-
-## Configuration
-
-Store secrets in Pulumi ESC — hardcoded secrets in code are exposed in version control. Use IAM roles instead of service account keys. Use GCP Secret Manager for application secrets.
-
-## Code Conventions
-
-- Use kebab-case for Pulumi resource names: `my-storage-bucket`
-- GCP regions and zones are defined in `src/gcp/region.ts` (`asia-northeast2` / Osaka)
-
-## Review criteria (flag violations)
-
-- Environment-specific secrets use `pulumi env set ... --file`, never `pulumi config set --secret`, a command-line value, or a hardcoded value.
-- Renaming a lifecycle-sensitive resource (MachineKey, IAM/SA keys) uses `aliases: [{ name: 'old-urn' }]` to avoid replace-delete.
+- **`pulumi state delete --target-dependents`, or recovery from a state cascade**: read `docs/runbooks/pulumi-state-recovery.md` first. The blast radius follows all transitive dependents, not just a component's subtree; one incident removed 87 resources instead of ~9.
+- **Changes under `k8s/`**: follow `k8s/AGENTS.md`.
 
 </agent-rules>
