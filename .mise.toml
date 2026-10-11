@@ -1,6 +1,10 @@
 
 [env]
-GOOGLE_CLOUD_QUOTA_PROJECT = "liverty-music-dev"
+# Quota project for local `pulumi preview` with user ADC, which carries none.
+# prod, not dev: dev is stopped and its KMS, Cloud Quotas and Billing Budgets
+# APIs are disabled, so a dev quota project fails a prod refresh with 403.
+# Previews of both stacks succeed with prod as the quota project.
+GOOGLE_CLOUD_QUOTA_PROJECT = "liverty-music-prod"
 
 [tools]
 # Pinned, not "latest": a floating reference can never produce an update
