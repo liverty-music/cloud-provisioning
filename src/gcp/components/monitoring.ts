@@ -245,7 +245,7 @@ jsonPayload.msg="message routed to poison queue"`,
 		// Checkout Needs Operator Alert (first-come-ticket-sales, design D7)
 		// Money was taken for a first-come checkout without its tickets: either a
 		// charged checkout still not issued 10 minutes after the charge, or a
-		// card hold of an ended checkout that turned out to be charged. The
+		// card authorization of an ended checkout that turned out to be charged. The
 		// fan-api sweepers log this ERROR on every run until it is resolved, so a
 		// dedicated policy with a short re-notification period pages the operator
 		// instead of the 12-hour workload ERROR alert above.
@@ -266,11 +266,11 @@ resource.labels.location="${clusterLocation}"
 resource.labels.cluster_name="${clusterName}"
 resource.labels.namespace_name="backend"
 severity="ERROR"
-jsonPayload.msg="reservation needs an operator"`,
+jsonPayload.msg=("checkout needs an operator" OR "reservation needs an operator")`,
 							labelExtractors: {
-								reservation_id:
-									'EXTRACT(jsonPayload.reservation_id)',
-								payment_ref: 'EXTRACT(jsonPayload.payment_ref)',
+								checkout_id: 'EXTRACT(jsonPayload.checkout_id)',
+								card_authorization_id:
+									'EXTRACT(jsonPayload.card_authorization_id)',
 							},
 						},
 					},
@@ -289,11 +289,11 @@ jsonPayload.msg="reservation needs an operator"`,
 						'A first-come checkout has money taken without its tickets. The sweepers log this on every run (each minute) until it is resolved.',
 						'',
 						'### Alert Labels',
-						'- `reservation_id`: the checkout (reservations.id)',
-						'- `payment_ref`: the Stripe PaymentIntent (pi_...)',
+						'- `checkout_id`: the checkout (checkouts.id)',
+						"- `card_authorization_id`: the payment provider's ID for the card authorization (a Stripe PaymentIntent, pi_...)",
 						'',
 						'### Triage',
-						'Follow docs/runbooks/checkout-needs-operator.md: fix the cause so the next run issues the Order, or refund the PaymentIntent manually in the Stripe dashboard.',
+						'Follow docs/runbooks/checkout-needs-operator.md: fix the cause so the next run issues the Order, or refund the PaymentIntent `card_authorization_id` manually in the Stripe dashboard.',
 					].join('\n'),
 					mimeType: 'text/markdown',
 				},

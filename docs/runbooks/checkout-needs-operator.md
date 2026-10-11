@@ -1,18 +1,22 @@
 # Checkout needs an operator
 
 Alert: **Checkout Needs Operator** (Cloud Monitoring, log-based on
-`jsonPayload.msg="reservation needs an operator"` in namespace `backend`).
+`jsonPayload.msg="checkout needs an operator"` in namespace `backend`; backend
+releases before the unify-ticket-sales naming release log
+"reservation needs an operator").
 
-A first-come checkout (`reservations` row) has money taken without its tickets.
-The fan-api sweepers log it every minute, with `reservation_id` and
-`payment_ref` (the Stripe PaymentIntent), until it is resolved. Two cases:
+A first-come checkout (`checkouts` row) has money taken without its tickets.
+The fan-api sweepers log it every minute, with `checkout_id` and
+`card_authorization_id` (the payment provider's ID for the card authorization,
+a Stripe PaymentIntent `pi_...`), until it is resolved. Two cases:
 
 1. **Charged but not issued** (`status = 2` Committed, `capture_at` set more
    than 10 minutes ago). The card was charged, but issuing the Order keeps
    failing. The checkout is never charged again and never released.
-2. **Charged hold on an ended checkout** (`status` 4 Expired or 5 Released,
-   the log says "the card hold of an ended checkout was charged"). Cancelling
-   the card hold failed because Stripe already captured it.
+2. **Charged card authorization on an ended checkout** (`status` 4 Expired or
+   5 Released, the log says "the card authorization of an ended checkout was
+   charged"). Releasing the card authorization failed because the payment
+   provider had already captured it.
 
 ## 1. Read the checkout
 
@@ -20,17 +24,20 @@ Connect read-only (see `cloud-sql-access.md`) and run:
 
 ```sql
 SET search_path TO app;
-SELECT r.id, r.status, r.ticket_count, r.amount, r.committed_at, r.capture_at,
-       r.payment_ref, r.authorization_ref, ts.event_id, o.id AS order_id
-FROM reservations r
-JOIN ticket_sales ts ON ts.id = r.ticket_sale_id
-LEFT JOIN orders o ON o.reservation_id = r.id
-WHERE r.id = '<reservation_id>';
+SELECT c.id, c.status, c.ticket_count, c.amount, c.commit_at, c.capture_at,
+       c.card_authorization_id, tt.event_id, o.id AS order_id
+FROM checkouts c
+JOIN ticket_types tt ON tt.id = c.ticket_type_id
+LEFT JOIN orders o ON o.checkout_id = c.id
+WHERE c.id = '<checkout_id>';
 ```
 
-Search Cloud Logging for `jsonPayload.reservation_id="<reservation_id>"` to
-see why issuance fails (for example the event's series has no Organizer, or
-the Organizer row is missing).
+Before the backend naming release the columns are `authorization_ref` and
+`committed_at`.
+
+Search Cloud Logging for `jsonPayload.checkout_id="<checkout_id>"` to see why
+issuance fails (for example the event's series has no Organizer, or the
+Organizer row is missing).
 
 ## 2a. Charged but not issued: fix the cause
 
@@ -42,9 +49,9 @@ alert closes an hour after the last log line.
 ## 2b. When it cannot be issued: refund manually
 
 When the purchase must not stand (for example the concert was cancelled),
-refund it in the Stripe dashboard: open the PaymentIntent `payment_ref`,
-refund the full amount, and note the reservation id in the refund reason.
-No Order exists, so `RefundOrder` cannot act on it.
+refund it in the Stripe dashboard: open the PaymentIntent
+`card_authorization_id`, refund the full amount, and note the checkout id in
+the refund reason. No Order exists, so `OrderUseCase.Refund` cannot act on it.
 
 There is no state yet for a refunded checkout that will never be issued: the
 row stays Committed and charged by design, so the sweeper keeps retrying and
@@ -52,8 +59,8 @@ the alert keeps re-notifying hourly. Record the refund in a support ticket and
 escalate to the backend team; this case is an open question of
 first-come-ticket-sales.
 
-## 2c. Charged hold on an ended checkout
+## 2c. Charged card authorization on an ended checkout
 
 The fan did not receive tickets for this charge. Refund the PaymentIntent
-`payment_ref` in full in the Stripe dashboard. The checkout's tickets were
-already returned to the sale.
+`card_authorization_id` in full in the Stripe dashboard. The checkout's
+tickets were already returned to the sale.
