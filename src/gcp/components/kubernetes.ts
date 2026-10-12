@@ -359,8 +359,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
 		// 2c-2. Reception API Service Account (reception-api)
 		// The workload serving the reception Connect server (the device-side
-		// rpc.scanner.v1.ScannerService: Open, Admit), used by Scanners (venue
-		// staff phones) without a sign-in. It is kept apart from
+		// rpc.scanner.v1.ScannerService: Open, Admit), used by scanner devices
+		// (venue staff phones) without a sign-in. It is kept apart from
 		// organizer-console-api so the unauthenticated surface never runs with
 		// the console's database role. It holds no provisioner key, no
 		// SignBlob binding and no bucket access; its Cloud SQL IAM DB user is
