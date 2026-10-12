@@ -15,7 +15,6 @@ resources:
 - stream-ticket-journey.yaml
 - stream-ticket-email.yaml
 - stream-organizer.yaml
-- stream-media.yaml
 - stream-series-image.yaml
 - stream-order.yaml
 - stream-poison.yaml
@@ -40,7 +39,6 @@ resources:
 - consumer-notify-sales-phase.yaml
 - consumer-notify-sales-reminder.yaml
 - consumer-log-poison.yaml
-- consumer-media-uploaded.yaml
 - consumer-process-series-image.yaml
 - consumer-send-order-confirmation.yaml
 - consumer-mark-ticket-journey-paid.yaml

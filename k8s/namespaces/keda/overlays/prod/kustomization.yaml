@@ -6,9 +6,9 @@ kind: Kustomization
 # Requirement 3).
 #
 # Purpose: KEDA (operator, metrics apiserver, admission webhooks — 3 Pods)
-# scales `media-consumer` between 0 and 1 replicas on its JetStream backlog and
+# scales `series-image-consumer` between 0 and 1 replicas on its JetStream backlog and
 # drives the `event-consumer` ScaledObject. Removing it would make
-# media-consumer (100m / 256Mi) run around the clock, which costs more than
+# series-image-consumer (100m / 256Mi) run around the clock, which costs more than
 # the three KEDA Pods.
 
 namespace: keda
