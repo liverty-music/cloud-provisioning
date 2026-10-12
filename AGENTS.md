@@ -36,7 +36,7 @@ General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claud
 
 - Introduce a `ComponentResource` only after working out which resources outside it will need to reference its children. Moving an existing resource under a parent changes its URN and needs `aliases`. `Gcp` in `src/gcp/index.ts` stays a plain class on purpose.
 - Resource names are kebab-case. Regions and zones come from `src/gcp/region.ts`.
-- **Provider upgrades** (the Renovate `pulumi` group, which never automerges and is not previewed by Pulumi Cloud): run the `provider-upgrade` skill on the Renovate branch against both stacks, and post its Upgrade Summary as a comment on that pull request instead of opening a new one. Two resources show a perpetual `~ update` on every preview; see "A Pulumi preview reports resource changes" in `liverty-music/.github` `renovate-runbook.md` before attributing them to the upgrade.
+- **Provider upgrades** (the Renovate `pulumi` group, which never automerges and is not previewed by Pulumi Cloud): run the `provider-upgrade` skill on the Renovate branch against both stacks, and post its Upgrade Summary as a comment on that pull request instead of opening a new one. A preview of `main` is not empty: compare against the baseline table in "A Pulumi preview reports resource changes" (`liverty-music/.github` `renovate-runbook.md`) before attributing a diff to the upgrade.
 
 ## Configuration and secrets
 
