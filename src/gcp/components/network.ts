@@ -386,9 +386,9 @@ const SERVICES: ReadonlyArray<{
 	{ name: 'organizer-app', subdomain: 'organizer' },
 	// Reception API — dev: api.reception.dev.liverty-music.app,
 	// prod: api.reception.liverty-music.app. The backend's reception Connect
-	// server (unauthenticated ReceptionService for venue staff phones) exposed
-	// only by the reception-api workload. See OpenSpec change
-	// `isolate-venue-reception`.
+	// server (the unauthenticated device-side rpc.scanner.v1.ScannerService for
+	// Scanners, venue staff phones) exposed only by the reception-api workload.
+	// See OpenSpec change `isolate-venue-reception`.
 	{ name: 'reception-api', subdomain: 'api.reception' },
 	// Reception web — dev: reception.dev.liverty-music.app,
 	// prod: reception.liverty-music.app. A separately built frontend app on its
