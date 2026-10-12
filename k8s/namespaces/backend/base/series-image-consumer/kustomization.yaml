@@ -9,18 +9,18 @@ resources:
 labels:
 - includeSelectors: true
   pairs:
-    app: media-consumer
+    app: series-image-consumer
 
-# The bare container `image: media-consumer` is rewritten to the dev-AR form
+# The bare container `image: series-image-consumer` is rewritten to the dev-AR form
 # here; the prod overlay last-write-wins to the prod AR + semver pin. Mirrors the
 # event-consumer base's image transformer.
 images:
-- name: media-consumer
-  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-consumer
+- name: series-image-consumer
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/series-image-consumer
   newTag: latest
 
 configMapGenerator:
-- name: media-consumer-config
+- name: series-image-consumer-config
   envs:
   - configmap.env
 

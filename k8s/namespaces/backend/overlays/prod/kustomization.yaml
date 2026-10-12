@@ -78,11 +78,11 @@ patches:
     target:
       kind: ServiceAccount
       name: reception-api
-  # Bind KSA media-consumer to its dedicated prod GSA (Workload Identity).
-  - path: serviceaccount_media_consumer_patch.yaml
+  # Bind KSA series-image-consumer to its dedicated prod GSA (Workload Identity).
+  - path: serviceaccount_series_image_consumer_patch.yaml
     target:
       kind: ServiceAccount
-      name: media-consumer
+      name: series-image-consumer
   # No Spot patch: the Deployments and CronJobs select no ComputeClass, so the
   # cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
   # places them on Spot, falls back to on-demand, and migrates them back
@@ -303,21 +303,21 @@ patches:
       spec:
         minReplicaCount: 1
         maxReplicaCount: 1
-  # media-consumer Deployment — match dev's resource sizing (libvips needs real
+  # series-image-consumer Deployment — match dev's resource sizing (libvips needs real
   # memory; too-small a limit OOM-kills the transcode).
   - target:
       kind: Deployment
-      name: media-consumer
+      name: series-image-consumer
     patch: |-
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: media-consumer
+        name: series-image-consumer
       spec:
         template:
           spec:
             containers:
-            - name: media-consumer
+            - name: series-image-consumer
               resources:
                 requests:
                   cpu: 100m
@@ -325,25 +325,25 @@ patches:
                 limits:
                   cpu: 500m
                   memory: 512Mi
-  # media-consumer ScaledObject — cap concurrency at 1 replica in prod (serialize
+  # series-image-consumer ScaledObject — cap concurrency at 1 replica in prod (serialize
   # transcodes to keep node-pool memory pressure bounded at launch volume).
   #
   # NOTE (deviation from the event-consumer "min=max=1" pin): minReplicaCount
   # stays at its base 0 (scale-to-zero). Unlike the event-consumer ScaledObject —
   # whose min MUST be 1 to hold its PUSH JetStream durables open — the
-  # media-consumer's `media_uploaded` durable is a server-side PULL work-queue
-  # Consumer (declarative NACK) that is NOT torn down when no pod is bound, so its
-  # backlog metric stays readable at 0 replicas and KEDA can always scale back up.
+  # series-image-consumer's `process-series-image` durable is a server-side PULL
+  # work-queue Consumer (declarative NACK) that is NOT torn down when no pod is
+  # bound, so its backlog metric stays readable at 0 replicas and KEDA can always scale back up.
   # Pinning min=1 here would keep an idle pod resident forever, defeating the
   # scale-to-zero design. Only maxReplicaCount is pinned.
   - target:
       kind: ScaledObject
-      name: media-consumer
+      name: series-image-consumer
     patch: |-
       apiVersion: keda.sh/v1alpha1
       kind: ScaledObject
       metadata:
-        name: media-consumer
+        name: series-image-consumer
       spec:
         maxReplicaCount: 1
 configMapGenerator:
@@ -377,10 +377,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - event-consumer/configmap.env
-  - name: media-consumer-config
+  - name: series-image-consumer-config
     behavior: merge
     envs:
-      - media-consumer/configmap.env
+      - series-image-consumer/configmap.env
 # Pin all backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -444,11 +444,9 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
     newTag: v1.79.0 # commit ef0f3267141c67452fbe7bfbe351bc9fa21359b6
-  # media-consumer: shipped from the shared backend AR repo (backend/media-consumer).
-  # Pinned to the prod AR + semver tag; the bump-prod-pin workflow keeps this in
-  # lock-step. NOTE: the media-consumer image does not exist yet at this tag — it
-  # is built once the backend Dockerfile target ships; the ScaledObject scales
-  # from 0 and pulls no image until MEDIA.uploaded events arrive.
-  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/media-consumer
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/media-consumer
+  # series-image-consumer: shipped from the shared backend AR repo
+  # (backend/series-image-consumer). Pinned to the prod AR + semver tag; the
+  # bump-prod-pin workflow keeps this in lock-step with the other backend images.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/series-image-consumer
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/series-image-consumer
     newTag: v1.79.0 # commit ef0f3267141c67452fbe7bfbe351bc9fa21359b6
