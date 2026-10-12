@@ -1,9 +1,7 @@
 # Checkout needs an operator
 
 Alert: **Checkout Needs Operator** (Cloud Monitoring, log-based on
-`jsonPayload.msg="checkout needs an operator"` in namespace `backend`; backend
-releases before the unify-ticket-sales naming release log
-"reservation needs an operator").
+`jsonPayload.msg="checkout needs an operator"` in namespace `backend`).
 
 A first-come checkout (`checkouts` row) has money taken without its tickets.
 The fan-api sweepers log it every minute, with `checkout_id` and
@@ -31,9 +29,6 @@ JOIN ticket_types tt ON tt.id = c.ticket_type_id
 LEFT JOIN orders o ON o.checkout_id = c.id
 WHERE c.id = '<checkout_id>';
 ```
-
-Before the backend naming release the columns are `authorization_ref` and
-`committed_at`.
 
 Search Cloud Logging for `jsonPayload.checkout_id="<checkout_id>"` to see why
 issuance fails (for example the event's series has no Organizer, or the

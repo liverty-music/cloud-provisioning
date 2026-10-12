@@ -266,7 +266,7 @@ resource.labels.location="${clusterLocation}"
 resource.labels.cluster_name="${clusterName}"
 resource.labels.namespace_name="backend"
 severity="ERROR"
-jsonPayload.msg=("checkout needs an operator" OR "reservation needs an operator")`,
+jsonPayload.msg="checkout needs an operator"`,
 							labelExtractors: {
 								checkout_id: 'EXTRACT(jsonPayload.checkout_id)',
 								card_authorization_id:

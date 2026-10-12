@@ -148,7 +148,7 @@ export class Gcp {
 				/** Fan API GCP SA email (backend-app successor). */
 				fanApiEmail: pulumi.Output<string>
 				/** Media Consumer GCP SA email — needs its OWN IAM DB user for the
-				 *  series_media cut-over (FindMediaByID + UPDATE), in addition to
+				 *  series cover cut-over (SeriesImage.Get + ReplaceCover), in addition to
 				 *  bucket-scoped storage access. */
 				mediaConsumerEmail: pulumi.Output<string>
 				/** Admin Console API GCP SA email. */
