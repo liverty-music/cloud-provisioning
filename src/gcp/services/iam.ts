@@ -61,7 +61,7 @@ export const Roles = {
 		/** Read, list, create, replace and delete objects, without the bucket
 		 *  IAM-policy rights of `objectAdmin`. Granted bucket-scoped to the
 		 *  admin-console-api workload so the admin Organizer deletion can remove
-		 *  a deleted Organizer's media (deleting variants lists a key prefix). */
+		 *  a deleted Organizer's series images (deleting variants lists a key prefix). */
 		ObjectUser: 'roles/storage.objectUser',
 	},
 	Iam: {

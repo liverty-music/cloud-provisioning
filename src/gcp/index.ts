@@ -44,8 +44,8 @@ export interface GcpArgs {
 	 *  Secret via ExternalSecret. `gemini.NewConcertSearcher` REQUIRES this
 	 *  (no Vertex AI fallback as of backend #303). */
 	geminiSearchApiKey?: pulumi.Output<string>
-	/** Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api eKYC
-	 *  flow (identity-ekyc-jpki). Stored in Secret Manager as `pocket-sign-token`
+	/** Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api identity
+	 *  verification flow (spec: identity-verification). Stored in Secret Manager as `pocket-sign-token`
 	 *  and synced into `fan-api-backend-secrets` as `POCKET_SIGN_TOKEN` via
 	 *  ExternalSecret. MVP uses the free mock/sandbox token in every env incl
 	 *  prod. When unset, fan-api falls back to StubVerifier (verification
@@ -173,7 +173,7 @@ export class Gcp {
 				/** Public Cloud CDN serving base URL (`https://media.<publicDomain>`)
 				 *  for organizer media. Injected into fan-api-config ConfigMap as
 				 *  `ORGANIZER_MEDIA_CDN_BASE`; the backend composes object URLs as
-				 *  `{base}/cdn/{organizer_id}/{media_id}`. */
+				 *  `{base}/cdn/{organizer_id}/{series_image_id}`. */
 				organizerMediaCdnBaseUrl: pulumi.Output<string>
 		  }
 		| undefined
@@ -522,8 +522,8 @@ export class Gcp {
 								},
 							]
 						: []),
-					// Pocket Sign Bearer token for the fan-api eKYC flow
-					// (identity-ekyc-jpki). Synced into `fan-api-backend-secrets`
+					// Pocket Sign Bearer token for the fan-api identity verification flow
+					// (spec: identity-verification). Synced into `fan-api-backend-secrets`
 					// as `POCKET_SIGN_TOKEN` via ExternalSecret. Conditional-spread
 					// matches every other optional secret: skip creation when the ESC
 					// config is unset (GCP rejects zero-byte AddSecretVersion). The

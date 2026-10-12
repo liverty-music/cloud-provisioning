@@ -201,7 +201,7 @@ of that App's permissions: ci-bot's key would let a cluster compromise push to
 5. **Delete the old key** on the App's General page. Installation tokens minted from it
    stay valid until they expire (at most 1 hour).
 
-A compromised key lets the holder start, re-run, cancel or disable workflows in
+A compromised key lets an attacker start, re-run, cancel or disable workflows in
 `cloud-provisioning` (see the gating rule below), not push code: a contents write with
 a cluster-bot token returns `403 Resource not accessible by integration` (verified
 2026-10-05). Like any GitHub account, the bot can also open issues and comments on

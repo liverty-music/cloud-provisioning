@@ -38,8 +38,8 @@ const posthogProjectApiKey = config.getSecret('posthogProjectApiKey')
 // fails fast when the env var is empty, so this secret SHALL be set in every
 // stack where the backend workload runs (dev / prod).
 const geminiSearchApiKey = config.getSecret('geminiSearchApiKey')
-// Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api eKYC flow
-// (identity-ekyc-jpki), sourced via `esc env set liverty-music/<env>
+// Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api identity verification flow
+// (spec: identity-verification), sourced via `esc env set liverty-music/<env>
 // pulumiConfig.pocketSignToken "sk_..." --secret`. MVP DECISION: every env,
 // INCLUDING prod, uses the FREE mock/sandbox token (verify.mock.p8n.app) — the
 // paid 加盟契約 + prod tenant are POST-MVP. Conditionally seeds a GSM secret read
