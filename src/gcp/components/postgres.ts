@@ -99,19 +99,12 @@ export interface PostgresComponentArgs {
 	 */
 	fanApiServiceAccountEmail?: pulumi.Input<string>
 	/**
-	 * media-consumer GCP SA email. When provided (workload up), a matching IAM
-	 * SQL user is created so the media-consumer authenticates as its OWN IAM DB
-	 * user (media-consumer@<project>.iam) via the Cloud SQL Go connector with
-	 * Workload Identity IAM auth — it performs the series cover cut-over (series_cover_images)
-	 * (FindMediaByID + UPDATE) after generating WebP variants. App-schema grants
-	 * are applied by a separate backend grant migration once this user exists.
-	 */
-	mediaConsumerServiceAccountEmail?: pulumi.Input<string>
-	/**
-	 * series-image-consumer GCP SA email (successor of media-consumer). When
-	 * provided (workload up), a matching IAM SQL user
-	 * (series-image-consumer@<project>.iam) is created. App-schema grants are
-	 * applied by a separate backend grant migration once this user exists.
+	 * series-image-consumer GCP SA email. When provided (workload up), a
+	 * matching IAM SQL user (series-image-consumer@<project>.iam) is created so
+	 * the consumer authenticates as its OWN IAM DB user via the Cloud SQL Go
+	 * connector with Workload Identity IAM auth; it switches the series cover
+	 * after generating WebP variants. App-schema grants are applied by a
+	 * separate backend grant migration once this user exists.
 	 */
 	seriesImageConsumerServiceAccountEmail?: pulumi.Input<string>
 	/**
@@ -166,7 +159,6 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			receptionServiceAccountEmail,
 			zitadelServiceAccountEmail,
 			fanApiServiceAccountEmail,
-			mediaConsumerServiceAccountEmail,
 			seriesImageConsumerServiceAccountEmail,
 			iamDatabaseUsers = [],
 			postgresAdminPassword,
@@ -514,32 +506,9 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				)
 			}
 
-			// media-consumer IAM SQL user — only when the media-consumer SA exists.
-			// The media-consumer runs under its OWN dedicated GSA (bucket-scoped),
-			// so it authenticates to Cloud SQL as media-consumer@<project>.iam via
-			// the in-process Cloud SQL Go connector with Workload Identity IAM auth.
-			// It needs its own login role to perform the series cover cut-over (series_cover_images). The
+			// series-image-consumer IAM SQL user — only when its SA exists. The
 			// app-schema grants are applied by a backend grant migration that must
 			// run AFTER this user exists (pulumi up precedes the grant apply).
-			if (mediaConsumerServiceAccountEmail) {
-				const mediaConsumerIamUserName = pulumi
-					.output(mediaConsumerServiceAccountEmail)
-					.apply((email) => email.replace('.gserviceaccount.com', ''))
-
-				new gcp.sql.User(
-					'media-consumer',
-					{
-						name: mediaConsumerIamUserName,
-						project: project.projectId,
-						instance: instance.name,
-						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
-					},
-					{ parent: this, dependsOn: [instance] },
-				)
-			}
-
-			// series-image-consumer IAM SQL user — successor of media-consumer;
-			// both exist until the workload is cut over.
 			if (seriesImageConsumerServiceAccountEmail) {
 				const seriesImageConsumerIamUserName = pulumi
 					.output(seriesImageConsumerServiceAccountEmail)

@@ -13,7 +13,6 @@ import {
 	type PostmarkDnsConfig,
 } from './components/network.js'
 import { ObjectStorageComponent } from './components/object-storage.js'
-import { OrganizerMediaComponent } from './components/organizer-media.js'
 import type { PostgresAvailabilityType } from './components/postgres.js'
 import { PostgresComponent } from './components/postgres.js'
 import { type GcpConfig, ProjectComponent } from './components/project.js'
@@ -148,12 +147,9 @@ export class Gcp {
 				backendAppEmail: pulumi.Output<string>
 				/** Fan API GCP SA email (backend-app successor). */
 				fanApiEmail: pulumi.Output<string>
-				/** Media Consumer GCP SA email — needs its OWN IAM DB user for the
-				 *  series cover cut-over (SeriesImage.Get + ReplaceCover), in addition to
-				 *  bucket-scoped storage access. */
-				mediaConsumerEmail: pulumi.Output<string>
-				/** Series Image Consumer GCP SA email (successor of
-				 *  media-consumer) — needs its own IAM DB user. */
+				/** Series Image Consumer GCP SA email — needs its OWN IAM DB user
+				 *  for the series cover cut-over (SeriesImage.Get + ReplaceCover), in
+				 *  addition to bucket-scoped storage access. */
 				seriesImageConsumerEmail: pulumi.Output<string>
 				/** Admin Console API GCP SA email. */
 				adminConsoleApiEmail: pulumi.Output<string>
@@ -168,24 +164,11 @@ export class Gcp {
 				/** Cluster subnet ID — required for the PSC consumer
 				 *  endpoint that lives inside this subnet. */
 				subnetId: pulumi.Output<string>
-				/** PRIVATE GCS bucket name for organizer-authored media (cover
-				 *  images at MVP). Injected into fan-api-config ConfigMap as
-				 *  `ORGANIZER_MEDIA_BUCKET`; the backend writes objects here but
-				 *  serves them via Cloud CDN (see `organizerMediaCdnBaseUrl`),
-				 *  never via `storage.googleapis.com`. */
-				organizerMediaBucketName: pulumi.Output<string>
-				/** Public Cloud CDN serving base URL (`https://media.<publicDomain>`)
-				 *  for organizer media. Injected into fan-api-config ConfigMap as
-				 *  `ORGANIZER_MEDIA_CDN_BASE`; the backend composes object URLs as
-				 *  `{base}/cdn/{organizer_id}/{series_image_id}`. */
-				organizerMediaCdnBaseUrl: pulumi.Output<string>
-				/** Served GCS bucket of ObjectStorageComponent (successor of
-				 *  `organizerMediaBucketName`). Injected into the backend
-				 *  ConfigMaps as `STORAGE_BUCKET`. */
+				/** Served GCS bucket of ObjectStorageComponent. Injected into the
+				 *  backend ConfigMaps as `STORAGE_BUCKET`. */
 				storageBucketName: pulumi.Output<string>
-				/** Cloud CDN serving base URL (`https://cdn.<publicDomain>`),
-				 *  successor of `organizerMediaCdnBaseUrl`. Injected into the
-				 *  backend ConfigMaps as `CDN_BASE_URL`. */
+				/** Cloud CDN serving base URL (`https://cdn.<publicDomain>`).
+				 *  Injected into the backend ConfigMaps as `CDN_BASE_URL`. */
 				cdnBaseUrl: pulumi.Output<string>
 		  }
 		| undefined
@@ -316,8 +299,8 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
-		// The `media-consumer` image ships from the backend build into the
-		// SHARED `backend` Artifact Registry repo (as `backend/media-consumer`),
+		// The `series-image-consumer` image ships from the backend build into the
+		// SHARED `backend` Artifact Registry repo (as `backend/series-image-consumer`),
 		// exactly like the other backend binaries (consumer, concert-discovery,
 		// …) — the backend deploy workflow pushes all targets to one repo. No
 		// dedicated repo, prod-CI reader, or workload AR-reader binding is needed
@@ -677,56 +660,22 @@ export class Gcp {
 				],
 			})
 
-			// 5b. GCS bucket for organizer-uploaded cover images.
+			// 5b. Object storage: a PRIVATE served bucket (`<brandId>-<env>`)
+			// fronted by an external HTTPS LB + Cloud CDN at `cdn.<publicDomain>`,
+			// and a PRIVATE internal bucket for uploaded originals.
 			// Provisioned inside the `workloadEnabled` gate because it grants
-			// a bucket-scoped IAM binding to the organizer-console-api Workload
-			// Identity SA (which only exists when the cluster is up). The bucket
-			// itself could survive a shutdown cycle, but the IAM binding would
-			// become dangling without the SA — so the whole component is gated
-			// here. Consistent with how Postgres PSC endpoint + SQL IAM users
-			// are gated inside KubernetesComponent.
-			//
-			// Design D7: the bucket is PRIVATE (DRS rejects `allUsers`) and is
-			// served through an external HTTPS LB + Cloud CDN backend bucket.
-			// Read access is granted to the Cloud CDN private-origin service
-			// account (a real org member → DRS-safe), not `allUsers`;
-			// backend-write via bucket-scoped `objectAdmin` on the
-			// organizer-console-api GSA (no project-level storage role). The
-			// component also wires the `media.<publicDomain>` LB + Cert Manager
-			// cert (DNS-01 via Cloudflare) + Cloudflare DNS, so it needs the
-			// Cloudflare provider config.
+			// bucket-scoped IAM bindings to Workload Identity SAs that only exist
+			// when the cluster is up; the bindings would dangle without them.
+			// Consistent with how Postgres PSC endpoint + SQL IAM users are gated
+			// inside KubernetesComponent.
 			// NOTE on Domain Restricted Sharing (DRS): the org enforces
 			// `iam.allowedPolicyMemberDomains`, which rejects the Cloud CDN
-			// cache-fill service agent grant below (`Error 412`). The DRS override
+			// cache-fill service agent grant (`Error 412`). The DRS override
 			// that unblocks it is NOT managed here — org-policy management requires
 			// org/folder-level permission the Pulumi deployer (project Owner + folder
 			// Viewer) neither has nor can self-grant (`roles/orgpolicy.policyAdmin`
 			// is not project-bindable). It is set out-of-band, once, by an org admin
-			// (`gcloud org-policies set-policy` allowAll on this project). Once DRS is
-			// relaxed, the component's cache-fill `objectViewer` grant applies.
-			const organizerMedia = new OrganizerMediaComponent(
-				'organizer-media',
-				{
-					project: this.project,
-					brandId,
-					environment,
-					location: Regions.Osaka,
-					organizerConsoleApiSaEmail:
-						kubernetes.organizerConsoleApiServiceAccountEmail,
-					mediaConsumerSaEmail:
-						kubernetes.mediaConsumerServiceAccountEmail,
-					adminConsoleApiSaEmail:
-						kubernetes.adminConsoleApiServiceAccountEmail,
-					cloudflareConfig,
-				},
-			)
-
-			// 5c. Object storage under its new names (`<brandId>-<env>` buckets,
-			// `cdn.<publicDomain>`): successor of OrganizerMediaComponent with
-			// identical settings, gated the same way. Both coexist until the
-			// objects are copied and the workloads switch; the consumer write
-			// roles go to BOTH the old media-consumer and the new
-			// series-image-consumer GSA meanwhile.
+			// (`gcloud org-policies set-policy` allowAll on this project).
 			const objectStorage = new ObjectStorageComponent('object-storage', {
 				project: this.project,
 				brandId,
@@ -735,8 +684,6 @@ export class Gcp {
 				organizerConsoleApiSaEmail:
 					kubernetes.organizerConsoleApiServiceAccountEmail,
 				seriesImageConsumerSaEmails: {
-					'media-consumer':
-						kubernetes.mediaConsumerServiceAccountEmail,
 					'series-image-consumer':
 						kubernetes.seriesImageConsumerServiceAccountEmail,
 				},
@@ -748,7 +695,6 @@ export class Gcp {
 			this.workloadSAs = {
 				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
 				fanApiEmail: kubernetes.fanApiServiceAccountEmail,
-				mediaConsumerEmail: kubernetes.mediaConsumerServiceAccountEmail,
 				seriesImageConsumerEmail:
 					kubernetes.seriesImageConsumerServiceAccountEmail,
 				adminConsoleApiEmail:
@@ -759,8 +705,6 @@ export class Gcp {
 				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
 				esoEmail: kubernetes.esoServiceAccountEmail,
 				subnetId: kubernetes.subnet.id,
-				organizerMediaBucketName: organizerMedia.bucketName,
-				organizerMediaCdnBaseUrl: organizerMedia.cdnBaseUrl,
 				storageBucketName: objectStorage.bucketName,
 				cdnBaseUrl: objectStorage.cdnBaseUrl,
 			}
@@ -793,8 +737,6 @@ export class Gcp {
 			receptionServiceAccountEmail: this.workloadSAs?.receptionApiEmail,
 			zitadelServiceAccountEmail: this.workloadSAs?.zitadelEmail,
 			fanApiServiceAccountEmail: this.workloadSAs?.fanApiEmail,
-			mediaConsumerServiceAccountEmail:
-				this.workloadSAs?.mediaConsumerEmail,
 			seriesImageConsumerServiceAccountEmail:
 				this.workloadSAs?.seriesImageConsumerEmail,
 			iamDatabaseUsers: cloudSqlUsers,

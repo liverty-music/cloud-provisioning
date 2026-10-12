@@ -5,7 +5,7 @@ metadata:
 spec:
   streamName: SERIES_IMAGE
   durableName: process-series-image
-  # Successor of the former media_uploaded durable; same settings. PULL work-queue
+  # PULL work-queue
   # (no deliverSubject/deliverGroup) — declarative NACK consumer drained by the
   # series-image-consumer Deployment (KEDA scale-to-zero). Server-side, so the
   # durable survives while the consumer is scaled to 0.

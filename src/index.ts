@@ -576,35 +576,18 @@ export const organizerConsoleClientId: string | pulumi.Output<string> =
 export const organizerConsoleProjectId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
 
-// PRIVATE GCS bucket name for organizer cover images — surfaced as a stack
-// output so the bucket name can be verified after `pulumi up` and
-// cross-referenced with the `ORGANIZER_MEDIA_BUCKET` env var injected into the
-// organizer-console-api workload via the `fan-api-config` ConfigMap. The
-// bucket is served through an external HTTPS LB + Cloud CDN (see
-// `organizerMediaCdnBaseUrl`), NOT via `storage.googleapis.com` (the org's
-// Domain Restricted Sharing rejects `allUsers`). The backend composes the
-// served URL as `{ORGANIZER_MEDIA_CDN_BASE}/cdn/{organizer_id}/{media_id}`.
-// Same `DEV_SHUTDOWN_SENTINEL` fallback contract as the other workload-gated
-// outputs (the bucket is only provisioned when `workloadEnabled=true`). See
-// OpenSpec change `organizer-event-authoring`.
-export const organizerMediaBucketName: string | pulumi.Output<string> =
-	gcp.workloadSAs?.organizerMediaBucketName ?? DEV_SHUTDOWN_SENTINEL
-
-// Public Cloud CDN serving base URL for organizer media
-// (`https://media.<publicDomain>`), injected into the organizer-console-api
-// workload as `ORGANIZER_MEDIA_CDN_BASE`. Same workload gate + sentinel
-// fallback as `organizerMediaBucketName`.
-export const organizerMediaCdnBaseUrl: string | pulumi.Output<string> =
-	gcp.workloadSAs?.organizerMediaCdnBaseUrl ?? DEV_SHUTDOWN_SENTINEL
-
-// Served GCS bucket of ObjectStorageComponent (successor of
-// `organizerMediaBucketName`), injected into the backend workloads as
-// `STORAGE_BUCKET`. Same workload gate + sentinel fallback.
+// Served GCS bucket of ObjectStorageComponent, injected into the backend
+// workloads as `STORAGE_BUCKET`. The bucket is PRIVATE and served through an
+// external HTTPS LB + Cloud CDN (see `cdnBaseUrl`), NOT via
+// `storage.googleapis.com` (the org's Domain Restricted Sharing rejects
+// `allUsers`). Same `DEV_SHUTDOWN_SENTINEL` fallback contract as the other
+// workload-gated outputs (the bucket is only provisioned when
+// `workloadEnabled=true`).
 export const storageBucketName: string | pulumi.Output<string> =
 	gcp.workloadSAs?.storageBucketName ?? DEV_SHUTDOWN_SENTINEL
 
-// Cloud CDN serving base URL (`https://cdn.<publicDomain>`, successor of
-// `organizerMediaCdnBaseUrl`), injected into the backend workloads as
-// `CDN_BASE_URL`. Same workload gate + sentinel fallback.
+// Cloud CDN serving base URL (`https://cdn.<publicDomain>`), injected into
+// the backend workloads as `CDN_BASE_URL`. Same workload gate + sentinel
+// fallback.
 export const cdnBaseUrl: string | pulumi.Output<string> =
 	gcp.workloadSAs?.cdnBaseUrl ?? DEV_SHUTDOWN_SENTINEL

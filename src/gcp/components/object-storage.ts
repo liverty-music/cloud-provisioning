@@ -28,10 +28,9 @@ export interface ObjectStorageArgs {
 	 *  by a stable label used in the IAM binding logical names. Each receives
 	 *  `roles/storage.objectAdmin` bucket-scoped on BOTH the internal bucket
 	 *  (to read uploaded originals) and the served bucket (to write processed
-	 *  variants under `cdn/{org}/{id}/{variant}.webp`). A map rather than a
-	 *  single email so the old `media-consumer` and the new
-	 *  `series-image-consumer` GSAs can both write during the rename; removing
-	 *  one key later leaves the other's binding URN unchanged. */
+	 *  variants under `cdn/{org}/{id}/{variant}.webp`). The key is part of
+	 *  the binding logical names, so adding or removing one entry leaves the
+	 *  others' URNs unchanged. */
 	seriesImageConsumerSaEmails: Record<string, pulumi.Input<string>>
 	/** GCP Service Account email for the admin-console-api workload. Receives
 	 *  `roles/storage.objectUser` bucket-scoped on BOTH buckets so the admin
@@ -50,9 +49,7 @@ export interface ObjectStorageArgs {
  * PRIVATE served bucket (`<brandId>-<env>`) fronted by an external HTTPS Load
  * Balancer with Cloud CDN at `cdn.<publicDomain>`, and a PRIVATE internal
  * bucket (`<brandId>-<env>-internal`) for uploaded originals that is never
- * served. Successor of `OrganizerMediaComponent` with identical behavior;
- * only the names differ (bucket, hostname, logical names). Both components
- * coexist until objects are copied and the workloads switch over.
+ * served.
  *
  * Why private bucket + CDN and NOT `allUsers`:
  *   The organization enforces Domain Restricted Sharing (DRS), which rejects an
@@ -292,7 +289,7 @@ export class ObjectStorageComponent extends pulumi.ComponentResource {
 		// Private-origin read for Cloud CDN as the Google-managed
 		// `service-<PROJECT_NUMBER>@https-lb.iam.gserviceaccount.com`. DRS
 		// rejects this grant unless relaxed; the project-level DRS override is
-		// set out-of-band by an org admin (see `OrganizerMediaComponent`). The
+		// set out-of-band by an org admin (see `src/gcp/index.ts`). The
 		// SA only exists after a BackendBucket exists, hence `dependsOn`.
 		new gcp.storage.BucketIAMMember(
 			'object-storage-cdn-read',
