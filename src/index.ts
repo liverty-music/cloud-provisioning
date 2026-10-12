@@ -596,3 +596,15 @@ export const organizerMediaBucketName: string | pulumi.Output<string> =
 // fallback as `organizerMediaBucketName`.
 export const organizerMediaCdnBaseUrl: string | pulumi.Output<string> =
 	gcp.workloadSAs?.organizerMediaCdnBaseUrl ?? DEV_SHUTDOWN_SENTINEL
+
+// Served GCS bucket of ObjectStorageComponent (successor of
+// `organizerMediaBucketName`), injected into the backend workloads as
+// `STORAGE_BUCKET`. Same workload gate + sentinel fallback.
+export const storageBucketName: string | pulumi.Output<string> =
+	gcp.workloadSAs?.storageBucketName ?? DEV_SHUTDOWN_SENTINEL
+
+// Cloud CDN serving base URL (`https://cdn.<publicDomain>`, successor of
+// `organizerMediaCdnBaseUrl`), injected into the backend workloads as
+// `CDN_BASE_URL`. Same workload gate + sentinel fallback.
+export const cdnBaseUrl: string | pulumi.Output<string> =
+	gcp.workloadSAs?.cdnBaseUrl ?? DEV_SHUTDOWN_SENTINEL

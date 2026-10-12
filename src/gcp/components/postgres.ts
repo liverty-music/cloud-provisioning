@@ -108,6 +108,13 @@ export interface PostgresComponentArgs {
 	 */
 	mediaConsumerServiceAccountEmail?: pulumi.Input<string>
 	/**
+	 * series-image-consumer GCP SA email (successor of media-consumer). When
+	 * provided (workload up), a matching IAM SQL user
+	 * (series-image-consumer@<project>.iam) is created. App-schema grants are
+	 * applied by a separate backend grant migration once this user exists.
+	 */
+	seriesImageConsumerServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * Human user emails that require IAM database authentication access.
 	 */
 	iamDatabaseUsers?: string[]
@@ -160,6 +167,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			zitadelServiceAccountEmail,
 			fanApiServiceAccountEmail,
 			mediaConsumerServiceAccountEmail,
+			seriesImageConsumerServiceAccountEmail,
 			iamDatabaseUsers = [],
 			postgresAdminPassword,
 		} = args
@@ -522,6 +530,25 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					'media-consumer',
 					{
 						name: mediaConsumerIamUserName,
+						project: project.projectId,
+						instance: instance.name,
+						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+					},
+					{ parent: this, dependsOn: [instance] },
+				)
+			}
+
+			// series-image-consumer IAM SQL user — successor of media-consumer;
+			// both exist until the workload is cut over.
+			if (seriesImageConsumerServiceAccountEmail) {
+				const seriesImageConsumerIamUserName = pulumi
+					.output(seriesImageConsumerServiceAccountEmail)
+					.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+				new gcp.sql.User(
+					'series-image-consumer',
+					{
+						name: seriesImageConsumerIamUserName,
 						project: project.projectId,
 						instance: instance.name,
 						type: 'CLOUD_IAM_SERVICE_ACCOUNT',

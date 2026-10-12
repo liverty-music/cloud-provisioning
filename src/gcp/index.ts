@@ -12,6 +12,7 @@ import {
 	NetworkComponent,
 	type PostmarkDnsConfig,
 } from './components/network.js'
+import { ObjectStorageComponent } from './components/object-storage.js'
 import { OrganizerMediaComponent } from './components/organizer-media.js'
 import type { PostgresAvailabilityType } from './components/postgres.js'
 import { PostgresComponent } from './components/postgres.js'
@@ -151,6 +152,9 @@ export class Gcp {
 				 *  series cover cut-over (SeriesImage.Get + ReplaceCover), in addition to
 				 *  bucket-scoped storage access. */
 				mediaConsumerEmail: pulumi.Output<string>
+				/** Series Image Consumer GCP SA email (successor of
+				 *  media-consumer) — needs its own IAM DB user. */
+				seriesImageConsumerEmail: pulumi.Output<string>
 				/** Admin Console API GCP SA email. */
 				adminConsoleApiEmail: pulumi.Output<string>
 				/** Organizer Console API GCP SA email (least-privilege read-only). */
@@ -175,6 +179,14 @@ export class Gcp {
 				 *  `ORGANIZER_MEDIA_CDN_BASE`; the backend composes object URLs as
 				 *  `{base}/cdn/{organizer_id}/{series_image_id}`. */
 				organizerMediaCdnBaseUrl: pulumi.Output<string>
+				/** Served GCS bucket of ObjectStorageComponent (successor of
+				 *  `organizerMediaBucketName`). Injected into the backend
+				 *  ConfigMaps as `STORAGE_BUCKET`. */
+				storageBucketName: pulumi.Output<string>
+				/** Cloud CDN serving base URL (`https://cdn.<publicDomain>`),
+				 *  successor of `organizerMediaCdnBaseUrl`. Injected into the
+				 *  backend ConfigMaps as `CDN_BASE_URL`. */
+				cdnBaseUrl: pulumi.Output<string>
 		  }
 		| undefined
 
@@ -709,10 +721,36 @@ export class Gcp {
 				},
 			)
 
+			// 5c. Object storage under its new names (`<brandId>-<env>` buckets,
+			// `cdn.<publicDomain>`): successor of OrganizerMediaComponent with
+			// identical settings, gated the same way. Both coexist until the
+			// objects are copied and the workloads switch; the consumer write
+			// roles go to BOTH the old media-consumer and the new
+			// series-image-consumer GSA meanwhile.
+			const objectStorage = new ObjectStorageComponent('object-storage', {
+				project: this.project,
+				brandId,
+				environment,
+				location: Regions.Osaka,
+				organizerConsoleApiSaEmail:
+					kubernetes.organizerConsoleApiServiceAccountEmail,
+				seriesImageConsumerSaEmails: {
+					'media-consumer':
+						kubernetes.mediaConsumerServiceAccountEmail,
+					'series-image-consumer':
+						kubernetes.seriesImageConsumerServiceAccountEmail,
+				},
+				adminConsoleApiSaEmail:
+					kubernetes.adminConsoleApiServiceAccountEmail,
+				cloudflareConfig,
+			})
+
 			this.workloadSAs = {
 				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
 				fanApiEmail: kubernetes.fanApiServiceAccountEmail,
 				mediaConsumerEmail: kubernetes.mediaConsumerServiceAccountEmail,
+				seriesImageConsumerEmail:
+					kubernetes.seriesImageConsumerServiceAccountEmail,
 				adminConsoleApiEmail:
 					kubernetes.adminConsoleApiServiceAccountEmail,
 				organizerConsoleApiEmail:
@@ -723,6 +761,8 @@ export class Gcp {
 				subnetId: kubernetes.subnet.id,
 				organizerMediaBucketName: organizerMedia.bucketName,
 				organizerMediaCdnBaseUrl: organizerMedia.cdnBaseUrl,
+				storageBucketName: objectStorage.bucketName,
+				cdnBaseUrl: objectStorage.cdnBaseUrl,
 			}
 		}
 
@@ -755,6 +795,8 @@ export class Gcp {
 			fanApiServiceAccountEmail: this.workloadSAs?.fanApiEmail,
 			mediaConsumerServiceAccountEmail:
 				this.workloadSAs?.mediaConsumerEmail,
+			seriesImageConsumerServiceAccountEmail:
+				this.workloadSAs?.seriesImageConsumerEmail,
 			iamDatabaseUsers: cloudSqlUsers,
 			postgresAdminPassword: gcpConfig.postgresAdminPassword
 				? pulumi.secret(gcpConfig.postgresAdminPassword)

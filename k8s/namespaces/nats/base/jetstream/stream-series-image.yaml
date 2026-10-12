@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Stream
+metadata:
+  name: series-image
+spec:
+  # Successor of the MEDIA stream (stream-media.yaml); same settings. Both
+  # exist until the series-image-consumer cutover, after which MEDIA is
+  # dropped from this kustomization (preventDelete keeps it on the server
+  # until it is removed by hand).
+  name: SERIES_IMAGE
+  subjects: ["SERIES_IMAGE.*"]
+  storage: file
+  retention: limits
+  maxAge: 168h
+  duplicateWindow: 2m
+  discard: old
+  replicas: 1
+  preventDelete: true
