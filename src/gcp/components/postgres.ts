@@ -102,7 +102,7 @@ export interface PostgresComponentArgs {
 	 * media-consumer GCP SA email. When provided (workload up), a matching IAM
 	 * SQL user is created so the media-consumer authenticates as its OWN IAM DB
 	 * user (media-consumer@<project>.iam) via the Cloud SQL Go connector with
-	 * Workload Identity IAM auth — it performs the series_media cut-over
+	 * Workload Identity IAM auth — it performs the series cover cut-over (series_cover_images)
 	 * (FindMediaByID + UPDATE) after generating WebP variants. App-schema grants
 	 * are applied by a separate backend grant migration once this user exists.
 	 */
@@ -510,7 +510,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			// The media-consumer runs under its OWN dedicated GSA (bucket-scoped),
 			// so it authenticates to Cloud SQL as media-consumer@<project>.iam via
 			// the in-process Cloud SQL Go connector with Workload Identity IAM auth.
-			// It needs its own login role to perform the series_media cut-over. The
+			// It needs its own login role to perform the series cover cut-over (series_cover_images). The
 			// app-schema grants are applied by a backend grant migration that must
 			// run AFTER this user exists (pulumi up precedes the grant apply).
 			if (mediaConsumerServiceAccountEmail) {

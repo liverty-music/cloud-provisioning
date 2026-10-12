@@ -448,7 +448,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				Roles.Logging.LogWriter,
 				Roles.Monitoring.MetricWriter,
 				Roles.CloudTrace.Agent,
-				// media-consumer performs the series_media cut-over, so it needs
+				// media-consumer performs the series cover cut-over (series_cover_images), so it needs
 				// Cloud SQL access via the in-process connector + IAM auth (its own
 				// media-consumer@<project>.iam DB user is created in postgres.ts).
 				Roles.CloudSql.Client,
