@@ -142,7 +142,8 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 			cloudflareConfig,
 		} = args
 
-		const protectInProd = environment === 'prod'
+		// Superseded by ObjectStorageComponent: protection is lifted so the next
+		// change can delete this component's resources.
 
 		// Media hostname + Cloudflare record label, derived from the shared
 		// helpers exported by NetworkComponent (buildHostname /
@@ -385,7 +386,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				addressType: 'EXTERNAL',
 				ipVersion: 'IPV4',
 			},
-			{ parent: this, protect: protectInProd },
+			{ parent: this, protect: false },
 		)
 
 		// Cloudflare provider — mirrors NetworkComponent by design: each
@@ -408,7 +409,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				location: 'global',
 				domain: hostname,
 			},
-			{ parent: this, protect: protectInProd },
+			{ parent: this, protect: false },
 		)
 
 		const cert = new gcp.certificatemanager.Certificate(
@@ -422,13 +423,13 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 					dnsAuthorizations: [dnsAuth.id],
 				},
 			},
-			{ parent: this, protect: protectInProd },
+			{ parent: this, protect: false },
 		)
 
 		const certMap = new gcp.certificatemanager.CertificateMap(
 			'organizer-media-cert-map',
 			{ name: 'organizer-media-cert-map' },
-			{ parent: this, protect: protectInProd },
+			{ parent: this, protect: false },
 		)
 
 		new gcp.certificatemanager.CertificateMapEntry(
@@ -439,7 +440,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				certificates: [cert.id],
 				hostname,
 			},
-			{ parent: this, protect: protectInProd },
+			{ parent: this, protect: false },
 		)
 
 		// URL map: BOTH the top-level `defaultService` AND the pathMatcher's
@@ -500,7 +501,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 				portRange: '443',
 				loadBalancingScheme: 'EXTERNAL_MANAGED',
 			},
-			{ parent: this, protect: protectInProd },
+			{ parent: this, protect: false },
 		)
 
 		// Cloudflare A record for `media.<publicDomain>` → the media LB IP.
@@ -520,7 +521,7 @@ export class OrganizerMediaComponent extends pulumi.ComponentResource {
 			{
 				parent: this,
 				provider: cloudflareProvider,
-				protect: protectInProd,
+				protect: false,
 			},
 		)
 
