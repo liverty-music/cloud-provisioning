@@ -75,6 +75,10 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	 *  OrganizerMediaComponent can grant it bucket-scoped storage.objectAdmin on
 	 *  both media buckets. */
 	public readonly mediaConsumerServiceAccountEmail: pulumi.Output<string>
+	/** Series Image Consumer GCP SA email — successor of the media-consumer
+	 *  GSA; exposed so ObjectStorageComponent can grant it bucket-scoped
+	 *  storage.objectAdmin and Postgres can create its IAM SQL user. */
+	public readonly seriesImageConsumerServiceAccountEmail: pulumi.Output<string>
 	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
 	public readonly zitadelServiceAccountEmail: pulumi.Output<string>
 	/** ESO controller's GCP SA email — exposed so callers can grant per-secret accessor bindings. */
@@ -468,6 +472,53 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			namespace,
 			this,
 			{ aliases: [{ name: 'media-processor-k8s-sa-wif-user' }] },
+		)
+
+		// 2e. Series Image Consumer Service Account (series-image-consumer)
+		// Successor of `media-consumer` (2d) under the new name. Same role set:
+		// AR readers, operational project roles plus Cloud SQL Client /
+		// InstanceUser (its own series-image-consumer@<project>.iam DB user is
+		// created in postgres.ts), and the Workload Identity binding for
+		// ns/backend/sa/series-image-consumer. Bucket access is granted
+		// bucket-scoped in ObjectStorageComponent. Both GSAs exist until the
+		// workload is cut over; 2d is then removed.
+		const seriesImageConsumer = 'series-image-consumer'
+		const seriesImageConsumerSa = iamSvc.createServiceAccount(
+			`liverty-music-${seriesImageConsumer}`,
+			seriesImageConsumer,
+			'Liverty Music Series Image Consumer Service Account',
+			'Long-running KEDA-scaled series image consumer; reads uploaded originals, writes processed variants, and switches the series cover in Cloud SQL',
+			this,
+		)
+		this.seriesImageConsumerServiceAccountEmail =
+			seriesImageConsumerSa.email
+		for (const [index, registry] of artifactRegistries.entries()) {
+			iamSvc.bindArtifactRegistryReader(
+				`${registryNames[index]}-${seriesImageConsumer}`,
+				seriesImageConsumerSa.email,
+				registry,
+				region,
+				this,
+			)
+		}
+		iamSvc.bindProjectRoles(
+			[
+				Roles.Logging.LogWriter,
+				Roles.Monitoring.MetricWriter,
+				Roles.CloudTrace.Agent,
+				Roles.CloudSql.Client,
+				Roles.CloudSql.InstanceUser,
+				Roles.ServiceUsage.ServiceUsageConsumer,
+			],
+			seriesImageConsumer,
+			seriesImageConsumerSa.email,
+			this,
+		)
+		iamSvc.bindKubernetesSaUser(
+			seriesImageConsumer,
+			seriesImageConsumerSa,
+			namespace,
+			this,
 		)
 
 		// External Secrets Operator Service Account
