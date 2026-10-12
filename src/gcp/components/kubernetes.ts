@@ -70,13 +70,9 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 	public readonly organizerConsoleApiServiceAccountEmail: pulumi.Output<string>
 	/** Reception API GCP SA email — the unauthenticated venue-reception backend workload; exposed so Postgres can create its dedicated IAM SQL user. */
 	public readonly receptionApiServiceAccountEmail: pulumi.Output<string>
-	/** Media Consumer GCP SA email — the long-running KEDA-scaled consumer that
-	 *  reads uploaded originals and writes processed variants; exposed so
-	 *  OrganizerMediaComponent can grant it bucket-scoped storage.objectAdmin on
-	 *  both media buckets. */
-	public readonly mediaConsumerServiceAccountEmail: pulumi.Output<string>
-	/** Series Image Consumer GCP SA email — successor of the media-consumer
-	 *  GSA; exposed so ObjectStorageComponent can grant it bucket-scoped
+	/** Series Image Consumer GCP SA email — the long-running KEDA-scaled
+	 *  consumer that reads uploaded originals and writes processed variants;
+	 *  exposed so ObjectStorageComponent can grant it bucket-scoped
 	 *  storage.objectAdmin and Postgres can create its IAM SQL user. */
 	public readonly seriesImageConsumerServiceAccountEmail: pulumi.Output<string>
 	public readonly otelCollectorServiceAccountEmail: pulumi.Output<string>
@@ -152,8 +148,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		)
 
 		// Grant permission to pull from Artifact Registries
-		// Registry order: [backend, frontend] — media images share the backend
-		// repo (there is no dedicated media-processor registry).
+		// Registry order: [backend, frontend] — the series-image-consumer image
+		// shares the backend repo (there is no dedicated registry for it).
 		const registryNames = ['backend', 'frontend']
 		for (const [index, registry] of artifactRegistries.entries()) {
 			iamSvc.bindArtifactRegistryReader(
@@ -349,7 +345,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 		// organizer-console-api mints V4 signed upload URLs keyless via IAM
-		// SignBlob (CreateMediaUploadURL), so it must be able to sign AS ITSELF:
+		// SignBlob (SeriesImageService.CreateUploadUrl), so it must be able to sign AS ITSELF:
 		// grant it Service Account Token Creator on its own SA.
 		new gcp.serviceaccount.IAMMember(
 			'organizer-console-api-sign-blob',
@@ -403,85 +399,18 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			this,
 		)
 
-		// 2d. Media Consumer Service Account (media-consumer)
+		// 2d. Series Image Consumer Service Account (series-image-consumer)
 		// The long-running KEDA-scaled consumer (Deployment + ScaledObject,
-		// scale-to-zero) that consumes `media.uploaded` events, reads the uploaded
-		// original from the PRIVATE originals bucket, transcodes it with libvips,
-		// and writes processed variants to the served bucket. It does NOT talk to
-		// Cloud SQL, so it is granted NEITHER `cloudSql.Client` NOR
-		// `cloudSql.InstanceUser` — a deliberately smaller role set than the
-		// fan/admin/organizer API workloads. Bucket access is granted separately as
-		// bucket-scoped `storage.objectAdmin` bindings in OrganizerMediaComponent
-		// (least privilege — no project-level storage role). K8s SA name == GCP SA
-		// id == `media-consumer`.
-		//
-		// Renamed from `media-processor` (media-consumer is a long-running consumer,
-		// not a batch job). The GSA + WI binding + AR-reader + project-role bindings
-		// carry `aliases` to the old `media-processor` logical names so the rename
-		// adopts the just-created prod resources in place rather than replace-delete.
-		const mediaConsumer = 'media-consumer'
-		const mediaConsumerSa = iamSvc.createServiceAccount(
-			`liverty-music-${mediaConsumer}`,
-			mediaConsumer,
-			'Liverty Music Media Consumer Service Account',
-			'Long-running KEDA-scaled media transcoding consumer; reads uploaded originals and writes processed variants (no Cloud SQL access)',
-			this,
-			{ aliases: [{ name: 'liverty-music-media-processor' }] },
-		)
-		this.mediaConsumerServiceAccountEmail = mediaConsumerSa.email
-		// Grant pull access on both registries, mirroring the API workloads.
-		for (const [index, registry] of artifactRegistries.entries()) {
-			iamSvc.bindArtifactRegistryReader(
-				`${registryNames[index]}-media-consumer`,
-				mediaConsumerSa.email,
-				registry,
-				region,
-				this,
-				{
-					aliases: [
-						{
-							name: `${registryNames[index]}-media-processor-x-artifact-registry-reader`,
-						},
-					],
-				},
-			)
-		}
-		// Minimal operational project roles — logging/metrics/trace + service
-		// usage. No Cloud SQL (this workload never connects to the database).
-		iamSvc.bindProjectRoles(
-			[
-				Roles.Logging.LogWriter,
-				Roles.Monitoring.MetricWriter,
-				Roles.CloudTrace.Agent,
-				// media-consumer performs the series cover cut-over (series_cover_images), so it needs
-				// Cloud SQL access via the in-process connector + IAM auth (its own
-				// media-consumer@<project>.iam DB user is created in postgres.ts).
-				Roles.CloudSql.Client,
-				Roles.CloudSql.InstanceUser,
-				Roles.ServiceUsage.ServiceUsageConsumer,
-			],
-			mediaConsumer,
-			mediaConsumerSa.email,
-			this,
-			{ aliasSaName: 'media-processor' },
-		)
-		// Bind Kubernetes Service Account (ns/backend/sa/media-consumer) to Workload Identity.
-		iamSvc.bindKubernetesSaUser(
-			mediaConsumer,
-			mediaConsumerSa,
-			namespace,
-			this,
-			{ aliases: [{ name: 'media-processor-k8s-sa-wif-user' }] },
-		)
-
-		// 2e. Series Image Consumer Service Account (series-image-consumer)
-		// Successor of `media-consumer` (2d) under the new name. Same role set:
-		// AR readers, operational project roles plus Cloud SQL Client /
-		// InstanceUser (its own series-image-consumer@<project>.iam DB user is
-		// created in postgres.ts), and the Workload Identity binding for
+		// scale-to-zero) that consumes `SERIES_IMAGE.uploaded` events, reads the
+		// uploaded original from the PRIVATE internal bucket, transcodes it with
+		// libvips, writes processed variants to the served bucket, and switches
+		// the series cover in Cloud SQL. Role set: AR readers, operational
+		// project roles plus Cloud SQL Client / InstanceUser (its own
+		// series-image-consumer@<project>.iam DB user is created in
+		// postgres.ts), and the Workload Identity binding for
 		// ns/backend/sa/series-image-consumer. Bucket access is granted
-		// bucket-scoped in ObjectStorageComponent. Both GSAs exist until the
-		// workload is cut over; 2d is then removed.
+		// bucket-scoped in ObjectStorageComponent (no project-level storage
+		// role). K8s SA name == GCP SA id == `series-image-consumer`.
 		const seriesImageConsumer = 'series-image-consumer'
 		const seriesImageConsumerSa = iamSvc.createServiceAccount(
 			`liverty-music-${seriesImageConsumer}`,

@@ -3,9 +3,6 @@ kind: Stream
 metadata:
   name: series-image
 spec:
-  # Successor of the former MEDIA stream; same settings. MEDIA was dropped from
-  # this kustomization at the series-image-consumer cutover (preventDelete keeps
-  # it on the server until it is removed by hand).
   name: SERIES_IMAGE
   subjects: ["SERIES_IMAGE.*"]
   storage: file

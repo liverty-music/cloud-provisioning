@@ -2,8 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   # series-image-consumer: long-running JetStream consumer that transcodes
-  # organizer-uploaded series images. Successor of `media-consumer` (itself
-  # renamed from the `media-processor` KEDA ScaledJob) — the binary is a resident
+  # organizer-uploaded series images. The binary is a resident
   # consumer (like `event-consumer`), not a per-item batch job. Each
   # `SERIES_IMAGE.uploaded` event pulls the original from the
   # private originals bucket, transcodes it with libvips, writes processed
