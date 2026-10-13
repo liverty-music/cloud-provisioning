@@ -25,7 +25,7 @@ export interface OrganizerConsoleComponentArgs {
 	env: Environment
 	/**
 	 * ID of the `liverty-music` product org. The `organizer-console` project
-	 * (its role + apps) is owned here — the console is a Liverty-Music product
+	 * (its role + apps) is owned here — the console is a Liverty Music product
 	 * surface — and is Project-Granted to each Organizer tenant org at runtime
 	 * (the grant itself is NOT created by IaC). The owner org is only the
 	 * project's administrative home; operators authenticate in their own tenant
