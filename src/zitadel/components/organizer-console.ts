@@ -12,7 +12,7 @@ import { baseDomainMap } from '../constants.js'
  * value requires a matching backend change. Only `owner` is defined now; the
  * sub-owner roles (`editor`, `viewer`, `reception`) are a later change.
  *
- * Named `owner`, NOT `admin`: `admin` already denotes the Liverty-internal
+ * Named `owner`, NOT `admin`: `admin` already denotes the Liverty Music-internal
  * operator role on the separate `admin-console` project
  * (`ADMIN_CONSOLE_ROLE_ADMIN`), so reusing it would overload the roles claim
  * and collide with Zitadel's own admin concepts. This principal is the
@@ -25,7 +25,7 @@ export interface OrganizerConsoleComponentArgs {
 	env: Environment
 	/**
 	 * ID of the `liverty-music` product org. The `organizer-console` project
-	 * (its role + apps) is owned here — the console is a Liverty-Music product
+	 * (its role + apps) is owned here — the console is a Liverty Music product
 	 * surface — and is Project-Granted to each Organizer tenant org at runtime
 	 * (the grant itself is NOT created by IaC). The owner org is only the
 	 * project's administrative home; operators authenticate in their own tenant
