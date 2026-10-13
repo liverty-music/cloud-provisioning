@@ -1,0 +1,34 @@
+# Cluster-level default ComputeClass (optimize-prod-gke-cost D1).
+#
+# With `clusterAutoscaling.defaultComputeClassEnabled` on the cluster
+# (src/gcp/components/kubernetes.ts), every Pod that selects no ComputeClass
+# gets this one:
+#   - Spot first, on-demand only when Spot capacity is unavailable.
+#   - activeMigration moves Pods back to Spot once it returns. Before this,
+#     "prefer Spot" Pods stayed on on-demand nodes indefinitely.
+#   - ScaleUpAnyway: a Pod that matches no rule still schedules.
+#
+# `podFamily` rules keep Pod-based billing (`machineFamily` would switch to
+# node-based billing). Because this is the cluster default, Pods keep the
+# 50m / 52Mi Autopilot minimum; a named or namespace-default class with
+# podFamily rules raises it to 0.5 vCPU / 0.5 GiB (seen in the V1 check).
+#
+# Stateful workloads must not use it: NATS keeps an explicit
+# `cloud.google.com/gke-spot: "true"` nodeSelector, which selects the built-in
+# `autopilot-spot` class and so never sees active migration (D2).
+#
+# Only Pods created after this class exists are affected.
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: default
+spec:
+  autopilot:
+    enabled: true
+  priorities:
+  - podFamily: general-purpose
+    spot: true
+  - podFamily: general-purpose
+  activeMigration:
+    optimizeRulePriority: true
+  whenUnsatisfiable: ScaleUpAnyway

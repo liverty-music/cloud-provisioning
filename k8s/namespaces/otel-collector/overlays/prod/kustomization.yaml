@@ -3,6 +3,10 @@ kind: Kustomization
 
 # Prod otel-collector overlay. Env-divergent fields:
 #   - ServiceAccount GSA email: otel-collector@liverty-music-prod (vs dev).
+#
+# Purpose: the in-cluster OTLP endpoint. Backend and Zitadel push traces and
+# metrics here (OpenTelemetry SDK autoexport), and the collector forwards them
+# to Cloud Trace and Cloud Monitoring. There is no scrape path to replace it.
 # Resource sizing + spot label match dev exactly.
 
 resources:
@@ -16,20 +20,10 @@ patches:
     kind: ServiceAccount
     name: otel-collector
 
-# Spot VM nodeSelector for prod
-- target:
-    kind: Deployment
-    name: otel-collector
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: otel-collector
-    spec:
-      template:
-        spec:
-          nodeSelector:
-            cloud.google.com/gke-spot: "true"
+# No Spot nodeSelector in prod: the Deployments select no ComputeClass, so the
+# cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
+# places them on Spot with on-demand fallback and migrates them back
+# (optimize-prod-gke-cost D1).
 
 - target:
     kind: Deployment
@@ -51,6 +45,8 @@ patches:
                 # pod evictable under node memory pressure; raise the request
                 # above the working set. Limit stays 128Mi (headroom for bursts).
                 memory: 96Mi
+                ephemeral-storage: 100Mi
               limits:
                 cpu: 200m
                 memory: 128Mi
+                ephemeral-storage: 100Mi

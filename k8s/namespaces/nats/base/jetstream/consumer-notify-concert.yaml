@@ -14,5 +14,4 @@ spec:
   maxAckPending: 1000
   maxDeliver: -1
   replayPolicy: instant
-  replicas: 0
   preventDelete: true

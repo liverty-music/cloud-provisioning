@@ -28,3 +28,9 @@ spec:
       selfHeal: true
     syncOptions:
     - CreateNamespace=true
+    # Server-Side Apply, matching the cluster-wide Server-Side Diff
+    # (`controller.diff.server.side`). With client-side apply, fields the
+    # controller wrote via `Update` are never predicted as removed, so a
+    # Git change that only deletes a field stays "Synced" and never applies
+    # (argoproj/argo-cd#23845).
+    - ServerSideApply=true

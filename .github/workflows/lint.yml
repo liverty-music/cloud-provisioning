@@ -7,14 +7,20 @@ on:
     paths:
       - "k8s/**"
       - ".kube-linter.yaml"
-      - "scripts/check-spot-nodeselector.sh"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".mise.toml"
       - "Makefile"
       - ".github/workflows/lint.yml"
   pull_request:
     paths:
       - "k8s/**"
       - ".kube-linter.yaml"
-      - "scripts/check-spot-nodeselector.sh"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".mise.toml"
       - "Makefile"
       - ".github/workflows/lint.yml"
 
@@ -31,19 +37,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
       - name: Install Kustomize
-        uses: imranismail/setup-kustomize@v2
+        uses: imranismail/setup-kustomize@53f941b41dca13ed61874bbc6b4b6e1562877530 # v3
 
       - name: Install KubeLinter
         run: |
           curl -sLO "https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz"
           tar -xzf kube-linter-linux.tar.gz
           sudo install kube-linter /usr/local/bin/
+
+      # Version comes from .mise.toml, the single pin Renovate updates (the
+      # mise manager); the tarball is verified against the release's own
+      # CHECKSUMS file.
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^kubeconform = "\(.*\)"$/\1/p' .mise.toml)"
+          test -n "$version"
+          base="https://github.com/yannh/kubeconform/releases/download/v${version}"
+          curl -sSfLO "${base}/kubeconform-linux-amd64.tar.gz"
+          curl -sSfL "${base}/CHECKSUMS" | grep ' kubeconform-linux-amd64.tar.gz$' | sha256sum -c -
+          tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
+          sudo install kubeconform /usr/local/bin/
+
+      # The check scripts (scripts/*.ts) run on Node and parse the rendered
+      # manifests with the `yaml` devDependency.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run make lint-k8s
         run: make lint-k8s

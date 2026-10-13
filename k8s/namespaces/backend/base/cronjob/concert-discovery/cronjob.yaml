@@ -9,6 +9,14 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      # Delete finished Jobs (and their Pods) after a day so completed and
+      # failed runs stop accumulating (optimize-prod-gke-cost D7). The history
+      # limits above still cap the count within that day.
+      ttlSecondsAfterFinished: 86400
+      # A failed run is not retried: the job exits non-zero on a systemic
+      # failure (an unreachable dependency, an API quota) that a retry would
+      # hit again; the next scheduled run is the retry.
+      backoffLimit: 0
       template:
         spec:
           terminationGracePeriodSeconds: 120
@@ -27,6 +35,8 @@ spec:
               requests:
                 cpu: 100m
                 memory: 256Mi
+                ephemeral-storage: 100Mi
               limits:
                 cpu: 500m
                 memory: 512Mi
+                ephemeral-storage: 100Mi

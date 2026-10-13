@@ -1,6 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: nats
+# Do not set `replicas: 0` on a Consumer (it means "inherit from the stream",
+# which omitting it also means). NACK writes each CR back with a full Update
+# whose Go struct tags the field omitempty, so a 0 is stripped on every
+# reconcile and ArgoCD reports the Consumer OutOfSync forever.
 resources:
 - stream-concert.yaml
 - stream-venue.yaml
@@ -11,7 +15,8 @@ resources:
 - stream-ticket-journey.yaml
 - stream-ticket-email.yaml
 - stream-organizer.yaml
-- stream-media.yaml
+- stream-series-image.yaml
+- stream-order.yaml
 - stream-poison.yaml
 - consumer-ingest-concert.yaml
 - consumer-notify-concert.yaml
@@ -21,10 +26,12 @@ resources:
 - consumer-track-user-created.yaml
 - consumer-track-user-logged-in.yaml
 - consumer-track-artist-followed.yaml
+- consumer-search-first-followed-artist.yaml
 - consumer-track-artist-unfollowed.yaml
 - consumer-track-notification-subscribed.yaml
 - consumer-track-notification-unsubscribed.yaml
 - consumer-track-notification-delivered.yaml
+- consumer-deliver-notification.yaml
 - consumer-track-ticket-journey.yaml
 - consumer-track-ticket-email.yaml
 - consumer-analytics-organizer-created.yaml
@@ -32,4 +39,6 @@ resources:
 - consumer-notify-sales-phase.yaml
 - consumer-notify-sales-reminder.yaml
 - consumer-log-poison.yaml
-- consumer-media-uploaded.yaml
+- consumer-process-series-image.yaml
+- consumer-send-order-confirmation.yaml
+- consumer-mark-ticket-journey-paid.yaml

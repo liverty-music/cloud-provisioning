@@ -1,0 +1,11 @@
+# StatefulSet variant (application-controller); see unpin-spot_patch_deployment.yaml.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: any
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: null
+        cloud.google.com/compute-class: null

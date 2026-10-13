@@ -1,31 +1,32 @@
 # Run 2 replicas for HA
 replicaCount: 2
 
+# ephemeral-storage (optimize-prod-gke-cost D4): explicit instead of the
+# Autopilot 1 GiB default per container. The controller writes ~0 MiB locally.
 resources:
   requests:
     cpu: 50m
     memory: 64Mi
+    ephemeral-storage: 100Mi
   limits:
     cpu: 200m
     memory: 256Mi
+    ephemeral-storage: 100Mi
 
+# The validating webhook and the cert-controller were chart defaults, never a
+# chosen feature: the controller syncs secrets without them, and every
+# ExternalSecret is reviewed in Git. Both are off (optimize-prod-gke-cost D5).
+#
+# They must go together. With the webhook Pod gone but its
+# ValidatingWebhookConfiguration left in place, `failurePolicy: Fail` rejects
+# every ExternalSecret create, update and delete; with only the cert-controller
+# gone, nothing maintains the webhook's CA bundle. CRD conversion stays off
+# (chart default `crds.conversion.enabled: false`), so no CRD calls the webhook.
 webhook:
-  resources:
-    requests:
-      cpu: 50m
-      memory: 52Mi
-    limits:
-      cpu: 100m
-      memory: 128Mi
+  create: false
 
 certController:
-  resources:
-    requests:
-      cpu: 50m
-      memory: 52Mi
-    limits:
-      cpu: 100m
-      memory: 128Mi
+  create: false
 
 # Use Workload Identity - no service account keys needed
 serviceAccount:

@@ -1,0 +1,11 @@
+# Job variant (e.g. redis-secret-init); see unpin-spot_patch_deployment.yaml.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: any
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: null
+        cloud.google.com/compute-class: null

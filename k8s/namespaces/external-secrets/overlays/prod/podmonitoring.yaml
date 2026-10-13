@@ -37,7 +37,7 @@ spec:
     interval: 60s
     metricRelabeling:
     # Keep only the store/secret readiness gauges. Names confirmed against ESO
-    # v0.12.1 source: subsystem `clustersecretstore` / `externalsecret` + metric
+    # v2.11.0 docs/api/metrics.md: subsystem `clustersecretstore` / `externalsecret` + metric
     # `status_condition`, labels `condition` and `status`, current series = 1.
     - sourceLabels: [__name__]
       regex: clustersecretstore_status_condition|externalsecret_status_condition

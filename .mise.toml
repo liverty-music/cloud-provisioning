@@ -1,6 +1,14 @@
 
 [env]
-GOOGLE_CLOUD_QUOTA_PROJECT = "liverty-music-dev"
+# Quota project for local `pulumi preview` with user ADC, which carries none.
+# prod, not dev: dev is stopped and its KMS, Cloud Quotas and Billing Budgets
+# APIs are disabled, so a dev quota project fails a prod refresh with 403.
+# Previews of both stacks succeed with prod as the quota project.
+GOOGLE_CLOUD_QUOTA_PROJECT = "liverty-music-prod"
 
 [tools]
-kustomize = "latest"
+# Pinned, not "latest": a floating reference can never produce an update
+# proposal, so Renovate would report this axis as up to date forever while it
+# silently drifted. See OpenSpec change `automate-dependency-updates`, task 5.2a.
+kustomize = "5.8.1"
+kubeconform = "0.8.0"

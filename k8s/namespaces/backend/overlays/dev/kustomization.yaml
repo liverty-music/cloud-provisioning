@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
 - ../../base
-- sql-proxy/deployment.yaml
 
 namespace: backend
 
@@ -33,11 +32,17 @@ patches:
     kind: ServiceAccount
     name: organizer-console-api
 
-# Bind KSA media-consumer to its dedicated dev GSA (Workload Identity).
-- path: serviceaccount_media_consumer_patch.yaml
+# Bind KSA reception-api to its dedicated dev GSA (Workload Identity).
+- path: serviceaccount_reception_api_patch.yaml
   target:
     kind: ServiceAccount
-    name: media-consumer
+    name: reception-api
+
+# Bind KSA series-image-consumer to its dedicated dev GSA (Workload Identity).
+- path: serviceaccount_series_image_consumer_patch.yaml
+  target:
+    kind: ServiceAccount
+    name: series-image-consumer
 
 # Global Spot VM patch for all Deployments in dev
 - path: spot-vm_patch.yaml
@@ -158,6 +163,26 @@ patches:
             - name: DATABASE_USER
               value: "organizer-console-api@liverty-music-dev.iam"
 
+# reception-api in dev: one replica and its own IAM DB user. Dev is stopped,
+# so this is kept coherent with prod but is inert.
+- target:
+    kind: Deployment
+    name: reception-api
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: reception-api
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: server
+            env:
+            - name: DATABASE_USER
+              value: "reception-api@liverty-music-dev.iam"
+
 - target:
     kind: HTTPRoute
     name: fan-api-route
@@ -182,6 +207,14 @@ patches:
       path: /spec/hostnames
       value: ["api.organizer.dev.liverty-music.app"]
 
+- target:
+    kind: HTTPRoute
+    name: reception-api-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["api.reception.dev.liverty-music.app"]
+
 # CronJob: run concert discovery only on Fridays in dev
 - path: cronjob/concert-discovery/schedule_patch.yaml
   target:
@@ -193,6 +226,12 @@ patches:
   target:
     kind: CronJob
     name: sales-phase-discovery-app
+
+# CronJob: TEMPORARY suspend of Gemini discovery jobs (see patch file header)
+- path: cronjob/suspend-gemini-discovery_patch.yaml
+  target:
+    kind: CronJob
+    name: concert-discovery-app
 
 # Right-size resources for event-consumer in dev
 - target:
@@ -228,24 +267,24 @@ patches:
     spec:
       maxReplicaCount: 1
 
-# media-consumer Deployment in dev: right-sized resources. The Spot nodeSelector
+# series-image-consumer Deployment in dev: right-sized resources. The Spot nodeSelector
 # comes from the global spot-vm_patch (which targets kind: Deployment), so no
 # explicit spot patch is needed here (unlike the old ScaledJob, which the global
 # patch did not match). libvips still needs real memory even in dev, so the
 # limits stay meaningful (a too-small limit OOM-kills the transcode).
 - target:
     kind: Deployment
-    name: media-consumer
+    name: series-image-consumer
   patch: |-
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: media-consumer
+      name: series-image-consumer
     spec:
       template:
         spec:
           containers:
-          - name: media-consumer
+          - name: series-image-consumer
             resources:
               requests:
                 cpu: 100m
@@ -254,15 +293,15 @@ patches:
                 cpu: 500m
                 memory: 512Mi
 
-# media-consumer ScaledObject in dev: cap concurrency at 1 replica.
+# series-image-consumer ScaledObject in dev: cap concurrency at 1 replica.
 - target:
     kind: ScaledObject
-    name: media-consumer
+    name: series-image-consumer
   patch: |-
     apiVersion: keda.sh/v1alpha1
     kind: ScaledObject
     metadata:
-      name: media-consumer
+      name: series-image-consumer
     spec:
       maxReplicaCount: 1
 
@@ -279,6 +318,10 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/artist-image-sync/configmap.env
+- name: official-site-refresh-job-config
+  behavior: merge
+  envs:
+  - cronjob/official-site-refresh/configmap.env
 - name: sales-phase-discovery-job-config
   behavior: merge
   envs:
@@ -291,7 +334,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - event-consumer/configmap.env
-- name: media-consumer-config
+- name: series-image-consumer-config
   behavior: merge
   envs:
-  - media-consumer/configmap.env
+  - series-image-consumer/configmap.env

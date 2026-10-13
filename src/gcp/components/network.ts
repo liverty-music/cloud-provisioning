@@ -15,6 +15,13 @@ export interface NetworkComponentArgs {
 	regionName: RegionName
 	project: gcp.organizations.Project
 	environment: Environment
+	/**
+	 * Whether the stack runs the GKE cluster (and so the Gateway). When false
+	 * (dev while shut down), the Gateway's static IP and the hostname A
+	 * records that point at it are not created: an unattached reserved IP is
+	 * billed by the hour (optimize-prod-gke-cost D8).
+	 */
+	gatewayEnabled: boolean
 	cloudflareConfig: {
 		apiToken: pulumi.Input<string>
 		zoneId: pulumi.Input<string>
@@ -45,6 +52,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			project,
 			cloudflareConfig,
 			environment,
+			gatewayEnabled,
 			postmarkConfig,
 		} = args
 
@@ -258,15 +266,19 @@ export class NetworkComponent extends pulumi.ComponentResource {
 			{ parent: this, dependsOn: certManagerApi },
 		)
 
-		const staticIp = new gcp.compute.GlobalAddress(
-			'api-gateway-static-ip',
-			{
-				name: 'api-gateway-static-ip',
-				addressType: 'EXTERNAL',
-				ipVersion: 'IPV4',
-			},
-			{ parent: this },
-		)
+		// Only while the Gateway exists. The certificates stay either way:
+		// they renew through DNS authorization, not the A record.
+		const staticIp = gatewayEnabled
+			? new gcp.compute.GlobalAddress(
+					'api-gateway-static-ip',
+					{
+						name: 'api-gateway-static-ip',
+						addressType: 'EXTERNAL',
+						ipVersion: 'IPV4',
+					},
+					{ parent: this },
+				)
+			: undefined
 
 		// Provision each service's hostname (DnsAuth + Cert + CertMapEntry
 		// in GCP; A record + ACME CNAME in Cloudflare).
@@ -372,6 +384,16 @@ const SERVICES: ReadonlyArray<{
 	// gateway. Mirrors the admin console hosting. See OpenSpec change
 	// `organizer-console`.
 	{ name: 'organizer-app', subdomain: 'organizer' },
+	// Reception API — dev: api.reception.dev.liverty-music.app,
+	// prod: api.reception.liverty-music.app. The backend's reception Connect
+	// server (the unauthenticated device-side rpc.scanner.v1.ScannerService,
+	// called by scanner devices (venue staff phones)) exposed only by the
+	// reception-api workload. See OpenSpec change `isolate-venue-reception`.
+	{ name: 'reception-api', subdomain: 'api.reception' },
+	// Reception web — dev: reception.dev.liverty-music.app,
+	// prod: reception.liverty-music.app. A separately built frontend app on its
+	// own origin, away from the console's tokens. Same change.
+	{ name: 'reception-app', subdomain: 'reception' },
 ]
 
 /** The single Cloudflare-authoritative zone for all public DNS. */
@@ -427,7 +449,8 @@ export function buildCloudflareRecordName(
  *   - `<name>-cert-map-entry`     — binds the cert to the shared
  *                                    {@link gcp.certificatemanager.CertificateMap}
  *   - `<name>-a-record`           — Cloudflare A record pointing at
- *                                    {@link staticIp}
+ *                                    {@link staticIp} (only when the
+ *                                    Gateway's static IP exists)
  *   - `<name>-dns-auth-cname`     — Cloudflare CNAME satisfying the
  *                                    ACME DNS-01 challenge for the cert
  *
@@ -453,7 +476,7 @@ function provisionManagedHostname(
 		recordName: string
 	},
 	certMap: gcp.certificatemanager.CertificateMap,
-	staticIp: gcp.compute.GlobalAddress,
+	staticIp: gcp.compute.GlobalAddress | undefined,
 	cfProvider: cloudflare.Provider,
 	cfZoneId: pulumi.Input<string>,
 	dependsOn: pulumi.Resource[],
@@ -496,19 +519,21 @@ function provisionManagedHostname(
 		{ parent, dependsOn, protect: protectInProd },
 	)
 
-	new cloudflare.DnsRecord(
-		`${name}-a-record`,
-		{
-			zoneId: cfZoneId,
-			name: recordName,
-			type: 'A',
-			content: staticIp.address,
-			ttl: 300,
-			proxied: false,
-			comment: `A record for ${hostname} → api-gateway-static-ip`,
-		},
-		{ parent, provider: cfProvider, protect: protectInProd },
-	)
+	if (staticIp) {
+		new cloudflare.DnsRecord(
+			`${name}-a-record`,
+			{
+				zoneId: cfZoneId,
+				name: recordName,
+				type: 'A',
+				content: staticIp.address,
+				ttl: 300,
+				proxied: false,
+				comment: `A record for ${hostname} → api-gateway-static-ip`,
+			},
+			{ parent, provider: cfProvider, protect: protectInProd },
+		)
+	}
 
 	// ACME DNS-01 challenge CNAME. Google emits `dnsResourceRecords[0]`
 	// with `.name` as a fully-qualified label (trailing dot) and `.data`

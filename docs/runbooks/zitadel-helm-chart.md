@@ -29,7 +29,7 @@ k8s/namespaces/zitadel/
 │   ├── healthcheckpolicy.yaml
 │   ├── serviceaccount.yaml  ← shared zitadel SA + Workload Identity binding
 │   ├── external-secret.yaml ← ESO → K8s Secret `zitadel-masterkey`
-│   ├── external-secret-web-pat.yaml
+│   ├── external-secret-login-service-key.yaml ← ESO → TLS Secret for the Login V2 client's X.509 key
 │   ├── external-secret-postgres-admin.yaml
 │   └── namespace.yaml
 └── overlays/{dev,prod}/
@@ -67,7 +67,7 @@ PATH="$HOME/.local/share/mise/installs/helm/3.17.0/linux-amd64:$PATH" \
 
 # Lint.
 kube-linter lint /tmp/rendered --config .kube-linter.yaml
-./scripts/check-spot-nodeselector.sh /tmp/rendered
+node scripts/check-spot-nodeselector.ts /tmp/rendered
 ```
 
 Or run the full project lint:

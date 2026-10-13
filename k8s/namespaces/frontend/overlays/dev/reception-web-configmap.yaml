@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reception-web-runtime-config
+data:
+  # Reception web runtime config served at the reception pod's /config.json.
+  # The reception app has no sign-in, so it carries no OIDC fields; apiBaseUrl
+  # is the reception API host served by the reception-api workload.
+  config.json: |
+    {
+      "environment": "dev",
+      "apiBaseUrl": "https://api.reception.dev.liverty-music.app",
+      "logLevel": "debug"
+    }

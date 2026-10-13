@@ -58,7 +58,13 @@ spec:
         - containerPort: 8090
           name: http-admin
         env:
-        # Activates the organizer provisioner in THIS process only.
+        # The API deployment this process runs as (backend API_WORKLOAD). admin
+        # is the only workload that provisions organizer tenants, and the backend
+        # requires the provisioner credential below for it.
+        - name: API_WORKLOAD
+          value: admin
+        # The organizer-provisioner credential; the backend refuses it on any
+        # workload other than admin.
         - name: ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH
           value: /secrets/zitadel-organizer-provisioner/zitadel-machine-key-for-organizer-provisioner.json
         # Env-specific Zitadel project the provisioner grants tenant orgs into.
@@ -72,6 +78,15 @@ spec:
         # for the same key. Set per overlay to the admin-console-api IAM user.
         - name: DATABASE_USER
           value: REPLACE_ME_IN_OVERLAY
+        # Stripe secret key for the admin OrderService.Refund. Optional so the
+        # Pod still starts (with the Noop payment ports, Refund → Unavailable)
+        # in an environment where the GSM secret is not provisioned.
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: admin-console-api-stripe-secret
+              key: STRIPE_SECRET_KEY
+              optional: true
         envFrom:
         # Config: admin borrows fan-api-config (successor to the deleted
         # server-config; identical content, DATABASE_USER overridden above).
@@ -80,6 +95,10 @@ spec:
             name: fan-api-config
         - secretRef:
             name: backend-secrets
+        # Stripe credentials, for OrderService.Refund. Required: the backend refuses to
+        # start outside local without them.
+        - secretRef:
+            name: api-stripe-secrets
         volumeMounts:
         - name: zitadel-machine-key
           mountPath: /secrets/zitadel
@@ -98,9 +117,22 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+        # DI waits up to 5 minutes for the database before the server (and its
+        # health service) starts, so liveness is held off until the process
+        # answers: 36 x 10 s = 6 minutes.
+        startupProbe:
+          grpc:
+            port: 8090
+            service: liveness
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 36
+        # The `liveness` health service reports only whether the process can
+        # answer; readiness (default service) reports the database.
         livenessProbe:
           grpc:
             port: 8090
+            service: liveness
           initialDelaySeconds: 10
           periodSeconds: 20
           timeoutSeconds: 5
@@ -109,6 +141,8 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+            ephemeral-storage: 100Mi
           limits:
             cpu: 200m
             memory: 256Mi
+            ephemeral-storage: 100Mi

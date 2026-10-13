@@ -1,0 +1,5 @@
+# Planning for this repository lives in the "openspec-store" OpenSpec store
+# (the liverty-music/specification repository). See docs/stores-beta/user-guide.md
+# in the OpenSpec project. Register the store locally with:
+#   openspec store register <path-to-specification-checkout> --id openspec-store
+store: openspec-store

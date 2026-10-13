@@ -24,5 +24,6 @@ data:
       "vapidPublicKey": "BNg-zJP4IiX11Cz1dghWll0mwBnMV6oeOSSVsYyOK2l8NFAqN9xHFSTS_W3_oXO4k3BlMyYLjkMUE-uA7LABGHo",
       "previewArtistIds": [],
       "previewArtistNames": [],
+      "receptionBaseUrl": "https://reception.dev.liverty-music.app",
       "logLevel": "debug"
     }

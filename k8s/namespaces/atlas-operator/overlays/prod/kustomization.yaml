@@ -1,6 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Purpose: Atlas Operator applies the backend schema migrations (the
+# `backend-migration` AtlasMigration synced by the `backend-migrations`
+# Application) to Cloud SQL. It is the only migration path in prod.
+#
 # Atlas Operator is a singleton controller with no env-divergent state (no
 # ESC secrets mounted, no hostnames, no per-env config). The dev overlay's
 # spot-nodeSelector and right-sized resource requests are the right baseline
@@ -11,18 +15,10 @@ resources:
 - ../../base
 
 patches:
-- target:
-    kind: Deployment
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: atlas-operator
-    spec:
-      template:
-        spec:
-          nodeSelector:
-            cloud.google.com/gke-spot: "true"
+# No Spot nodeSelector in prod: the Deployments select no ComputeClass, so the
+# cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
+# places them on Spot with on-demand fallback and migrates them back
+# (optimize-prod-gke-cost D1).
 
 # Match dev's resource requests/limits exactly (design D2).
 - target:
@@ -42,6 +38,8 @@ patches:
               requests:
                 cpu: 10m
                 memory: 64Mi
+                ephemeral-storage: 100Mi
               limits:
                 cpu: 100m
                 memory: 128Mi
+                ephemeral-storage: 100Mi

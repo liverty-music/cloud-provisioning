@@ -8,8 +8,10 @@ resources:
 # patch targets `kind: Deployment`, so it applies to the organizer-console-web
 # Deployment automatically.
 - ../../base/organizer-console-web
+- ../../base/reception-web
 - fan-web-configmap.yaml
 - organizer-console-web-configmap.yaml
+- reception-web-configmap.yaml
 
 namespace: frontend
 
@@ -80,3 +82,31 @@ patches:
     - op: add
       path: /spec/hostnames
       value: ["organizer.dev.liverty-music.app"]
+
+# Dev reception web: the image's CSP defaults connect-src to the prod reception
+# API; point it at the dev one (Caddyfile.reception reads RECEPTION_API_ORIGIN).
+- target:
+    kind: Deployment
+    name: reception-web-app
+  patch: |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: reception-web-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: caddy
+            env:
+            - name: RECEPTION_API_ORIGIN
+              value: "https://api.reception.dev.liverty-music.app"
+
+# Dev reception HTTPRoute hostname.
+- target:
+    kind: HTTPRoute
+    name: reception-web-route
+  patch: |-
+    - op: add
+      path: /spec/hostnames
+      value: ["reception.dev.liverty-music.app"]

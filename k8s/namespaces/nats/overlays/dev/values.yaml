@@ -13,14 +13,20 @@ config:
         storageClassName: premium-rwo
 
 container:
+  # NATS 2.12 changed its memory usage pattern; without a soft limit the Go
+  # runtime can grow past the 256Mi container limit before collecting.
+  env:
+    GOMEMLIMIT: 200MiB
   merge:
     resources:
       requests:
         cpu: 10m
         memory: 64Mi
+        ephemeral-storage: 100Mi
       limits:
         cpu: 200m
         memory: 256Mi
+        ephemeral-storage: 100Mi
     # GKE Autopilot injects these security defaults
     securityContext:
       capabilities:
@@ -33,9 +39,11 @@ reloader:
       requests:
         cpu: 10m
         memory: 16Mi
+        ephemeral-storage: 100Mi
       limits:
         cpu: 50m
         memory: 64Mi
+        ephemeral-storage: 100Mi
     # GKE Autopilot injects these security defaults
     securityContext:
       capabilities:

@@ -1,5 +1,6 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import * as tls from '@pulumi/tls'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import type { Environment } from '../config.js'
 import { BillingExportComponent } from './components/billing-export.js'
@@ -11,7 +12,7 @@ import {
 	NetworkComponent,
 	type PostmarkDnsConfig,
 } from './components/network.js'
-import { OrganizerMediaComponent } from './components/organizer-media.js'
+import { ObjectStorageComponent } from './components/object-storage.js'
 import type { PostgresAvailabilityType } from './components/postgres.js'
 import { PostgresComponent } from './components/postgres.js'
 import { type GcpConfig, ProjectComponent } from './components/project.js'
@@ -43,8 +44,8 @@ export interface GcpArgs {
 	 *  Secret via ExternalSecret. `gemini.NewConcertSearcher` REQUIRES this
 	 *  (no Vertex AI fallback as of backend #303). */
 	geminiSearchApiKey?: pulumi.Output<string>
-	/** Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api eKYC
-	 *  flow (identity-ekyc-jpki). Stored in Secret Manager as `pocket-sign-token`
+	/** Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api identity
+	 *  verification flow (spec: identity-verification). Stored in Secret Manager as `pocket-sign-token`
 	 *  and synced into `fan-api-backend-secrets` as `POCKET_SIGN_TOKEN` via
 	 *  ExternalSecret. MVP uses the free mock/sandbox token in every env incl
 	 *  prod. When unset, fan-api falls back to StubVerifier (verification
@@ -56,6 +57,23 @@ export interface GcpArgs {
 	 * STRIPE_SECRET_KEY by the fan-api backend via ESO. Omitted → NoopAuthorizationPort.
 	 */
 	stripeSecretKey?: pulumi.Output<string>
+	/**
+	 * Stripe webhook signing secret (`whsec_…`) for the settlement/payout flow
+	 * (ticket-settlement-and-payout §5.1). Seeds a GSM secret (`stripe-webhook-signing-secret`)
+	 * consumed as STRIPE_WEBHOOK_SIGNING_SECRET by the fan-api backend via ESO; the
+	 * webhook handler verifies the `Stripe-Signature` header on inbound
+	 * transfer/payout/refund/dispute events against it. EXTERNAL 0.1: the VALUE only
+	 * exists after the Stripe webhook endpoint is registered (Dashboard step, not IaC).
+	 * Omitted → handler fails closed (503) until configured.
+	 */
+	stripeWebhookSigningSecret?: pulumi.Output<string>
+	/**
+	 * Postmark Server API token — the same token Zitadel's SMTP uses. Seeds a
+	 * GSM secret (`postmark-server-token`) consumed as POSTMARK_SERVER_TOKEN by
+	 * the event-consumer, which sends the purchase confirmation email
+	 * (first-come-ticket-sales). Omitted → the consumer's no-op sender.
+	 */
+	postmarkServerToken?: string
 	/** HMAC signing key Zitadel generated for the login-event Actions v2 Target
 	 *  (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
 	 *  `webhook-login-event-signing-key` and synced into `backend-secrets` as
@@ -67,14 +85,10 @@ export interface GcpArgs {
 	postmarkConfig: PostmarkDnsConfig
 	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
 	zitadelMachineKey?: pulumi.Output<string>
-	/** Personal Access Token for the zitadel-login (Login V2 UI) container.
-	 *  Stored in Secret Manager and mounted into the zitadel-login pod via
-	 *  ExternalSecret as a file referenced by `ZITADEL_SERVICE_USER_TOKEN_FILE`. */
-	zitadelLoginPat?: pulumi.Output<string>
-	/** Personal Access Token for the watchdog CronJob bearer token.
-	 *  Stored in Secret Manager and synced into the `zitadel` namespace via
-	 *  ExternalSecret (`zitadel-watchdog-probe-pat`), mounted into the CronJob. */
-	zitadelWatchdogProbePat?: pulumi.Output<string>
+	/** Whether the self-hosted Zitadel workload is provisioned in this stack.
+	 *  Gates the Login V2 client's X.509 keypair, which only a Zitadel
+	 *  instance consumes. */
+	zitadelEnabled?: boolean
 	/** JWT profile JSON for the organizer-provisioner machine user. Stored in
 	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`) for the
 	 *  backend to provision Organizer tenant orgs at runtime. */
@@ -118,6 +132,7 @@ export class Gcp {
 	public readonly projectId: pulumi.Output<string>
 	public readonly region: string = Regions.Osaka
 	public readonly githubActionsSAEmail: pulumi.Output<string>
+	public readonly incidentTriageSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
 	/** Workload-tier resources — all defined together when
 	 *  `workloadEnabled=true`, or the whole group is undefined when the
@@ -132,14 +147,16 @@ export class Gcp {
 				backendAppEmail: pulumi.Output<string>
 				/** Fan API GCP SA email (backend-app successor). */
 				fanApiEmail: pulumi.Output<string>
-				/** Media Consumer GCP SA email — needs its OWN IAM DB user for the
-				 *  series_media cut-over (FindMediaByID + UPDATE), in addition to
-				 *  bucket-scoped storage access. */
-				mediaConsumerEmail: pulumi.Output<string>
+				/** Series Image Consumer GCP SA email — needs its OWN IAM DB user
+				 *  for the series cover cut-over (SeriesImage.Get + ReplaceCover), in
+				 *  addition to bucket-scoped storage access. */
+				seriesImageConsumerEmail: pulumi.Output<string>
 				/** Admin Console API GCP SA email. */
 				adminConsoleApiEmail: pulumi.Output<string>
 				/** Organizer Console API GCP SA email (least-privilege read-only). */
 				organizerConsoleApiEmail: pulumi.Output<string>
+				/** Reception API GCP SA email. */
+				receptionApiEmail: pulumi.Output<string>
 				/** Self-hosted Zitadel GCP SA email. */
 				zitadelEmail: pulumi.Output<string>
 				/** External Secrets Operator GCP SA email. */
@@ -147,17 +164,12 @@ export class Gcp {
 				/** Cluster subnet ID — required for the PSC consumer
 				 *  endpoint that lives inside this subnet. */
 				subnetId: pulumi.Output<string>
-				/** PRIVATE GCS bucket name for organizer-authored media (cover
-				 *  images at MVP). Injected into fan-api-config ConfigMap as
-				 *  `ORGANIZER_MEDIA_BUCKET`; the backend writes objects here but
-				 *  serves them via Cloud CDN (see `organizerMediaCdnBaseUrl`),
-				 *  never via `storage.googleapis.com`. */
-				organizerMediaBucketName: pulumi.Output<string>
-				/** Public Cloud CDN serving base URL (`https://media.<publicDomain>`)
-				 *  for organizer media. Injected into fan-api-config ConfigMap as
-				 *  `ORGANIZER_MEDIA_CDN_BASE`; the backend composes object URLs as
-				 *  `{base}/cdn/{organizer_id}/{media_id}`. */
-				organizerMediaCdnBaseUrl: pulumi.Output<string>
+				/** Served GCS bucket of ObjectStorageComponent. Injected into the
+				 *  backend ConfigMaps as `STORAGE_BUCKET`. */
+				storageBucketName: pulumi.Output<string>
+				/** Cloud CDN serving base URL (`https://cdn.<publicDomain>`).
+				 *  Injected into the backend ConfigMaps as `CDN_BASE_URL`. */
+				cdnBaseUrl: pulumi.Output<string>
 		  }
 		| undefined
 
@@ -173,12 +185,13 @@ export class Gcp {
 			geminiSearchApiKey,
 			pocketSignToken,
 			stripeSecretKey,
+			stripeWebhookSigningSecret,
+			postmarkServerToken,
 			loginEventSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
 			zitadelMachineKey,
-			zitadelLoginPat,
-			zitadelWatchdogProbePat,
+			zitadelEnabled,
 			zitadelOrganizerProvisionerKey,
 			workloadEnabled,
 			postgresAvailabilityType,
@@ -204,6 +217,7 @@ export class Gcp {
 			regionName: RegionNames.Osaka,
 			project: this.project,
 			environment,
+			gatewayEnabled: workloadEnabled,
 			cloudflareConfig,
 			postmarkConfig,
 		})
@@ -218,6 +232,43 @@ export class Gcp {
 		const dockerConfig =
 			environment !== 'dev' ? { immutableTags: true } : undefined
 
+		// Cleanup policies (optimize-prod-gke-cost D8). Every push leaves
+		// versions behind (hundreds per package by 2026-10), and storage is
+		// billed per GB. KEEP wins over DELETE, so each package keeps its most
+		// recent versions and drops the rest once older than the age limit.
+		//
+		// keepCount counts versions, not releases: each release pushes an OCI
+		// index plus an image manifest and an attestation manifest, so 30
+		// versions keep about 10 releases (prod rollback re-pins an earlier
+		// semver tag, see docs/runbooks/prod-image-tag-pinning.md) and 15 keep
+		// about 5 in dev. AR never deletes a manifest that a kept index still
+		// references, so a kept image is never left without its children.
+		//
+		// Enforced since 2026-10-07. The dry run logged nothing (Data Access
+		// audit logs are off), so the policies were checked by replaying them
+		// over the version listings instead: every image running in prod is
+		// kept, and about 6 GB (prod) / 30 GB (dev) of old versions go.
+		const retention =
+			environment === 'prod'
+				? { keepCount: 30, olderThan: '5184000s' } // 60 days
+				: { keepCount: 15, olderThan: '1209600s' } // 14 days
+		// Listed in id order, the order the API returns them in; any other
+		// order shows as a diff on every preview. Order does not affect
+		// precedence: KEEP always wins over DELETE.
+		const cleanupPolicies = [
+			{
+				id: 'delete-old',
+				action: 'DELETE',
+				condition: { tagState: 'ANY', olderThan: retention.olderThan },
+			},
+			{
+				id: 'keep-most-recent',
+				action: 'KEEP',
+				mostRecentVersions: { keepCount: retention.keepCount },
+			},
+		]
+		const cleanupPolicyDryRun = false
+
 		const backendArtifactRegistry = new gcp.artifactregistry.Repository(
 			'github-backend-repository',
 			{
@@ -227,6 +278,8 @@ export class Gcp {
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Backend Repository',
 				dockerConfig,
+				cleanupPolicies,
+				cleanupPolicyDryRun,
 			},
 			{ parent: this.project },
 		)
@@ -240,12 +293,14 @@ export class Gcp {
 				project: this.project.projectId,
 				description: 'Docker repository for GitHub Frontend Repository',
 				dockerConfig,
+				cleanupPolicies,
+				cleanupPolicyDryRun,
 			},
 			{ parent: this.project },
 		)
 
-		// The `media-consumer` image ships from the backend build into the
-		// SHARED `backend` Artifact Registry repo (as `backend/media-consumer`),
+		// The `series-image-consumer` image ships from the backend build into the
+		// SHARED `backend` Artifact Registry repo (as `backend/series-image-consumer`),
 		// exactly like the other backend binaries (consumer, concert-discovery,
 		// …) — the backend deploy workflow pushes all targets to one repo. No
 		// dedicated repo, prod-CI reader, or workload AR-reader binding is needed
@@ -360,6 +415,29 @@ export class Gcp {
 		// (§9) remain unguarded so GitHub Actions OIDC and billing alerts
 		// persist while the workload tier is down.
 		if (workloadEnabled) {
+			// Keypair the Login V2 pod authenticates to the Zitadel API with.
+			// Zitadel chart 10.x replaced the login client's PAT with a
+			// SystemAPIUsers X.509 key; left to the chart, it is generated with
+			// `lookup` + `genSelfSignedCert`, and `lookup` is always empty under
+			// kustomize/ArgoCD — every render would mint a new key and roll the
+			// API and login pods, rejecting logins mid-roll. Owning it here makes
+			// the render stable (`login.loginServiceKeySecretName`). RSA because
+			// the login container signs its JWTs with RS256.
+			const zitadelLoginServiceKey = zitadelEnabled
+				? new tls.PrivateKey('zitadel-login-service-key', {
+						algorithm: 'RSA',
+						rsaBits: 2048,
+					})
+				: undefined
+			const zitadelLoginServiceCert = zitadelLoginServiceKey
+				? new tls.SelfSignedCert('zitadel-login-service-cert', {
+						privateKeyPem: zitadelLoginServiceKey.privateKeyPem,
+						subject: { commonName: 'zitadel-login-client' },
+						validityPeriodHours: 24 * 365 * 10,
+						allowedUses: ['digital_signature'],
+					})
+				: undefined
+
 			const kubernetes = new KubernetesComponent('kubernetes-cluster', {
 				project: this.project,
 				environment,
@@ -439,8 +517,8 @@ export class Gcp {
 								},
 							]
 						: []),
-					// Pocket Sign Bearer token for the fan-api eKYC flow
-					// (identity-ekyc-jpki). Synced into `fan-api-backend-secrets`
+					// Pocket Sign Bearer token for the fan-api identity verification flow
+					// (spec: identity-verification). Synced into `fan-api-backend-secrets`
 					// as `POCKET_SIGN_TOKEN` via ExternalSecret. Conditional-spread
 					// matches every other optional secret: skip creation when the ESC
 					// config is unset (GCP rejects zero-byte AddSecretVersion). The
@@ -464,6 +542,39 @@ export class Gcp {
 								{
 									name: 'stripe-secret-key',
 									value: pulumi.secret(stripeSecretKey),
+								},
+							]
+						: []),
+					// Stripe webhook signing secret (`whsec_…`) for the
+					// settlement/payout flow (ticket-settlement-and-payout §5.1).
+					// Consumed as STRIPE_WEBHOOK_SIGNING_SECRET by fan-api via the
+					// ESO ExternalSecret, which references this GSM secret only after
+					// it exists (ESO fails the whole fan-api bundle on a missing key).
+					// EXTERNAL 0.1: the VALUE is populated only after the Stripe
+					// webhook endpoint is registered in the Dashboard — until then the
+					// ESC config is unset, this secret is not provisioned (GCP rejects
+					// zero-byte AddSecretVersion), and the backend handler fails closed
+					// (503). Conditional-spread matches every other optional secret.
+					...(stripeWebhookSigningSecret
+						? [
+								{
+									name: 'stripe-webhook-signing-secret',
+									value: pulumi.secret(
+										stripeWebhookSigningSecret,
+									),
+								},
+							]
+						: []),
+					// Postmark Server API token for the purchase confirmation email
+					// (first-come-ticket-sales). Consumed as POSTMARK_SERVER_TOKEN by
+					// the event-consumer via the `backend-secrets` ExternalSecret, whose
+					// entry is added only after this GSM secret exists (ESO fails the
+					// whole bundle on a missing referenced key).
+					...(postmarkServerToken
+						? [
+								{
+									name: 'postmark-server-token',
+									value: pulumi.secret(postmarkServerToken),
 								},
 							]
 						: []),
@@ -515,28 +626,33 @@ export class Gcp {
 								},
 							]
 						: []),
-					// PAT consumed only by the zitadel-login pod (Login V2 UI). ESO in
-					// the `zitadel` namespace mirrors this into a K8s Secret which the
-					// pod mounts as a file referenced by ZITADEL_SERVICE_USER_TOKEN_FILE.
-					// Backend-app does not need access — the backend talks to Zitadel
-					// via its own JWT-key (zitadel-machine-key-for-backend-app), not this PAT.
-					...(zitadelLoginPat
+					// Private key of the `liverty-music-cluster-bot` GitHub App. The
+					// ESO `GithubAccessToken` generator in the `argocd` namespace
+					// mints 1-hour installation tokens (Actions: write) from it so
+					// ArgoCD Notifications can dispatch `incident-triage.yml`.
+					...(gcpConfig.argocdClusterBotPrivateKey
 						? [
 								{
-									name: 'zitadel-login-pat',
-									value: pulumi.secret(zitadelLoginPat),
+									name: 'argocd-cluster-bot-private-key',
+									value: pulumi.secret(
+										gcpConfig.argocdClusterBotPrivateKey,
+									),
 								},
 							]
 						: []),
-					// PAT for the self-healing watchdog CronJob. ESO syncs this into the
-					// `zitadel` namespace so the CronJob can mount it as a bearer token
-					// for the read-only `ProjectService/ListProjectRoles` probe.
-					...(zitadelWatchdogProbePat
+					// X.509 keypair for the Login V2 client (Zitadel chart 10.x). ESO
+					// mirrors both halves into the `zitadel-login-service-key` TLS
+					// Secret named by `login.loginServiceKeySecretName`.
+					...(zitadelLoginServiceKey && zitadelLoginServiceCert
 						? [
 								{
-									name: 'zitadel-watchdog-probe-pat',
+									name: 'zitadel-login-service-key-crt',
+									value: zitadelLoginServiceCert.certPem,
+								},
+								{
+									name: 'zitadel-login-service-key-key',
 									value: pulumi.secret(
-										zitadelWatchdogProbePat,
+										zitadelLoginServiceKey.privateKeyPem,
 									),
 								},
 							]
@@ -544,61 +660,53 @@ export class Gcp {
 				],
 			})
 
-			// 5b. GCS bucket for organizer-uploaded cover images.
+			// 5b. Object storage: a PRIVATE served bucket (`<brandId>-<env>`)
+			// fronted by an external HTTPS LB + Cloud CDN at `cdn.<publicDomain>`,
+			// and a PRIVATE internal bucket for uploaded originals.
 			// Provisioned inside the `workloadEnabled` gate because it grants
-			// a bucket-scoped IAM binding to the organizer-console-api Workload
-			// Identity SA (which only exists when the cluster is up). The bucket
-			// itself could survive a shutdown cycle, but the IAM binding would
-			// become dangling without the SA — so the whole component is gated
-			// here. Consistent with how Postgres PSC endpoint + SQL IAM users
-			// are gated inside KubernetesComponent.
-			//
-			// Design D7: the bucket is PRIVATE (DRS rejects `allUsers`) and is
-			// served through an external HTTPS LB + Cloud CDN backend bucket.
-			// Read access is granted to the Cloud CDN private-origin service
-			// account (a real org member → DRS-safe), not `allUsers`;
-			// backend-write via bucket-scoped `objectAdmin` on the
-			// organizer-console-api GSA (no project-level storage role). The
-			// component also wires the `media.<publicDomain>` LB + Cert Manager
-			// cert (DNS-01 via Cloudflare) + Cloudflare DNS, so it needs the
-			// Cloudflare provider config.
+			// bucket-scoped IAM bindings to Workload Identity SAs that only exist
+			// when the cluster is up; the bindings would dangle without them.
+			// Consistent with how Postgres PSC endpoint + SQL IAM users are gated
+			// inside KubernetesComponent.
 			// NOTE on Domain Restricted Sharing (DRS): the org enforces
 			// `iam.allowedPolicyMemberDomains`, which rejects the Cloud CDN
-			// cache-fill service agent grant below (`Error 412`). The DRS override
+			// cache-fill service agent grant (`Error 412`). The DRS override
 			// that unblocks it is NOT managed here — org-policy management requires
 			// org/folder-level permission the Pulumi deployer (project Owner + folder
 			// Viewer) neither has nor can self-grant (`roles/orgpolicy.policyAdmin`
 			// is not project-bindable). It is set out-of-band, once, by an org admin
-			// (`gcloud org-policies set-policy` allowAll on this project). Once DRS is
-			// relaxed, the component's cache-fill `objectViewer` grant applies.
-			const organizerMedia = new OrganizerMediaComponent(
-				'organizer-media',
-				{
-					project: this.project,
-					brandId,
-					environment,
-					location: Regions.Osaka,
-					organizerConsoleApiSaEmail:
-						kubernetes.organizerConsoleApiServiceAccountEmail,
-					mediaConsumerSaEmail:
-						kubernetes.mediaConsumerServiceAccountEmail,
-					cloudflareConfig,
+			// (`gcloud org-policies set-policy` allowAll on this project).
+			const objectStorage = new ObjectStorageComponent('object-storage', {
+				project: this.project,
+				brandId,
+				environment,
+				location: Regions.Osaka,
+				organizerConsoleApiSaEmail:
+					kubernetes.organizerConsoleApiServiceAccountEmail,
+				seriesImageConsumerSaEmails: {
+					'series-image-consumer':
+						kubernetes.seriesImageConsumerServiceAccountEmail,
 				},
-			)
+				adminConsoleApiSaEmail:
+					kubernetes.adminConsoleApiServiceAccountEmail,
+				cloudflareConfig,
+			})
 
 			this.workloadSAs = {
 				backendAppEmail: kubernetes.backendAppServiceAccountEmail,
 				fanApiEmail: kubernetes.fanApiServiceAccountEmail,
-				mediaConsumerEmail: kubernetes.mediaConsumerServiceAccountEmail,
+				seriesImageConsumerEmail:
+					kubernetes.seriesImageConsumerServiceAccountEmail,
 				adminConsoleApiEmail:
 					kubernetes.adminConsoleApiServiceAccountEmail,
 				organizerConsoleApiEmail:
 					kubernetes.organizerConsoleApiServiceAccountEmail,
+				receptionApiEmail: kubernetes.receptionApiServiceAccountEmail,
 				zitadelEmail: kubernetes.zitadelServiceAccountEmail,
 				esoEmail: kubernetes.esoServiceAccountEmail,
 				subnetId: kubernetes.subnet.id,
-				organizerMediaBucketName: organizerMedia.bucketName,
-				organizerMediaCdnBaseUrl: organizerMedia.cdnBaseUrl,
+				storageBucketName: objectStorage.bucketName,
+				cdnBaseUrl: objectStorage.cdnBaseUrl,
 			}
 		}
 
@@ -626,10 +734,11 @@ export class Gcp {
 			adminServiceAccountEmail: this.workloadSAs?.adminConsoleApiEmail,
 			organizerServiceAccountEmail:
 				this.workloadSAs?.organizerConsoleApiEmail,
+			receptionServiceAccountEmail: this.workloadSAs?.receptionApiEmail,
 			zitadelServiceAccountEmail: this.workloadSAs?.zitadelEmail,
 			fanApiServiceAccountEmail: this.workloadSAs?.fanApiEmail,
-			mediaConsumerServiceAccountEmail:
-				this.workloadSAs?.mediaConsumerEmail,
+			seriesImageConsumerServiceAccountEmail:
+				this.workloadSAs?.seriesImageConsumerEmail,
 			iamDatabaseUsers: cloudSqlUsers,
 			postgresAdminPassword: gcpConfig.postgresAdminPassword
 				? pulumi.secret(gcpConfig.postgresAdminPassword)
@@ -644,6 +753,7 @@ export class Gcp {
 		})
 		this.githubWorkloadIdentityProvider = wif.githubProvider.name
 		this.githubActionsSAEmail = wif.githubActionsSA.email
+		this.incidentTriageSAEmail = wif.incidentTriageSA.email
 
 		// 8. Monitoring (Log-Based Alerts + Notification Channels).
 		// Runs in all envs (per `refactor-unify-env-dispatch` D4). The outer
@@ -776,6 +886,66 @@ export class Gcp {
 					},
 				},
 				{ parent: this.project, dependsOn: [billingBudgetsApi] },
+			)
+		}
+
+		// 10. Compute Engine quota for GKE nodes.
+		// Autopilot manages the nodes, but their VMs and boot disks still draw
+		// on this project's Compute Engine quota, and GKE "can only provision
+		// infrastructure for your workloads if your project has enough quota"
+		// (GKE Autopilot overview). Every Autopilot node boots from a
+		// pd-balanced disk of about 100 GB, which counts against the regional
+		// SSD-TOTAL-GB quota. At the new-project default of 500 GB, the four prod
+		// nodes (~437 GB) left no room for a fifth, so every node auto-upgrade
+		// (which surges one extra node) and every scale-up failed with
+		// QUOTA_EXCEEDED from 2026-09-27. 1000 GB fits about nine nodes,
+		// including the upgrade surge.
+		//
+		// Requested through the Cloud Quotas API; an increase needs a contact
+		// email, so the preference exists only where `quotaContactEmail` is set
+		// in ESC.
+		if (gcpConfig.quotaContactEmail) {
+			const cloudQuotasApi = new gcp.projects.Service(
+				'cloudquotas',
+				{
+					project: this.projectId,
+					service: 'cloudquotas.googleapis.com',
+					disableOnDestroy: environment !== 'dev',
+				},
+				{ parent: this.project },
+			)
+
+			new gcp.cloudquota.SQuotaPreference(
+				'ssd-total-gb-quota',
+				{
+					parent: pulumi.interpolate`projects/${this.projectId}`,
+					service: 'compute.googleapis.com',
+					quotaId: 'SSD-TOTAL-GB-per-project-region',
+					dimensions: { region: this.region },
+					quotaConfig: { preferredValue: '1000' },
+					contactEmail: gcpConfig.quotaContactEmail,
+					justification:
+						'GKE Autopilot node boot disks (pd-balanced) need room for node auto-upgrade surge and scale-up.',
+				},
+				{ parent: this.project, dependsOn: [cloudQuotasApi] },
+			)
+
+			// The project-wide vCPU cap. Once SSD-TOTAL-GB was raised, node
+			// creation hit this one next (CPUS_ALL_REGIONS 32/32 during the
+			// 2026-10-05 node upgrade). The project runs in one region, so match
+			// the regional CPUS limit (100) instead of leaving a lower global cap.
+			new gcp.cloudquota.SQuotaPreference(
+				'cpus-all-regions-quota',
+				{
+					parent: pulumi.interpolate`projects/${this.projectId}`,
+					service: 'compute.googleapis.com',
+					quotaId: 'CPUS-ALL-REGIONS-per-project',
+					quotaConfig: { preferredValue: '100' },
+					contactEmail: gcpConfig.quotaContactEmail,
+					justification:
+						'GKE Autopilot node auto-upgrade surge and scale-up in the single region this project uses.',
+				},
+				{ parent: this.project, dependsOn: [cloudQuotasApi] },
 			)
 		}
 	}

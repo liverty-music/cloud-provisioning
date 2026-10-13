@@ -77,6 +77,13 @@ export interface PostgresComponentArgs {
 	 */
 	organizerServiceAccountEmail?: pulumi.Input<string>
 	/**
+	 * GCP Service Account email for the reception-api workload. When provided, a
+	 * matching IAM SQL user (reception-api@<project>.iam) is created; its
+	 * reception-only app-schema grant is applied by a backend grant migration.
+	 * Only meaningful when `workloadEnabled` is true.
+	 */
+	receptionServiceAccountEmail?: pulumi.Input<string>
+	/**
 	 * GCP Service Account email for self-hosted Zitadel. When provided, a
 	 * dedicated `zitadel` database and matching IAM SQL user are created so
 	 * Zitadel can connect through Cloud SQL Auth Proxy with IAM authentication.
@@ -92,14 +99,14 @@ export interface PostgresComponentArgs {
 	 */
 	fanApiServiceAccountEmail?: pulumi.Input<string>
 	/**
-	 * media-consumer GCP SA email. When provided (workload up), a matching IAM
-	 * SQL user is created so the media-consumer authenticates as its OWN IAM DB
-	 * user (media-consumer@<project>.iam) via the Cloud SQL Go connector with
-	 * Workload Identity IAM auth — it performs the series_media cut-over
-	 * (FindMediaByID + UPDATE) after generating WebP variants. App-schema grants
-	 * are applied by a separate backend grant migration once this user exists.
+	 * series-image-consumer GCP SA email. When provided (workload up), a
+	 * matching IAM SQL user (series-image-consumer@<project>.iam) is created so
+	 * the consumer authenticates as its OWN IAM DB user via the Cloud SQL Go
+	 * connector with Workload Identity IAM auth; it switches the series cover
+	 * after generating WebP variants. App-schema grants are applied by a
+	 * separate backend grant migration once this user exists.
 	 */
-	mediaConsumerServiceAccountEmail?: pulumi.Input<string>
+	seriesImageConsumerServiceAccountEmail?: pulumi.Input<string>
 	/**
 	 * Human user emails that require IAM database authentication access.
 	 */
@@ -149,9 +156,10 @@ export class PostgresComponent extends pulumi.ComponentResource {
 			appServiceAccountEmail,
 			adminServiceAccountEmail,
 			organizerServiceAccountEmail,
+			receptionServiceAccountEmail,
 			zitadelServiceAccountEmail,
 			fanApiServiceAccountEmail,
-			mediaConsumerServiceAccountEmail,
+			seriesImageConsumerServiceAccountEmail,
 			iamDatabaseUsers = [],
 			postgresAdminPassword,
 		} = args
@@ -208,6 +216,17 @@ export class PostgresComponent extends pulumi.ComponentResource {
 					diskSize: 10,
 					diskType: 'PD_SSD',
 					diskAutoresize: true,
+					// Cap autoresize: Cloud SQL storage only grows and is
+					// billed for its size even after data shrinks. Prod used
+					// ~0.3 GB of 10 GB on 2026-10-06 (optimize-prod-gke-cost D8).
+					//
+					// Only while the instance runs: a STOPPED instance rejects
+					// every settings change except activationPolicy and
+					// deletionProtectionEnabled unless the same operation
+					// starts it. Leaving the field unset keeps the stored value,
+					// and a restart (activationPolicy -> ALWAYS) applies the
+					// limit in that same update.
+					diskAutoresizeLimit: workloadEnabled ? 20 : undefined,
 					deletionProtectionEnabled: true,
 					backupConfiguration: {
 						enabled: true,
@@ -418,6 +437,25 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				)
 			}
 
+			// reception-api IAM SQL user — only when the reception SA exists. Same
+			// pattern as the users above; the grant is a backend migration.
+			if (receptionServiceAccountEmail) {
+				const receptionIamUserName = pulumi
+					.output(receptionServiceAccountEmail)
+					.apply((email) => email.replace('.gserviceaccount.com', ''))
+
+				new gcp.sql.User(
+					'reception-api',
+					{
+						name: receptionIamUserName,
+						project: project.projectId,
+						instance: instance.name,
+						type: 'CLOUD_IAM_SERVICE_ACCOUNT',
+					},
+					{ parent: this, dependsOn: [instance] },
+				)
+			}
+
 			// Zitadel IAM SQL user — only when the Zitadel SA exists.
 			// Self-hosted Zitadel connects via Cloud SQL Auth Proxy with
 			// --auto-iam-authn, so no password is ever held. Ownership of the
@@ -468,22 +506,18 @@ export class PostgresComponent extends pulumi.ComponentResource {
 				)
 			}
 
-			// media-consumer IAM SQL user — only when the media-consumer SA exists.
-			// The media-consumer runs under its OWN dedicated GSA (bucket-scoped),
-			// so it authenticates to Cloud SQL as media-consumer@<project>.iam via
-			// the in-process Cloud SQL Go connector with Workload Identity IAM auth.
-			// It needs its own login role to perform the series_media cut-over. The
+			// series-image-consumer IAM SQL user — only when its SA exists. The
 			// app-schema grants are applied by a backend grant migration that must
 			// run AFTER this user exists (pulumi up precedes the grant apply).
-			if (mediaConsumerServiceAccountEmail) {
-				const mediaConsumerIamUserName = pulumi
-					.output(mediaConsumerServiceAccountEmail)
+			if (seriesImageConsumerServiceAccountEmail) {
+				const seriesImageConsumerIamUserName = pulumi
+					.output(seriesImageConsumerServiceAccountEmail)
 					.apply((email) => email.replace('.gserviceaccount.com', ''))
 
 				new gcp.sql.User(
-					'media-consumer',
+					'series-image-consumer',
 					{
-						name: mediaConsumerIamUserName,
+						name: seriesImageConsumerIamUserName,
 						project: project.projectId,
 						instance: instance.name,
 						type: 'CLOUD_IAM_SERVICE_ACCOUNT',

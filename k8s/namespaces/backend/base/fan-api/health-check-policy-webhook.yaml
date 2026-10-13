@@ -1,0 +1,22 @@
+# Gateway health check for the Stripe webhook listener (fan-api, port 9090).
+#
+# Without it the load balancer probes `GET /` on the serving port, which the
+# webhook listener answers with 404, so every endpoint is UNHEALTHY and
+# https://api.liverty-music.app/stripe-webhook answers 503 ("no healthy
+# upstream"): Stripe's notices never reach the backend. The listener runs in
+# the fan-api process, so it is checked through that process's gRPC health
+# service on 8080, as fan-api-policy does.
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: fan-api-webhook-policy
+spec:
+  default:
+    config:
+      type: GRPC
+      grpcHealthCheck:
+        port: 8080
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-api-webhook-svc # Referenced via kustomizeconfig.yaml 'nameReference'

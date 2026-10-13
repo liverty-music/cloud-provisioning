@@ -1,0 +1,33 @@
+# Root Application (app of apps) for prod: syncs every Application under
+# k8s/argocd-apps/prod, so Application definitions are GitOps-managed too.
+#
+# It ships inside this overlay, so the `argocd` Application (one of its
+# children) keeps it in sync, and bootstrapping a cluster needs only the
+# overlay apply in k8s/namespaces/argocd/README.md.
+#
+# Server-Side Apply on an app of apps once stripped in-flight child
+# operation status (argoproj/argo-cd#29253); fixed in Argo CD 3.4.4
+# (argoproj/argo-cd#28201), and this cluster runs a later version.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/liverty-music/cloud-provisioning.git
+    targetRevision: main
+    path: k8s/argocd-apps/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ServerSideApply=true

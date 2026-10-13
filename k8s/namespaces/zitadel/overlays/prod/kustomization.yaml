@@ -8,7 +8,7 @@ namespace: zitadel
 helmCharts:
 - name: zitadel
   repo: https://charts.zitadel.com
-  version: 9.34.1
+  version: 10.4.0
   releaseName: zitadel
   namespace: zitadel
   includeCRDs: false
@@ -31,12 +31,12 @@ resources:
 # pipeline forwards to Cloud Monitoring; the prior GMP scrape path is
 # entirely replaced by this push model.
 #
-# NOTE: `cronjob-watchdog-zitadel.yaml` and `external-secret-watchdog-probe-pat.yaml`
-# (zitadel/zitadel#10103 workaround) were removed. The wedge watchdog was
-# not effective: the CronJob restarted both replicas simultaneously, and the
-# sidecar liveness probe restarted the wrong container. Recovery from the
-# projection-trigger wedge is via `kubectl rollout restart deploy/zitadel-api`
-# until the root cause (failed projection events) is resolved upstream.
+# NOTE: There is no automatic recovery from the projection-trigger wedge
+# (zitadel/zitadel#10103). The self-healing watchdog CronJob, its
+# ExternalSecret, and the Pulumi-managed probe identity were all removed
+# (OpenSpec change `retire-zitadel-wedge-watchdog`). Prod runs a single
+# zitadel-api replica; recover a wedge manually per
+# `docs/runbooks/zitadel-hang.md`.
 
 patches:
 # Override the Workload Identity GCP SA on the `zitadel` ServiceAccount
@@ -56,8 +56,3 @@ patches:
   target:
     kind: Deployment
     name: zitadel-api-login
-# Prefer Spot with on-demand fallback (prod availability) — the base pins auth
-# pods Spot-only; this lets them fall back to on-demand when Spot is scarce.
-- path: spot-vm_fallback_patch.yaml
-  target:
-    kind: Deployment

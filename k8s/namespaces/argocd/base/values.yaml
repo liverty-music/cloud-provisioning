@@ -3,6 +3,13 @@ global:
   # dev overlay replaces this with cloud.google.com/gke-spot: "true" (GKE Standard Spot).
   nodeSelector:
     cloud.google.com/compute-class: "autopilot-spot"
+  # Chart 10.0.0 flipped this default to true, adding Ingress NetworkPolicies
+  # for the controller, repo-server, redis, server and notifications. Kept at
+  # the 9.x behaviour deliberately: prod (Autopilot, Dataplane V2) enforces
+  # NetworkPolicy but dev (Standard) does not, so dev cannot validate the
+  # policies before prod. Turning this on is its own change.
+  networkPolicy:
+    create: false
 
 configs:
   cm:
@@ -15,22 +22,50 @@ configs:
     # applied. The flag was added for the zitadel overlays, which use
     # `valuesFile: ../../base/values.yaml` for shared Helm chart values
     # (see `k8s/namespaces/zitadel/base/kustomization.yaml` for full
-    # rationale). Other existing overlays (external-secrets, reloader,
-    # nats, keda, atlas-operator) do not currently use out-of-tree file
-    # references — verified at this commit — so the flag widens the
-    # defence-in-depth boundary but does not silently enable any
-    # existing-but-prohibited reference.
+    # rationale). The prod nats overlay now relies on it too: it pulls
+    # `../../base/jetstream` and `valuesFile: ../../base/nack-values.yaml`
+    # so the JetStream CRs and NACK stay defined once. Other overlays
+    # (external-secrets, reloader, keda, atlas-operator) use no out-of-tree
+    # file references.
     #
     # Documented Kustomize trade-off (loss of kustomization
     # relocatability) is acceptable: no overlay in this repo is
     # designed to be moved/copied to another path.
     kustomize.buildOptions: "--enable-helm --load-restrictor=LoadRestrictionsNone"
+    # Argo CD 3.5 changed the default to 120s + 60s jitter. Pin the previous
+    # 180s so the upgrade does not raise reconcile frequency on a controller
+    # that has already been OOMKilled under concurrent diffs (see below).
+    timeout.reconciliation: 180s
+    # GKE Autopilot's mutating webhook stamps
+    # autopilot.gke.io/selector-toleration on every pod template it adds a
+    # spot toleration to. The key is the platform's, never ours, and it shows
+    # up as a permanent diff whenever a chart renders no pod-template
+    # annotation of its own — NATS chart 2.x did exactly that
+    # (configChecksumAnnotation now defaults to false so config changes
+    # hot-reload instead of rolling the single replica). Ignore that one key
+    # for every workload kind Autopilot mutates, rather than per Application.
+    # The second expression drops the whole map when nothing but that key is
+    # in it: removing just the key leaves `annotations: {}` on the live side,
+    # which still differs from a desired pod template with no annotations.
+    # Argo CD applies the expressions in order, so by the time the second one
+    # runs the key is already gone — it must match the empty map too.
+    resource.customizations.ignoreDifferences.apps_StatefulSet: |
+      jqPathExpressions:
+      - '.spec.template.metadata.annotations["autopilot.gke.io/selector-toleration"]'
+      - '.spec.template.metadata.annotations | select(type == "object" and (keys - ["autopilot.gke.io/selector-toleration"]) == [])'
+    resource.customizations.ignoreDifferences.apps_Deployment: |
+      jqPathExpressions:
+      - '.spec.template.metadata.annotations["autopilot.gke.io/selector-toleration"]'
+      - '.spec.template.metadata.annotations | select(type == "object" and (keys - ["autopilot.gke.io/selector-toleration"]) == [])'
   params:
     # Use server-side diff for accurate sync status on GKE Autopilot.
     # Without this, ArgoCD uses legacy 3-way diff which reports false
     # OutOfSync for K8s server-side defaults (protocol, imagePullPolicy, etc.).
     controller.diff.server.side: "true"
 
+# ephemeral-storage on every component below (optimize-prod-gke-cost D4):
+# without an explicit request Autopilot bills a 1 GiB default per container.
+# 100Mi unless a component's measured usage needs more (repoServer, controller).
 server:
   service:
     type: ClusterIP
@@ -40,18 +75,28 @@ server:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 500m
       memory: 256Mi
+      ephemeral-storage: 100Mi
 
 repoServer:
+  # ephemeral-storage (optimize-prod-gke-cost D4): explicit instead of the
+  # Autopilot 1 GiB default. repo-server keeps Git clones and rendered Helm
+  # charts in its `tmp` emptyDir and the copied argocd binary in `var-files`;
+  # the prod 30-day max was ~373 MiB, so it keeps 1Gi for headroom. Exceeding
+  # the limit evicts the Pod, and repo-server is the sync path for everything.
+  # The copyutil initContainer inherits these resources (chart default).
   resources:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 1Gi
     limits:
       cpu: 500m
       memory: 256Mi
+      ephemeral-storage: 1Gi
 
 controller:
   enableStatefulSet: true
@@ -63,13 +108,18 @@ controller:
   # working set (~286Mi observed) with margin — 512Mi, not the peak — so we don't
   # over-bill on Autopilot (which charges on requests); bursts up to the 2Gi
   # limit are Burstable.
+  #
+  # ephemeral-storage: the prod 30-day max was ~43 MiB (container writes plus
+  # the `argocd-application-controller-tmp` emptyDir); 256Mi leaves headroom.
   resources:
     requests:
       cpu: 250m
       memory: 512Mi
+      ephemeral-storage: 256Mi
     limits:
       cpu: "1"
       memory: 2Gi
+      ephemeral-storage: 256Mi
 
 redis:
   enabled: true
@@ -77,9 +127,11 @@ redis:
     requests:
       cpu: 50m
       memory: 52Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 128Mi
+      ephemeral-storage: 100Mi
 
 redisSecretInit:
   enabled: true
@@ -87,9 +139,11 @@ redisSecretInit:
     requests:
       cpu: 50m
       memory: 52Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 128Mi
+      ephemeral-storage: 100Mi
 
 dex:
   enabled: false
@@ -100,9 +154,11 @@ notifications:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 128Mi
+      ephemeral-storage: 100Mi
 
   secret:
     # ESO creates argocd-notifications-secret via ExternalSecret
@@ -112,13 +168,44 @@ notifications:
     service.googlechat: |
       webhooks:
         alertSpace: $google-chat-webhook-url
+    # Dispatches the cloud-provisioning `incident-triage.yml` workflow, in which
+    # Claude investigates the incident read-only and reports it as a GitHub
+    # Issue. `github-token` is a 1-hour `liverty-music-cluster-bot` installation
+    # token (Actions: write on cloud-provisioning only) that ESO mints into
+    # argocd-notifications-secret every 30m (see github-access-token.yaml).
+    # See docs/runbooks/incident-triage.md.
+    service.webhook.incident-triage: |
+      url: https://api.github.com
+      headers:
+      - name: Authorization
+        value: Bearer $github-token
+      - name: Accept
+        value: application/vnd.github+json
+      - name: X-GitHub-Api-Version
+        value: "2022-11-28"
 
+  # Each template carries a Google Chat `message` and a `webhook.incident-triage`
+  # section; every service reads only its own part, so one template per trigger
+  # reaches both. (A webhook-only template would make Google Chat post an empty
+  # message, and a message-only one would make the webhook service send a GET.)
+  # The dispatch body hard-codes the trigger name because the template context
+  # does not carry it. `payload` is a JSON string, truncated to stay within the
+  # workflow_dispatch input limits.
   templates:
     template.app-sync-failed: |
       message: |
         Application {{.app.metadata.name}} sync has failed.
         Error: {{ if .app.status.operationState }}{{.app.status.operationState.message}}{{ else }}unknown{{ end }}
         Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-sync-failed","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
     template.app-health-degraded: |
       message: |
         Application {{.app.metadata.name}} health has degraded.
@@ -127,6 +214,15 @@ notifications:
         - {{$c.type}}: {{$c.message}}
         {{end}}
         Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-health-degraded","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
     template.app-sync-status-unknown: |
       message: |
         Application {{.app.metadata.name}} sync status is Unknown.
@@ -134,6 +230,32 @@ notifications:
         - {{$c.type}}: {{$c.message}}
         {{end}}
         Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-sync-status-unknown","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
+    template.app-health-progressing-stuck: |
+      message: |
+        Application {{.app.metadata.name}} has been Progressing for 15 minutes (likely crash-looping or unable to become available).
+        Health Status: {{.app.status.health.status}}{{ if .app.status.health.message }} — {{.app.status.health.message}}{{ end }}
+        {{range $c := .app.status.conditions}}
+        - {{$c.type}}: {{$c.message}}
+        {{end}}
+        Details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      webhook:
+        incident-triage:
+          method: POST
+          path: /repos/liverty-music/cloud-provisioning/actions/workflows/incident-triage.yml/dispatches
+          body: |
+            {{- $op := dict -}}
+            {{- with .app.status.operationState }}{{ $op = dict "phase" .phase "message" .message "startedAt" .startedAt "finishedAt" .finishedAt }}{{ end -}}
+            {{- $payload := dict "destinationNamespace" .app.spec.destination.namespace "health" .app.status.health "sync" (dict "status" .app.status.sync.status "revision" .app.status.sync.revision) "operation" $op "conditions" .app.status.conditions -}}
+            {"ref":"main","inputs":{"app":{{ toJson .app.metadata.name }},"trigger":"on-health-progressing-stuck","payload":{{ toJson $payload | trunc 16000 | toJson }}}}
 
   triggers:
     trigger.on-sync-failed: |
@@ -151,20 +273,37 @@ notifications:
         send:
         - app-sync-status-unknown
         when: app.status.sync.status == 'Unknown'
+    # A Deployment whose Pods start crash-looping after a completed rollout
+    # stays Progressing forever and never turns Degraded (Argo CD
+    # getAppsv1DeploymentHealth). 15m sits above the 600s default
+    # progressDeadlineSeconds (so an in-flight rollout failure is reported once,
+    # by on-health-degraded), Spot preemption recovery and KEDA 0→1 scale-up.
+    trigger.on-health-progressing-stuck: |
+      - description: Application health has been Progressing for 15 minutes
+        send:
+        - app-health-progressing-stuck
+        when: app.status.health.status == 'Progressing' && now() - date(app.status.health.lastTransitionTime) >= duration("15m")
     defaultTriggers: |
       - on-sync-failed
       - on-health-degraded
+      - on-health-progressing-stuck
       - on-sync-status-unknown
 
   subscriptions:
   - recipients:
     - googlechat:alertSpace
+    # Service name only: `service.webhook.incident-triage` registers the
+    # service as `incident-triage` (a `webhook:` prefix would name a
+    # non-existent `webhook` service).
+    - incident-triage
 
 applicationSet:
   resources:
     requests:
       cpu: 50m
       memory: 64Mi
+      ephemeral-storage: 100Mi
     limits:
       cpu: 200m
       memory: 256Mi
+      ephemeral-storage: 100Mi

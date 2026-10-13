@@ -12,12 +12,10 @@ import { E2eTestUserComponent } from './components/e2e-test-user.js'
 import { FrontendComponent } from './components/frontend.js'
 import { GoogleAdminIdpComponent } from './components/google-admin-idp.js'
 import { HumanAdminComponent } from './components/human-admin.js'
-import { LoginClientComponent } from './components/login-client.js'
 import { MachineUserComponent } from './components/machine-user.js'
 import { OrganizerConsoleComponent } from './components/organizer-console.js'
 import { OrganizerProvisionerComponent } from './components/organizer-provisioner.js'
 import { SmtpComponent } from './components/smtp.js'
-import { WatchdogProbeComponent } from './components/watchdog-probe.js'
 import {
 	adminOrgIdMap,
 	BACKEND_WEBHOOK_BASE_URL,
@@ -70,13 +68,11 @@ export * from './components/e2e-test-user.js'
 export * from './components/frontend.js'
 export * from './components/google-admin-idp.js'
 export * from './components/human-admin.js'
-export * from './components/login-client.js'
 export * from './components/machine-user.js'
 export * from './components/organizer-console.js'
 export * from './components/organizer-provisioner.js'
 export * from './components/secrets.js'
 export * from './components/smtp.js'
-export * from './components/watchdog-probe.js'
 export * from './constants.js'
 export * from './dynamic/index.js'
 
@@ -108,15 +104,14 @@ export interface ZitadelArgs {
 	 */
 	pannpersGoogleSub: pulumi.Input<string>
 	/**
-	 * Initial password for the dev-only Playwright E2E test user.
+	 * Initial password for the Playwright E2E test user.
 	 * Sourced from ESC `pulumiConfig.zitadel.e2eTestUser.password`
-	 * (secret). Consumed by `E2eTestUserComponent`. See OpenSpec
-	 * change `playwright-password-test-user` for rationale.
-	 *
-	 * Required only when `env === 'dev'`. Other envs do not provision
-	 * the E2E test user; this arg is ignored.
+	 * (secret) of each environment. Consumed by `E2eTestUserComponent`.
+	 * See OpenSpec change `playwright-password-test-user` for rationale;
+	 * prod adopted the user for authenticated verification of
+	 * `public-event-page` against production.
 	 */
-	e2eTestUserPassword?: pulumi.Input<string>
+	e2eTestUserPassword: pulumi.Input<string>
 }
 
 /**
@@ -133,7 +128,7 @@ export interface ZitadelArgs {
  * - **`admin` role org** — created by Zitadel at first-instance bootstrap
  *   because the configmap sets `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`.
  *   Hosts operator identities only: `pulumi-admin` (machine, IaC and
- *   break-glass), `login-client` (machine, Login V2 PAT), and human
+ *   break-glass) and human
  *   admins like `pannpers@pannpers.dev` (Google SSO via instance-level
  *   IdP). Holds an explicit `LoginPolicy` that disables username +
  *   password sign-in and exposes the Google IdP.
@@ -163,11 +158,10 @@ export interface ZitadelArgs {
  * `Record<Environment, T>` maps in `constants.ts` and downstream
  * leaf components.
  *
- * The only env-conditional resource at this layer is `E2eTestUserComponent`,
- * which is dev-only by product decision (not env-dispatch anti-pattern):
- * E2E test infrastructure is dev-scoped per `playwright-password-test-user`
- * and `enable-zitadel-prod-e2e-user` (the future change planning prod
- * adoption).
+ * No resource at this layer is env-conditional: the password-based
+ * `E2eTestUserComponent` (first dev-only per `playwright-password-test-user`)
+ * is provisioned in prod too, so authenticated Playwright runs can verify
+ * production (adopted for `public-event-page`).
  */
 export class Zitadel {
 	public readonly provider: zitadel.Provider
@@ -189,16 +183,12 @@ export class Zitadel {
 	public readonly smtp: SmtpComponent
 	public readonly actionsV2: ActionsV2Component
 	public readonly machineUser: MachineUserComponent
-	public readonly loginClient: LoginClientComponent
 	public readonly googleAdminIdp: GoogleAdminIdpComponent
 	public readonly adminOrgConfig: AdminOrgConfigComponent
 	public readonly humanAdmin: HumanAdminComponent
 	public readonly adminRoleGrant: zitadel.UserGrant
-	/** E2E test user — dev-only. `undefined` in prod (and any future env). */
-	public readonly e2eTestUser: E2eTestUserComponent | undefined
-
-	/** Watchdog probe machine user + PAT for the self-healing CronJob. */
-	public readonly watchdogProbe: WatchdogProbeComponent
+	/** Password-based Playwright E2E test user (every environment). */
+	public readonly e2eTestUser: E2eTestUserComponent
 
 	/** Shared `organizer-console` project (`owner` role + OIDC/API apps) in
 	 *  the product org, the static scaffolding for the Organizer B2B tenancy. */
@@ -214,15 +204,6 @@ export class Zitadel {
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
-
-	/** Personal Access Token for the zitadel-login (Login V2 UI) container.
-	 *  Store in Secret Manager and mount via ExternalSecret as a file
-	 *  (consumed by `ZITADEL_SERVICE_USER_TOKEN_FILE`). */
-	public readonly loginClientToken: pulumi.Output<string>
-
-	/** Personal Access Token for the watchdog CronJob bearer token.
-	 *  Store in Secret Manager and sync to the `zitadel` namespace via ExternalSecret. */
-	public readonly watchdogProbeToken: pulumi.Output<string>
 
 	constructor(name: string, args: ZitadelArgs) {
 		const {
@@ -457,30 +438,6 @@ export class Zitadel {
 
 		this.machineKeyDetails = this.machineUser.keyDetails
 
-		// Operator machine user — login-client hosts the Login V2 PAT. Lives
-		// in the admin role org per the "Place Machine Users by
-		// Responsibility" requirement.
-		this.loginClient = new LoginClientComponent(name, {
-			orgId: this.adminOrg.id,
-			provider: this.provider,
-		})
-
-		this.loginClientToken = this.loginClient.token
-
-		// Watchdog probe identity — least-privilege machine user in the product
-		// org (co-located with the project it probes), granted PROJECT_OWNER_VIEWER
-		// on the product project. The PAT is stored in GSM via
-		// `zitadelWatchdogProbePat` (threaded through GcpArgs → KubernetesComponent
-		// esoOnlySecrets) and synced to the `zitadel` namespace by an ExternalSecret.
-		// See OpenSpec change `zitadel-watchdog-readonly-probe`.
-		this.watchdogProbe = new WatchdogProbeComponent(name, {
-			productOrgId: this.productOrg.id,
-			productProjectId: this.project.id,
-			provider: this.provider,
-		})
-
-		this.watchdogProbeToken = this.watchdogProbe.token
-
 		// Organizer B2B tenancy scaffolding — the shared `organizer-console`
 		// project (its `owner` role + OIDC/API apps) owned by the product org.
 		// It is Project-Granted to each Organizer tenant org at runtime (the
@@ -583,28 +540,16 @@ export class Zitadel {
 		// for the `ZitadelHumanUserPasswordPermanent` marker resource that
 		// makes the user's password permanent at provision time.
 		//
-		// **Dev-only by product decision**, not env-dispatch anti-pattern:
-		// prod E2E test infra is a separate concern tracked under the
-		// future `enable-zitadel-prod-e2e-user` change. This is the one
-		// remaining env-conditional resource in the unified class; per
-		// `refactor-unify-env-dispatch` spec, env-conditional leaf
-		// instantiation is acceptable when the leaf component is truly
-		// env-scoped at the product layer.
-		if (env === 'dev') {
-			if (!e2eTestUserPassword) {
-				throw new Error(
-					'e2eTestUserPassword is required when env === "dev". ' +
-						'Seed `pulumiConfig.zitadel.e2eTestUser.password` in dev ESC.',
-				)
-			}
-			this.e2eTestUser = new E2eTestUserComponent(name, {
-				env,
-				orgId: this.productOrg.id,
-				initialPassword: e2eTestUserPassword,
-				domain,
-				jwtProfileJson,
-				provider: this.provider,
-			})
-		}
+		// Provisioned in every environment so authenticated Playwright runs
+		// can drive both dev and prod (prod adopted it for the
+		// public-event-page verification).
+		this.e2eTestUser = new E2eTestUserComponent(name, {
+			env,
+			orgId: this.productOrg.id,
+			initialPassword: e2eTestUserPassword,
+			domain,
+			jwtProfileJson,
+			provider: this.provider,
+		})
 	}
 }

@@ -33,8 +33,6 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: zitadel
-      nodeSelector:
-        cloud.google.com/gke-spot: "true"
       initContainers:
       - name: cloud-sql-proxy
         restartPolicy: Always
@@ -51,9 +49,11 @@ spec:
           requests:
             cpu: 10m
             memory: 32Mi
+            ephemeral-storage: 100Mi
           limits:
             cpu: 100m
             memory: 64Mi
+            ephemeral-storage: 100Mi
         securityContext:
           allowPrivilegeEscalation: false
           runAsNonRoot: true
@@ -97,8 +97,10 @@ spec:
           requests:
             cpu: 10m
             memory: 32Mi
+            ephemeral-storage: 100Mi
           limits:
             cpu: 100m
             memory: 128Mi
+            ephemeral-storage: 100Mi
         securityContext:
           allowPrivilegeEscalation: false

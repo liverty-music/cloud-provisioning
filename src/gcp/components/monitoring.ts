@@ -48,6 +48,8 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 	public readonly goroutineLeakAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly clusterSecretStoreNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly externalSecretNotReadyAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly argocdControlPlaneDownAlertPolicy: gcp.monitoring.AlertPolicy
+	public readonly containerCrashLoopAlertPolicy: gcp.monitoring.AlertPolicy
 	public readonly googleChatChannels: gcp.monitoring.NotificationChannel[]
 	public readonly salesReminderDeliveryMetric: gcp.logging.Metric
 	public readonly webPushDeliveryFailureMetric: gcp.logging.Metric
@@ -115,14 +117,14 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 				displayName: 'Sales Phase Discovery',
 				appLabel: 'sales-phase-discovery',
 			},
-			// media-consumer logs ERROR only for genuine system failures (GCS/DB
+			// series-image-consumer logs ERROR only for genuine system failures (GCS/DB
 			// write, libvips-internal); invalid/unsafe uploads are user error and
 			// log WARN, so this alert stays incident-only. Queue backlog for its
-			// `media_uploaded` durable is already covered by the unfiltered
+			// `process-series-image` durable is already covered by the unfiltered
 			// Consumer JetStream Backlog Stall policy below.
 			{
-				displayName: 'Media Consumer',
-				appLabel: 'media-consumer',
+				displayName: 'Series Image Consumer',
+				appLabel: 'series-image-consumer',
 			},
 		]
 
@@ -239,6 +241,66 @@ jsonPayload.msg="message routed to poison queue"`,
 			{ parent: this },
 		)
 		this.alertPolicies.push(poisonQueueAlertPolicy)
+
+		// Checkout Needs Operator Alert (first-come-ticket-sales, design D7)
+		// Money was taken for a first-come checkout without its tickets: either a
+		// charged checkout still not issued 10 minutes after the charge, or a
+		// card authorization of an ended checkout that turned out to be charged. The
+		// fan-api sweepers log this ERROR on every run until it is resolved, so a
+		// dedicated policy with a short re-notification period pages the operator
+		// instead of the 12-hour workload ERROR alert above.
+		const checkoutNeedsOperatorAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-checkout-needs-operator',
+			{
+				displayName: 'Checkout Needs Operator',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'Money taken for a checkout without tickets',
+						conditionMatchedLog: {
+							filter: pulumi.interpolate`resource.type="k8s_container"
+resource.labels.project_id="${projectId}"
+resource.labels.location="${clusterLocation}"
+resource.labels.cluster_name="${clusterName}"
+resource.labels.namespace_name="backend"
+severity="ERROR"
+jsonPayload.msg="checkout needs an operator"`,
+							labelExtractors: {
+								checkout_id: 'EXTRACT(jsonPayload.checkout_id)',
+								card_authorization_id:
+									'EXTRACT(jsonPayload.card_authorization_id)',
+							},
+						},
+					},
+				],
+				alertStrategy: {
+					notificationRateLimit: {
+						period: '3600s', // 1 hour
+					},
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Checkout Needs Operator Alert',
+						'',
+						'A first-come checkout has money taken without its tickets. The sweepers log this on every run (each minute) until it is resolved.',
+						'',
+						'### Alert Labels',
+						'- `checkout_id`: the checkout (checkouts.id)',
+						"- `card_authorization_id`: the payment provider's ID for the card authorization (a Stripe PaymentIntent, pi_...)",
+						'',
+						'### Triage',
+						'Follow docs/runbooks/checkout-needs-operator.md: fix the cause so the next run issues the Order, or refund the PaymentIntent `card_authorization_id` manually in the Stripe dashboard.',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(checkoutNeedsOperatorAlertPolicy)
 
 		// Atlas Operator Migration Failure Alert
 		this.atlasMigrationAlertPolicy = new gcp.monitoring.AlertPolicy(
@@ -599,6 +661,177 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 			{ parent: this },
 		)
 		this.alertPolicies.push(this.externalSecretNotReadyAlertPolicy)
+
+		// ArgoCD control-plane-down alert (OpenSpec change
+		// `autonomous-incident-response` D12).
+		//
+		// ArgoCD Notifications is the only trigger for automated incident triage,
+		// so it cannot report its own outage: if the application-controller stops,
+		// Application health is no longer evaluated; if the notifications-controller
+		// stops, nothing is sent. This alert watches both from outside ArgoCD and
+		// routes to the human channels only — it must not depend on the component
+		// it watches.
+		//
+		// GKE metrics are reduced to SYSTEM_COMPONENTS (no kube-state-metrics), but
+		// the `kubernetes.io/container/*` system metrics are still exported:
+		//   - `uptime` absent for 10m: no running container of that name (pod
+		//     gone, unschedulable, or stuck in image pull / init). Grouped by
+		//     `container_name` so a replacement pod keeps the series alive.
+		//   - `restart_count` delta > 3 in 15m: a crash loop that keeps some
+		//     uptime samples flowing and so never trips the absence condition.
+		const argocdControllerFilter = pulumi.interpolate`resource.type="k8s_container" AND resource.labels.project_id="${projectId}" AND resource.labels.location="${clusterLocation}" AND resource.labels.cluster_name="${clusterName}" AND resource.labels.namespace_name="argocd" AND resource.labels.container_name=one_of("application-controller","notifications-controller")`
+		this.argocdControlPlaneDownAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-argocd-control-plane-down',
+			{
+				displayName: 'ArgoCD Control Plane Down',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'ArgoCD controller container absent for 10m',
+						conditionAbsent: {
+							filter: pulumi.interpolate`metric.type="kubernetes.io/container/uptime" AND ${argocdControllerFilter}`,
+							aggregations: [
+								{
+									alignmentPeriod: '300s',
+									perSeriesAligner: 'ALIGN_MEAN',
+									crossSeriesReducer: 'REDUCE_COUNT',
+									groupByFields: [
+										'resource.label.container_name',
+									],
+								},
+							],
+							duration: '600s',
+							trigger: { count: 1 },
+						},
+					},
+					{
+						displayName:
+							'ArgoCD controller restarted more than 3 times in 15m',
+						conditionThreshold: {
+							filter: pulumi.interpolate`metric.type="kubernetes.io/container/restart_count" AND ${argocdControllerFilter}`,
+							aggregations: [
+								{
+									alignmentPeriod: '900s', // 15-minute window
+									perSeriesAligner: 'ALIGN_DELTA',
+									crossSeriesReducer: 'REDUCE_SUM',
+									groupByFields: [
+										'resource.label.container_name',
+									],
+								},
+							],
+							comparison: 'COMPARISON_GT',
+							thresholdValue: 3,
+							duration: '0s',
+							trigger: { count: 1 },
+						},
+					},
+				],
+				alertStrategy: {
+					// notificationRateLimit is rejected by the GCP API on
+					// metric (non-log-based) policies.
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## ArgoCD Control Plane Down Alert',
+						'',
+						'The ArgoCD `application-controller` or `notifications-controller` in the `argocd` namespace has had no running container for 10 minutes, or has restarted more than 3 times in 15 minutes.',
+						'',
+						'While this alert is open, **automated incident triage is blind**: ArgoCD Notifications is the only trigger for the `incident-triage` workflow, and Application health / sync failures are neither evaluated (application-controller) nor reported to Google Chat or GitHub (notifications-controller). Check prod Applications manually until it resolves.',
+						'',
+						'### Alert Labels',
+						'- `container_name`: `application-controller` or `notifications-controller`.',
+						'',
+						'### Triage Steps',
+						'1. Get cluster credentials (docs/runbooks/prod-cluster-credentials.md), then check the pods: `kubectl -n argocd get pods` and `kubectl -n argocd describe pod <pod>` (look at `Last State`, `Reason`, events).',
+						'2. Read the crashed container\'s output: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="argocd" AND resource.labels.container_name="<container_name>"\' --limit=100 --freshness=1h`.',
+						'3. Common causes: OOMKilled (raise the memory request in `k8s/namespaces/argocd/base/values.yaml`), Spot preemption with no capacity to reschedule (pod `Pending`), or a bad chart / values change (check recent commits under `k8s/namespaces/argocd/`).',
+						'4. After recovery, review Application state for anything that broke during the outage: `kubectl -n argocd get applications` — notifications for conditions that became true while the controllers were down may not have been sent.',
+						'',
+						'See docs/runbooks/incident-triage.md.',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(this.argocdControlPlaneDownAlertPolicy)
+
+		// Container crash-loop alert, cluster-wide.
+		//
+		// Covers the crash loop that ArgoCD health cannot see: a container that
+		// passes readiness, runs for a while, then exits (OOM under load, a panic
+		// after some minutes, a dropped dependency). Argo CD reports a Deployment
+		// as Healthy whenever its replicas are available at evaluation time, so
+		// every restart flips the Application back to Healthy and resets the
+		// `on-health-progressing-stuck` timer; neither Google Chat nor the
+		// incident-triage workflow is notified (confirmed by the 2026-10-05
+		// end-to-end test, OpenSpec change `autonomous-incident-response`).
+		//
+		// Counting restarts does not depend on ArgoCD. Baseline is zero restarts
+		// across every namespace, so more than 3 in 30 minutes is a real crash
+		// loop, not noise. Grouped by namespace and container so a replaced pod
+		// keeps the same series.
+		this.containerCrashLoopAlertPolicy = new gcp.monitoring.AlertPolicy(
+			'alert-container-crash-loop',
+			{
+				displayName: 'Container Crash Loop',
+				project: projectId,
+				combiner: 'OR',
+				conditions: [
+					{
+						displayName:
+							'Container restarted more than 3 times in 30m',
+						conditionThreshold: {
+							filter: pulumi.interpolate`metric.type="kubernetes.io/container/restart_count" AND resource.type="k8s_container" AND resource.labels.project_id="${projectId}" AND resource.labels.location="${clusterLocation}" AND resource.labels.cluster_name="${clusterName}"`,
+							aggregations: [
+								{
+									alignmentPeriod: '1800s', // 30-minute window
+									perSeriesAligner: 'ALIGN_DELTA',
+									crossSeriesReducer: 'REDUCE_SUM',
+									groupByFields: [
+										'resource.label.namespace_name',
+										'resource.label.container_name',
+									],
+								},
+							],
+							comparison: 'COMPARISON_GT',
+							thresholdValue: 3,
+							duration: '0s',
+							trigger: { count: 1 },
+						},
+					},
+				],
+				alertStrategy: {
+					// notificationRateLimit is rejected by the GCP API on
+					// metric (non-log-based) policies.
+					autoClose: '3600s', // 1 hour
+				},
+				notificationChannels,
+				documentation: {
+					content: [
+						'## Container Crash Loop Alert',
+						'',
+						'A container restarted more than 3 times in 30 minutes. This catches crash loops ArgoCD does not report: a container that passes readiness and runs for a while before exiting makes the Application flip back to Healthy on every restart, so no ArgoCD notification or automated incident triage fires for it.',
+						'',
+						'### Alert Labels',
+						'- `namespace_name`, `container_name`: the crashing container.',
+						'',
+						'### Triage Steps',
+						'1. Get cluster credentials (docs/runbooks/prod-cluster-credentials.md), then find the pod: `kubectl get pods -n <namespace_name>` and `kubectl describe pod <pod> -n <namespace_name>` (`Last State`, `Reason`, exit code; `OOMKilled` means the memory limit is too low).',
+						'2. Read the output of the crashed instances: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="<namespace_name>" AND resource.labels.container_name="<container_name>"\' --limit=100 --freshness=1h`.',
+						'3. Check recent changes to the workload: `git log -- k8s/namespaces/<namespace_name>/`.',
+						'4. To have Claude investigate, dispatch the incident-triage workflow by hand for the ArgoCD Application (docs/runbooks/incident-triage.md).',
+					].join('\n'),
+					mimeType: 'text/markdown',
+				},
+			},
+			{ parent: this },
+		)
+		this.alertPolicies.push(this.containerCrashLoopAlertPolicy)
 
 		// Sales-reminder delivery outcome metric.
 		//

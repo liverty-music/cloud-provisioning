@@ -1,0 +1,45 @@
+# Short-lived GitHub credential for the ArgoCD Notifications `incident-triage`
+# webhook (OpenSpec change `autonomous-incident-response` D5).
+#
+# The `liverty-music-cluster-bot` GitHub App holds only Actions: write and is
+# installed on `cloud-provisioning` only, so the minted token can dispatch the
+# `incident-triage.yml` workflow but cannot push code. The private key comes
+# from Secret Manager (Pulumi `esoOnlySecrets`); the generator turns it into a
+# 1-hour installation token that `argocd-notifications-secret` pulls in every
+# 30m (external-secret.yaml). See docs/runbooks/incident-triage.md.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: argocd-cluster-bot-private-key
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: google-secret-manager-argocd
+    kind: ClusterSecretStore
+  target:
+    name: argocd-cluster-bot-private-key
+    creationPolicy: Owner
+  data:
+  - secretKey: private-key
+    remoteRef:
+      key: argocd-cluster-bot-private-key
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: GithubAccessToken
+metadata:
+  name: argocd-cluster-bot-token
+spec:
+  # Non-secret identifiers of the `liverty-music-cluster-bot` App and its
+  # installation on the liverty-music org.
+  appID: "5190363"
+  installID: "167958034"
+  # Narrow the token below the App's own scope: one repository, Actions only.
+  repositories:
+  - cloud-provisioning
+  permissions:
+    actions: write
+  auth:
+    privateKey:
+      secretRef:
+        name: argocd-cluster-bot-private-key
+        key: private-key

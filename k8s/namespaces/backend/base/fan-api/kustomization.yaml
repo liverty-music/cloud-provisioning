@@ -10,6 +10,7 @@ resources:
 - service.yaml
 - service-webhook.yaml
 - health-check-policy.yaml
+- health-check-policy-webhook.yaml
 - backend-policy.yaml
 - httproute.yaml
 - external-secret.yaml

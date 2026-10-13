@@ -60,6 +60,14 @@ export interface GitHubRepositoryComponentArgs {
 	 * to `main` with.
 	 */
 	repositorySecrets?: Record<string, pulumi.Input<string>>
+	/**
+	 * Environment variables whose value Pulumi sets on create only, so that
+	 * operators can change them in the GitHub UI and the next `pulumi up` does
+	 * not revert them. Used for the `INCIDENT_TRIAGE_ENABLED` kill switch,
+	 * which must take effect immediately. See OpenSpec change
+	 * `autonomous-incident-response` D10.
+	 */
+	operatorOwnedVariables?: Record<string, pulumi.Input<string>>
 }
 
 export class GitHubRepositoryComponent extends pulumi.ComponentResource {
@@ -92,6 +100,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			mainBranchBotBypass,
 			botBypassAppId,
 			repositorySecrets,
+			operatorOwnedVariables,
 		} = args
 
 		// Use a new provider instance to ensure we can use it in any stack
@@ -173,6 +182,25 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 						value: value,
 					},
 					{ provider, parent: this },
+				),
+			)
+		}
+
+		// Operator-owned variables: created with an initial value, then left
+		// to the GitHub UI (`ignoreChanges: ['value']`).
+		for (const [key, value] of Object.entries(
+			operatorOwnedVariables ?? {},
+		)) {
+			this.variables.push(
+				new github.ActionsEnvironmentVariable(
+					`${repositoryName}-env-${key}`,
+					{
+						repository: repositoryName,
+						environment: this.environment.environment,
+						variableName: key,
+						value: value,
+					},
+					{ provider, parent: this, ignoreChanges: ['value'] },
 				),
 			)
 		}

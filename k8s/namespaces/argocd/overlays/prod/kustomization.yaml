@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
 - ../../base
+- root-app.yaml
 
 patches:
 # Enable HA for Prod
@@ -16,10 +17,14 @@ patches:
   target:
     kind: ConfigMap
     name: argocd-cmd-params-cm
-# argocd-server: scale down from base HA (2 replicas) to single replica in
+# argocd-server: serves only the Argo CD UI/API that operators reach through
+# `kubectl port-forward`; syncing does not depend on it (application-controller
+# and repo-server do the work). Kept for the UI at a small cost.
+#
+# Scaled down from base HA (2 replicas) to a single replica in
 # prod. Cost-optimization decision: at launch-phase traffic levels the
 # UI/API has no SLA that requires HA, and Autopilot bills per Pod at a
-# minimum of 50m CPU + 64 MiB memory + 1 GiB ephemeral storage per Pod.
+# minimum of 50m CPU + 52 MiB memory per Pod.
 # Revert to 2 once steady-state SLA on the Argo CD control plane is
 # required.
 - patch: |-
@@ -40,7 +45,7 @@ patches:
 # so re-enablement is a single-line revert.
 #
 # Deployment name note: the standalone `argocd-image-updater` Helm
-# chart (v1.1.1, in base/charts/) renders its Deployment as
+# chart (see base/kustomization.yaml) renders its Deployment as
 # `argocd-image-updater-controller` — NOT plain `argocd-image-updater`.
 # The chart's template literally appends `-controller`:
 #   templates/deployment.yaml:4 → name: {{ include "argocd-image-updater.fullname" . }}-controller
@@ -78,19 +83,15 @@ patches:
 # argocd-notifications-cm. Losing those alerts would impair prod
 # operability, which exceeds the ~¥300/month savings from disabling
 # the controller.
-# Spot VM nodeSelector — required by `check-spot-nodeselector.sh` on every
-# Pod template in prod overlays (per spec Requirement 4 of the
-# prod-k8s-manifests change). Matches dev's pattern; needed because the
-# ArgoCD Helm-rendered base lacks a Spot nodeSelector that would otherwise
-# survive to the prod overlay. Targets ALL Deployments / StatefulSets /
-# Jobs so child resources (argocd-image-updater-controller, redis-secret-init,
-# application-controller, etc.) are covered without per-resource patches.
-- path: spot-vm_patch_deployment.yaml
+# Remove the Helm base's Spot pin from every Deployment / StatefulSet / Job
+# (argocd-image-updater-controller, redis-secret-init, application-controller,
+# etc.) so the cluster default ComputeClass applies (optimize-prod-gke-cost D1).
+- path: unpin-spot_patch_deployment.yaml
   target:
     kind: Deployment
-- path: spot-vm_patch_statefulset.yaml
+- path: unpin-spot_patch_statefulset.yaml
   target:
     kind: StatefulSet
-- path: spot-vm_patch_job.yaml
+- path: unpin-spot_patch_job.yaml
   target:
     kind: Job

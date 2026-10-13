@@ -4,7 +4,8 @@ kind: Kustomization
 #   - HTTPRoute hostname: liverty-music.app (apex) vs dev's dev.liverty-music.app
 #   - Runtime config (web-app-runtime-config ConfigMap) — prod hostnames,
 #     prod OIDC client/org IDs, prod VAPID key, `info` log level.
-# Resource sizing matches dev exactly; spot label matches.
+# Resource sizing matches dev exactly. Spot placement comes from the cluster
+# default ComputeClass, not a per-Deployment patch.
 resources:
   - ../../base
   # admin-console-web: the admin console workload (unify-workload-naming),
@@ -14,14 +15,18 @@ resources:
   # organizer-console-web: the organizer console workload (unify-workload-naming),
   # successor to the deleted `organizer` workload. Owns organizer.liverty-music.app
   # via organizer-console-web-route. Prod-only (no dev environment runs the
-  # organizer console). The Spot VM patch targets `kind: Deployment`, so it applies
-  # to this Deployment automatically; the `app.kubernetes.io/version` label and the
+  # organizer console). It runs on the cluster default ComputeClass (no Spot
+  # patch); the `app.kubernetes.io/version` label and the
   # `organizer-console-web` image pin below track the frontend release.
   - ../../base/organizer-console-web
+  # reception-web: the venue reception web app, built and served apart from the
+  # organizer console (isolate-venue-reception). Owns reception.liverty-music.app
+  # via reception-web-route.
+  - ../../base/reception-web
   - fan-web-configmap.yaml
   - admin-console-web-configmap.yaml
   - organizer-console-web-configmap.yaml
-  - fan-web-pdb.yaml
+  - reception-web-configmap.yaml
 namespace: frontend
 # Apply the Kubernetes Recommended Label `app.kubernetes.io/version` to every
 # rendered resource. Value SHALL be the bare semver without the leading `v`
@@ -36,13 +41,14 @@ namespace: frontend
 #   on the Deployment so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.72.0"
+      app.kubernetes.io/version: "1.89.0"
     includeSelectors: false
     includeTemplates: true
 patches:
-  - path: spot-vm_patch.yaml
-    target:
-      kind: Deployment
+  # No Spot patch: every frontend Deployment selects no ComputeClass, so the
+  # cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
+  # places it on Spot, falls back to on-demand, and migrates it back
+  # (optimize-prod-gke-cost D1).
   # Match dev's resource sizing exactly (design D2).
   - target:
       kind: Deployment
@@ -63,11 +69,15 @@ patches:
                 limits:
                   cpu: 100m
                   memory: 128Mi
-  # HA (prod): run 2 fan-web replicas and hard-spread them across nodes
-  # (DoNotSchedule — a soft spread lost to the prefer-Spot nodeAffinity) so a
-  # single node loss (Spot preemption / drain / upgrade) can't drop the whole
-  # consumer site. Safe: >=3 on-demand nodes always exist. Pairs with the
-  # fan-web PodDisruptionBudget below.
+  # Pre-launch (optimize-prod-gke-cost D3): a single fan-web replica with no
+  # topology spread and no PodDisruptionBudget. The hard hostname spread forced
+  # the second replica onto an on-demand node, and a minAvailable: 1 PDB on one
+  # replica blocks every voluntary eviction (drain, active migration back to
+  # Spot). A Spot preemption now drops the site briefly, accepted with no users.
+  #
+  # At launch, restore HA: replicas: 2, a topologySpreadConstraint on
+  # kubernetes.io/hostname with whenUnsatisfiable: ScheduleAnyway and
+  # nodeTaintsPolicy: Honor, and a minAvailable: 1 PodDisruptionBudget.
   - target:
       kind: Deployment
       name: fan-web-app
@@ -77,16 +87,7 @@ patches:
       metadata:
         name: fan-web-app
       spec:
-        replicas: 2
-        template:
-          spec:
-            topologySpreadConstraints:
-              - maxSkew: 1
-                topologyKey: kubernetes.io/hostname
-                whenUnsatisfiable: DoNotSchedule
-                labelSelector:
-                  matchLabels:
-                    app: fan-web
+        replicas: 1
   # Prod consumer-site HTTPRoute hostname (apex). fan-web-route replaces the
   # deleted web-route and owns liverty-music.app -> fan-web-svc.
   - target:
@@ -115,6 +116,14 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["organizer.liverty-music.app"]
+  # Prod reception HTTPRoute hostname (reception-web-route).
+  - target:
+      kind: HTTPRoute
+      name: reception-web-route
+    patch: |-
+      - op: add
+        path: /spec/hostnames
+        value: ["reception.liverty-music.app"]
 # Pin the web-app image to prod Artifact Registry with an immutable
 # semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags` +
 # the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -154,7 +163,7 @@ images:
   # release (routed to fan-web in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
-    newTag: v1.72.0 # commit 7c96fe6de72f362373bdbd5ba79b3d04abd2082d
+    newTag: v1.89.0 # commit 29c7e4f052195a325e1a4741039bffdfb560ecab
   # admin-console-web (unify-workload-naming): the admin console bundle, successor
   # to admin-app. Now ACTIVE — the admin-console-web-app Deployment (create-new)
   # references it. Pinned at v1.52.0 (the release that first published
@@ -163,7 +172,7 @@ images:
   # (the fan-out that `batch-frontend-prod-pin-dispatch` later collapsed).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-console-web
-    newTag: v1.72.0 # commit 7c96fe6de72f362373bdbd5ba79b3d04abd2082d
+    newTag: v1.89.0 # commit 29c7e4f052195a325e1a4741039bffdfb560ecab
   # organizer-console-web (unify-workload-naming): successor to organizer-app. Now
   # ACTIVE — the organizer-console-web-app Deployment references it.
   # Pinned at v1.53.0 (the release that first published organizer-console-web to
@@ -171,4 +180,9 @@ images:
   # pin-bump, which pins all three bundles atomically (routed in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-console-web
-    newTag: v1.72.0 # commit 7c96fe6de72f362373bdbd5ba79b3d04abd2082d
+    newTag: v1.89.0 # commit 29c7e4f052195a325e1a4741039bffdfb560ecab
+  # reception-web (isolate-venue-reception): the reception app's own image,
+  # published by the same frontend release and pinned by the same pin-bump.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/reception-web
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/reception-web
+    newTag: v1.89.0 # commit 29c7e4f052195a325e1a4741039bffdfb560ecab

@@ -470,18 +470,14 @@ esc env get liverty-music/prod pulumiConfig.gcp.postgresAdminPassword
 # expected: [secret]
 ```
 
-To verify the password actually works post-`pulumi up`, dial
-the Cloud SQL Auth Proxy with this credential:
+To verify the password actually works post-`pulumi up`, log in as
+`postgres` through the ephemeral `db-proxy` Pod, following
+[`cloud-sql-access.md` → Break-glass login as `postgres`](cloud-sql-access.md#break-glass-login-as-postgres)
+with `ENV=prod`. The instance is PSC-only, so a `cloud-sql-proxy`
+on a laptop cannot reach it.
 
-```bash
-# In a separate shell, with cloud-sql-proxy running:
-cloud-sql-proxy liverty-music-prod:asia-northeast2:postgres-osaka &
-psql -h 127.0.0.1 -U postgres -d postgres
-# password: <paste from vault>
-```
-
-Exit with `\q`. Do not stay logged in as superuser longer than
-needed for verification.
+Exit with `\q` and delete the Pod. Do not stay logged in as
+superuser longer than needed for verification.
 
 ### Rotation
 

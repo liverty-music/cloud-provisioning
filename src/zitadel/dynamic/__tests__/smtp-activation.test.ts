@@ -9,12 +9,12 @@ const { smtpActivationProvider } = await import('../smtp-activation.js')
 
 const mockedCall = vi.mocked(apiClient.zitadelApiCall)
 
-// `ZitadelSmtpActivation` is a side-effect-only Dynamic Resource (per
-// `cutover-warning-fixes` design D2/D4): the only lifecycle handler that
-// touches the Zitadel REST surface is `create()`. `update()` / `delete()` /
-// `read()` are no-ops by design, so the test scaffold is intentionally
-// narrower than the four-case scaffold used for `targetProvider` and
-// `executionFunctionProvider`.
+// `ZitadelSmtpActivation` is a mostly side-effect-only Dynamic Resource (per
+// `cutover-warning-fixes` design D2/D4): `create()` activates and `read()` is
+// drift-detecting (self-healing) — both touch the Zitadel REST surface via
+// `_search`. `update()` / `delete()` are no-ops by design, so the test scaffold
+// is intentionally narrower than the four-case scaffold used for `targetProvider`
+// and `executionFunctionProvider`.
 const provider = smtpActivationProvider as Required<
 	typeof smtpActivationProvider
 >
@@ -182,14 +182,88 @@ describe('smtpActivationProvider.read', () => {
 		mockedCall.mockReset()
 	})
 
-	it('makes ZERO HTTP requests and returns current outputs unchanged', async () => {
+	it('reports the resource up-to-date when the live SMTP config is ACTIVE (no redundant activation)', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 200,
+			body: JSON.stringify({
+				result: [
+					{ id: 'real-cfg-snowflake', state: 'SMTP_CONFIG_ACTIVE' },
+				],
+			}),
+		})
+
 		const result = await provider.read(
 			'smtp-activation:smtp-cfg-1',
 			baseOutputs,
 		)
 
-		expect(mockedCall).not.toHaveBeenCalled()
+		// Only the drift-detecting `_search`; never a redundant `_activate`.
+		expect(mockedCall).toHaveBeenCalledTimes(1)
+		const search = callArgsAt(0)
+		expect(search.method).toBe('POST')
+		expect(search.path).toBe('/admin/v1/smtp/_search')
+		expect(search.domain).toBe('auth.example.test')
 		expect(result.id).toBe('smtp-activation:smtp-cfg-1')
 		expect(result.props).toEqual(baseOutputs)
+	})
+
+	it('returns an empty id when the live SMTP config is not ACTIVE, so a refreshing up recreates and re-activates', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 200,
+			body: JSON.stringify({
+				result: [
+					{ id: 'real-cfg-snowflake', state: 'SMTP_CONFIG_INACTIVE' },
+				],
+			}),
+		})
+
+		const result = await provider.read(
+			'smtp-activation:smtp-cfg-1',
+			baseOutputs,
+		)
+
+		expect(mockedCall).toHaveBeenCalledTimes(1)
+		expect(result.id).toBe('')
+	})
+
+	it('returns an empty id when the live SMTP config is missing (0 results)', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 200,
+			body: JSON.stringify({ result: [] }),
+		})
+
+		const result = await provider.read(
+			'smtp-activation:smtp-cfg-1',
+			baseOutputs,
+		)
+
+		expect(mockedCall).toHaveBeenCalledTimes(1)
+		expect(result.id).toBe('')
+	})
+
+	it('throws on a non-2xx from _search so the drift lookup failure surfaces clearly', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 500,
+			body: '{"code":13,"message":"internal"}',
+		})
+
+		await expect(
+			provider.read('smtp-activation:smtp-cfg-1', baseOutputs),
+		).rejects.toThrow(
+			/Zitadel SearchSmtpConfigs failed during read \(500\)/,
+		)
+	})
+
+	it('throws when _search returns more than one config (workaround assumes singleton)', async () => {
+		mockedCall.mockResolvedValueOnce({
+			statusCode: 200,
+			body: JSON.stringify({
+				result: [{ id: 'cfg-a' }, { id: 'cfg-b' }],
+			}),
+		})
+
+		await expect(
+			provider.read('smtp-activation:smtp-cfg-1', baseOutputs),
+		).rejects.toThrow(/Zitadel SearchSmtpConfigs returned 2 configs/)
 	})
 })

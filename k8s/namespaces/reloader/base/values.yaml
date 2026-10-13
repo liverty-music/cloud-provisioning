@@ -4,6 +4,8 @@ reloader:
       requests:
         cpu: 50m
         memory: 64Mi
+        ephemeral-storage: 100Mi
       limits:
         cpu: 100m
         memory: 128Mi
+        ephemeral-storage: 100Mi

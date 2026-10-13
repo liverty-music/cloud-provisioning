@@ -10,6 +10,12 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
+import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
+import {
+	StripePaymentMethodDomain,
+	StripePaymentMethodPreferences,
+	StripeWebhookEndpoint,
+} from './stripe/dynamic/index.js'
 import { SecretsComponent, Zitadel } from './zitadel/index.js'
 
 const brandId = 'liverty-music'
@@ -32,8 +38,8 @@ const posthogProjectApiKey = config.getSecret('posthogProjectApiKey')
 // fails fast when the env var is empty, so this secret SHALL be set in every
 // stack where the backend workload runs (dev / prod).
 const geminiSearchApiKey = config.getSecret('geminiSearchApiKey')
-// Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api eKYC flow
-// (identity-ekyc-jpki), sourced via `esc env set liverty-music/<env>
+// Pocket Sign (PocketSign Stamp/Verify) Bearer token for the fan-api identity verification flow
+// (spec: identity-verification), sourced via `esc env set liverty-music/<env>
 // pulumiConfig.pocketSignToken "sk_..." --secret`. MVP DECISION: every env,
 // INCLUDING prod, uses the FREE mock/sandbox token (verify.mock.p8n.app) — the
 // paid 加盟契約 + prod tenant are POST-MVP. Conditionally seeds a GSM secret read
@@ -49,6 +55,24 @@ const pocketSignToken = config.getSecret('pocketSignToken')
 // by the fan-api deployment via the ESO ExternalSecret (added in a follow-up PR,
 // AFTER this GSM secret exists — ESO fails the whole bundle on a missing key).
 const stripeSecretKey = config.getSecret('stripeSecretKey')
+// Stripe sandbox (test-mode) secret key for the backend's opt-in sandbox E2E
+// (`make test-stripe-e2e`) when run in CI. Distinct from `stripeSecretKey` (the
+// fan-api runtime key): this is the dedicated `ci` sandbox's `sk_test_…`, exposed
+// as the repo-level Actions secret STRIPE_TEST_SECRET_KEY on the backend repo
+// (managed in the prod stack only — repo-level secrets are singular per repo).
+// Sourced via `esc env set liverty-music/prod pulumiConfig.stripeTestSecretKey
+// "sk_test_…" --secret`. When unset, the secret is simply not created and the
+// E2E job stays skipped.
+const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
+// Restricted Stripe key used ONLY to register the webhook endpoint below.
+// Stripe recommends restricted keys over secret keys; this one should carry
+// `Webhook Endpoints: write` and nothing else, so a compromised Pulumi run
+// cannot reach payments, refunds, transfers or customer data. Sourced via
+// `esc env set liverty-music/prod pulumiConfig.stripeWebhookAdminKey
+// "rk_test_…" --secret`. A test-mode key: the prod stack points at the
+// `pannpers.dev sandbox` preprod account, not a livemode one. When unset, no
+// endpoint is registered and the backend handler fails closed (503).
+const stripeWebhookAdminKey = config.getSecret('stripeWebhookAdminKey')
 const bufConfig = config.requireObject('buf') as BufConfig
 const cloudflareConfig = config.getObject('cloudflare') as CloudflareConfig
 const postmarkConfig = config.requireObject(
@@ -74,6 +98,101 @@ const zitadelConfig = config.requireSecretObject<{
 }>('zitadel')
 
 const env = pulumi.getStack() as Environment
+
+// Stripe webhook endpoint for the settlement/payout flow
+// (ticket-settlement-and-payout §5.1). Registering it here rather than in the
+// Dashboard means the `whsec_…` signing secret never has to be copied between
+// two consoles: Stripe returns it in the creation response, and it flows
+// straight into the GSM secret ESO syncs to the backend as
+// STRIPE_WEBHOOK_SIGNING_SECRET. The subscribed event list is reviewable here
+// instead of living in Dashboard state.
+//
+// Registered in every stack whose ESC sets `stripeWebhookAdminKey`. The backend
+// refuses to start outside local without STRIPE_WEBHOOK_SIGNING_SECRET, so each
+// deployed environment needs its own endpoint: prod points at the
+// `pannpers.dev sandbox` preprod Stripe account, dev at the `dev` sandbox. No
+// livemode account is involved.
+//
+// NOTE: destroying this resource deletes the endpoint at Stripe and stops
+// delivery of the dispute/refund events the settlement flow depends on. Treat
+// removing it — or renaming it such that its URN changes — as a production change.
+const stripeWebhookUrl =
+	env === 'prod'
+		? 'https://api.liverty-music.app/stripe-webhook'
+		: `https://api.${env}.liverty-music.app/stripe-webhook`
+const stripeWebhookEndpoint = stripeWebhookAdminKey
+	? new StripeWebhookEndpoint(
+			'stripe-webhook-endpoint',
+			{
+				apiKey: stripeWebhookAdminKey,
+				url: stripeWebhookUrl,
+				description:
+					'Liverty Music — completed charges, transfer, payout, refund and dispute events',
+				enabledEvents: [
+					// A completed charge (checkout capture or lottery win) fulfils
+					// and announces the paid Order (first-come-ticket-sales D6).
+					'payment_intent.succeeded',
+					'charge.refunded',
+					'charge.dispute.created',
+					'charge.dispute.closed',
+					'transfer.created',
+					'transfer.reversed',
+					'payout.paid',
+					'payout.failed',
+				],
+			},
+			// protect: true — deleting the endpoint stops Stripe delivering the
+			// dispute and refund events the settlement flow depends on, and it
+			// would fail silently: money-out keeps working, only the clawback
+			// path goes dark. A `pulumi destroy --target`, a URN-changing rename
+			// or an operator slip should not be able to do that. Removal requires
+			// a deliberate `pulumi state unprotect` first — the same
+			// blast-radius-proportional barrier used on the prod-CI Artifact
+			// Registry grants. This does not change what `delete` does; it
+			// changes whether Pulumi will run it without being asked twice.
+			{ protect: true },
+		)
+	: undefined
+
+// Payment method domain for the fan web app, so the Payment Element shows Apple
+// Pay and Google Pay on the lottery entry and checkout screens. Stripe hides
+// both wallet buttons on an unregistered domain without any error, and each
+// Stripe account (each sandbox, live mode) needs its own registration.
+// Registered with `stripeSecretKey`: Stripe does not offer this permission to
+// restricted keys, so the webhook admin key cannot do it.
+//
+// Prod only. The dev stack's `stripeSecretKey` is a restricted key (`rk_test_…`)
+// and cannot register a domain, and the dev fan web app is stopped. Register
+// dev's domain here with a secret key when dev runs again.
+const stripePaymentMethodDomain =
+	env === 'prod' && stripeSecretKey
+		? new StripePaymentMethodDomain(
+				'stripe-payment-method-domain-fan-web',
+				{
+					apiKey: stripeSecretKey,
+					domainName: 'liverty-music.app',
+				},
+			)
+		: undefined
+export const stripeApplePayStatus = stripePaymentMethodDomain?.applePayStatus
+export const stripeGooglePayStatus = stripePaymentMethodDomain?.googlePayStatus
+
+// The wallets must also be on in the account's default payment method
+// configuration: the PaymentIntents use `automatic_payment_methods`, which offer
+// only the methods turned on there, and Google Pay is off on a new account.
+// Prod only, for the same restricted-key reason as the domain above.
+const stripeWalletPreferences =
+	env === 'prod' && stripeSecretKey
+		? new StripePaymentMethodPreferences('stripe-wallet-payment-methods', {
+				apiKey: stripeSecretKey,
+				preferences: { apple_pay: 'on', google_pay: 'on' },
+			})
+		: undefined
+export const stripeWalletAvailability = stripeWalletPreferences?.available
+
+// Consumed as STRIPE_WEBHOOK_SIGNING_SECRET by the fan-api deployment via the
+// ESO ExternalSecret (GSM secret id `stripe-webhook-signing-secret`).
+const stripeWebhookSigningSecret = stripeWebhookEndpoint?.signingSecret
 
 // Workload tier gate. When false (dev shutdown mode), skip the
 // in-cluster Zitadel orchestrator, GSM bootstrap secret shells, and
@@ -143,9 +262,9 @@ if (env === 'prod') {
 // Single unified `Zitadel` class per `refactor-unify-env-dispatch`. The
 // admin SA JWT is read from GSM `zitadel-machine-key-for-pulumi-admin`
 // (populated once by the in-cluster `bootstrap-uploader` sidecar on
-// first-instance Zitadel boot) inside the class. Both
-// `zitadelMachineKey` and `zitadelLoginPat` flow through `Gcp` for all
-// envs to create the corresponding GSM Secrets in the standard
+// first-instance Zitadel boot) inside the class. Its credentials (e.g.
+// `zitadelMachineKey`) flow through `Gcp` for all envs to create the
+// corresponding GSM Secrets in the standard
 // `KubernetesComponent.secrets` / `esoOnlySecrets` paths.
 // Skipped when `workloadEnabled=false`: the Zitadel orchestrator talks
 // to the in-cluster Zitadel API which is unreachable while the cluster
@@ -167,18 +286,14 @@ const zitadel = workloadEnabled
 			pannpersGoogleSub: zitadelConfig.apply(
 				(z) => z.adminGoogleSubs.pannpers,
 			),
-			// E2E test user password — only consumed when `env === 'dev'` inside
-			// the unified class; the class's `if (env === 'dev')` gate validates
-			// presence at instantiation time.
-			e2eTestUserPassword:
-				env === 'dev'
-					? zitadelConfig.apply((z) => z.e2eTestUser.password)
-					: undefined,
+			// E2E test user password (ESC `pulumiConfig.zitadel.e2eTestUser`,
+			// seeded in every environment).
+			e2eTestUserPassword: zitadelConfig.apply(
+				(z) => z.e2eTestUser.password,
+			),
 		})
 	: undefined
 const zitadelMachineKey = zitadel?.machineKeyDetails
-const zitadelLoginPat = zitadel?.loginClientToken
-const zitadelWatchdogProbePat = zitadel?.watchdogProbeToken
 const zitadelOrganizerProvisionerKey = zitadel?.organizerProvisionerKeyDetails
 
 // 2. GCP Infrastructure (All Environments)
@@ -193,11 +308,12 @@ const gcp = new Gcp({
 	geminiSearchApiKey,
 	pocketSignToken,
 	stripeSecretKey,
+	postmarkServerToken: postmarkConfig.serverApiToken,
+	stripeWebhookSigningSecret,
 	cloudflareConfig,
 	postmarkConfig,
 	zitadelMachineKey,
-	zitadelLoginPat,
-	zitadelWatchdogProbePat,
+	zitadelEnabled: zitadel !== undefined,
 	zitadelOrganizerProvisionerKey,
 	// HMAC signing key Zitadel generated for the login-event Target
 	// (PAYLOAD_TYPE_JSON). Plumbed to the backend as GSM secret
@@ -216,6 +332,23 @@ const gcp = new Gcp({
 	),
 	workloadEnabled,
 	postgresAvailabilityType,
+})
+
+// 3. Pulumi Cloud Deployments (per stack)
+//
+// Declares the deployment settings that were previously console-only. The
+// trigger `paths` inside are a security control — see the component's doc
+// comment and OpenSpec change `automate-dependency-updates`, design D6.
+//
+// `deployCommits` is dev-only: prod is applied deliberately from the Pulumi
+// Cloud console (CLAUDE.md, "Pulumi Deployments (Automated)").
+new DeploymentSettingsComponent({
+	organization: pulumi.getOrganization(),
+	project: pulumi.getProject(),
+	environment: env,
+	gcpProjectNumber: gcp.project.number,
+	gcpServiceAccount: pulumi.interpolate`pulumi-cloud@${gcp.projectId}.iam.gserviceaccount.com`,
+	deployCommits: env === 'dev',
 })
 
 // 5. Self-hosted Zitadel GSM secret shells (all envs, always).
@@ -270,6 +403,16 @@ new GitHubRepositoryComponent({
 	variables: sharedVariables,
 	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
+	// Repo-level Stripe sandbox test key for the opt-in sandbox E2E job
+	// (`make test-stripe-e2e`). Repo-level (not environment-scoped) so a
+	// scheduled / workflow_dispatch job with no `environment:` can read it.
+	// Managed in the prod stack only (repo-level secrets are singular per repo,
+	// so a single stack must own them — mirrors the cloud-provisioning repo's
+	// prod-gated repositorySecrets). Absent until the ESC value is set.
+	repositorySecrets:
+		env === 'prod' && stripeTestSecretKey
+			? { STRIPE_TEST_SECRET_KEY: stripeTestSecretKey }
+			: undefined,
 })
 
 // Frontend Repository
@@ -299,7 +442,22 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.CLOUD_PROVISIONING,
 	environment: env,
-	variables: sharedVariables,
+	// `incident-triage.yml` (prod only) reads these from the `prod`
+	// environment, alongside the shared WORKLOAD_IDENTITY_PROVIDER and
+	// PROJECT_ID. Environment-scoped because the Pulumi GitHub token cannot
+	// create repository-level variables (see the repositorySecrets note below).
+	// See docs/runbooks/incident-triage.md.
+	variables:
+		env === 'prod'
+			? {
+					...sharedVariables,
+					INCIDENT_TRIAGE_SA_EMAIL: gcp.incidentTriageSAEmail,
+				}
+			: sharedVariables,
+	// Kill switch for automated incident triage. Created disabled; operators
+	// flip it in the GitHub UI and Pulumi does not revert it.
+	operatorOwnedVariables:
+		env === 'prod' ? { INCIDENT_TRIAGE_ENABLED: 'false' } : undefined,
 	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
 	// Admin-reviewer gate for the `bump-prod-pin.yml` manual recovery path.
@@ -418,23 +576,18 @@ export const organizerConsoleClientId: string | pulumi.Output<string> =
 export const organizerConsoleProjectId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
 
-// PRIVATE GCS bucket name for organizer cover images — surfaced as a stack
-// output so the bucket name can be verified after `pulumi up` and
-// cross-referenced with the `ORGANIZER_MEDIA_BUCKET` env var injected into the
-// organizer-console-api workload via the `fan-api-config` ConfigMap. The
-// bucket is served through an external HTTPS LB + Cloud CDN (see
-// `organizerMediaCdnBaseUrl`), NOT via `storage.googleapis.com` (the org's
-// Domain Restricted Sharing rejects `allUsers`). The backend composes the
-// served URL as `{ORGANIZER_MEDIA_CDN_BASE}/cdn/{organizer_id}/{media_id}`.
-// Same `DEV_SHUTDOWN_SENTINEL` fallback contract as the other workload-gated
-// outputs (the bucket is only provisioned when `workloadEnabled=true`). See
-// OpenSpec change `organizer-event-authoring`.
-export const organizerMediaBucketName: string | pulumi.Output<string> =
-	gcp.workloadSAs?.organizerMediaBucketName ?? DEV_SHUTDOWN_SENTINEL
+// Served GCS bucket of ObjectStorageComponent, injected into the backend
+// workloads as `STORAGE_BUCKET`. The bucket is PRIVATE and served through an
+// external HTTPS LB + Cloud CDN (see `cdnBaseUrl`), NOT via
+// `storage.googleapis.com` (the org's Domain Restricted Sharing rejects
+// `allUsers`). Same `DEV_SHUTDOWN_SENTINEL` fallback contract as the other
+// workload-gated outputs (the bucket is only provisioned when
+// `workloadEnabled=true`).
+export const storageBucketName: string | pulumi.Output<string> =
+	gcp.workloadSAs?.storageBucketName ?? DEV_SHUTDOWN_SENTINEL
 
-// Public Cloud CDN serving base URL for organizer media
-// (`https://media.<publicDomain>`), injected into the organizer-console-api
-// workload as `ORGANIZER_MEDIA_CDN_BASE`. Same workload gate + sentinel
-// fallback as `organizerMediaBucketName`.
-export const organizerMediaCdnBaseUrl: string | pulumi.Output<string> =
-	gcp.workloadSAs?.organizerMediaCdnBaseUrl ?? DEV_SHUTDOWN_SENTINEL
+// Cloud CDN serving base URL (`https://cdn.<publicDomain>`), injected into
+// the backend workloads as `CDN_BASE_URL`. Same workload gate + sentinel
+// fallback.
+export const cdnBaseUrl: string | pulumi.Output<string> =
+	gcp.workloadSAs?.cdnBaseUrl ?? DEV_SHUTDOWN_SENTINEL

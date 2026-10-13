@@ -3,23 +3,22 @@ kind: Kustomization
 
 # Prod Reloader overlay. Reloader is a singleton controller with no
 # env-divergent state. Spot label + resource sizing match dev exactly.
+#
+# Purpose: Reloader rolls a workload when a ConfigMap or Secret it mounts
+# changes. It implements the Secret-rotation decision of the `secret-manager`
+# spec (Decision 5): ESO refreshes a Secret from Secret Manager, and Reloader
+# restarts the Pods that read it. Nine prod workloads carry
+# `reloader.stakater.com/auto: "true"` (backend, frontend, otel-collector), so
+# removing it would leave rotated secrets unused until the next rollout.
 
 resources:
 - ../../base
 
 patches:
-- target:
-    kind: Deployment
-  patch: |-
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: reloader
-    spec:
-      template:
-        spec:
-          nodeSelector:
-            cloud.google.com/gke-spot: "true"
+# No Spot nodeSelector in prod: the Deployments select no ComputeClass, so the
+# cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
+# places them on Spot with on-demand fallback and migrates them back
+# (optimize-prod-gke-cost D1).
 
 - target:
     kind: Deployment
@@ -38,6 +37,8 @@ patches:
               requests:
                 cpu: 10m
                 memory: 64Mi
+                ephemeral-storage: 100Mi
               limits:
                 cpu: 100m
                 memory: 128Mi
+                ephemeral-storage: 100Mi

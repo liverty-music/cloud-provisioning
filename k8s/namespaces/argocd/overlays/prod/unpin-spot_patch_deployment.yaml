@@ -1,0 +1,17 @@
+# Remove the Helm base's Spot node pin (`global.nodeSelector`
+# cloud.google.com/compute-class: autopilot-spot) so the Argo CD Pods select no
+# ComputeClass and the cluster default class places them on Spot, falls back to
+# on-demand, and migrates them back (optimize-prod-gke-cost D1). Argo CD must
+# stay schedulable to self-heal the cluster, so it must not be Spot-only.
+# Strategic merge keeps the chart's soft podAntiAffinity, which does not raise
+# the Autopilot minimum (live requests stayed at 50m on the default class).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: any
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: null
+        cloud.google.com/compute-class: null

@@ -12,5 +12,16 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "pulumi-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "pulumi/agent-skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "pulumi@pulumi-agent-skills": true
   }
 }

@@ -1,0 +1,8 @@
+nameReference:
+- kind: Service
+  version: v1
+  fieldSpecs:
+  - path: spec/targetRef/name
+    kind: HealthCheckPolicy
+  - path: spec/rules/backendRefs/name
+    kind: HTTPRoute

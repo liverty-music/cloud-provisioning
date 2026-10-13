@@ -141,25 +141,28 @@ jobs:
               # `api` is the shared Connect-RPC image (unify-workload-naming),
               # successor to `server`/`fan-api`; it pins both the fan-api and
               # admin-console-api workloads. `consumer` backs event-consumer.
-              # sales-phase-discovery / sales-reminders are the CronJob images;
-              # media-consumer is the KEDA-scaled long-running consumer (backend/media-consumer).
+              # sales-phase-discovery / sales-reminders / official-site-refresh are
+              # the CronJob images;
+              # series-image-consumer is the KEDA-scaled long-running consumer
+              # (backend/series-image-consumer).
               # They MUST be listed here too or they stay frozen while the rest
               # advance, and schema-drift (e.g. a dropped column) then breaks the
               # stale image at runtime. The backend release retag matrix already
-              # publishes all seven under the release tag, so a single dispatch pins
+              # publishes all eight under the release tag, so a single dispatch pins
               # them in lock-step.
-              IMAGES="api consumer concert-discovery artist-image-sync sales-phase-discovery sales-reminders media-consumer"
+              IMAGES="api consumer concert-discovery artist-image-sync official-site-refresh sales-phase-discovery sales-reminders series-image-consumer"
               BUMP_LABEL=true ;;
             frontend)
-              # One frontend release ships three web bundles from the same tag —
-              # fan-web (consumer), admin-console-web, organizer-console-web — so a
-              # single `frontend` dispatch pins all three in one atomic commit, the
-              # same way `backend` pins its images in one dispatch. The provenance,
-              # no-downgrade, and yq-rewrite loops below all iterate `${IMAGES}`, so
-              # listing the three bundles here is the only change needed. The
+              # One frontend release ships four web bundles from the same tag —
+              # fan-web (consumer), admin-console-web, organizer-console-web,
+              # reception-web — so a single `frontend` dispatch pins all four in
+              # one atomic commit, the same way `backend` pins its images in one
+              # dispatch. The provenance, no-downgrade, and yq-rewrite loops below
+              # all iterate `${IMAGES}`, so listing the bundles here is the only
+              # change needed. The
               # version label + fan-web-configmap track the consumer (fan-web).
               OVERLAY=frontend; AR_REPO=frontend
-              IMAGES="fan-web admin-console-web organizer-console-web"
+              IMAGES="fan-web admin-console-web organizer-console-web reception-web"
               BUMP_LABEL=true ;;
           esac
 
@@ -183,13 +186,13 @@ jobs:
       # repository_dispatch path.
       - name: Mint ci-bot token
         id: bot
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.CI_BOT_APP_ID }}
           private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # Full history so the fetch-rebase-retry push loop can rebase on a
           # concurrent bump. Persist the ci-bot token (not the built-in
@@ -208,7 +211,7 @@ jobs:
       # bogus-tag paths. Applies to both triggers.
       # ----------------------------------------------------------------------
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           # Repository-level SECRETS (not environment-scoped) so they resolve on
           # the empty-environment `repository_dispatch` path. Stored as secrets
@@ -221,7 +224,7 @@ jobs:
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Configure Docker for prod AR
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
@@ -230,7 +233,7 @@ jobs:
       # read credentials. SHA of v0.4 matches the backend/frontend release
       # workflows' pinning.
       - name: Install crane
-        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+        uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
 
       - name: Verify prod-AR image provenance
         id: provenance
@@ -384,7 +387,7 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Install Kustomize
         if: steps.idem.outputs.skip != 'true'
-        uses: imranismail/setup-kustomize@v2
+        uses: imranismail/setup-kustomize@53f941b41dca13ed61874bbc6b4b6e1562877530 # v3
 
       - name: Validate overlay renders
         if: steps.idem.outputs.skip != 'true'

@@ -15,6 +15,12 @@ export const Roles = {
 	},
 	Logging: {
 		LogWriter: 'roles/logging.logWriter',
+		Viewer: 'roles/logging.viewer',
+	},
+	Container: {
+		/** Read-only access to GKE clusters and Kubernetes objects (incl.
+		 *  CRDs and events). Excludes `pods/log`, `pods/exec` and Secrets. */
+		Viewer: 'roles/container.viewer',
 	},
 	Monitoring: {
 		MetricWriter: 'roles/monitoring.metricWriter',
@@ -45,13 +51,18 @@ export const Roles = {
 	Storage: {
 		/** Full control over objects in a specific bucket (create, replace, delete,
 		 *  read). Granted at the bucket level (BucketIamMember), not project-level,
-		 *  to restrict write access to the organizer-media bucket only. */
+		 *  to restrict write access to the object storage buckets only. */
 		ObjectAdmin: 'roles/storage.objectAdmin',
 		/** Read-only access to objects. Granted to the Cloud CDN private-origin
 		 *  service account (`service-<PROJECT_NUMBER>@https-lb.iam.gserviceaccount.com`)
-		 *  so Cloud CDN can read the private organizer-media bucket. Never granted to
+		 *  so Cloud CDN can read the private served bucket. Never granted to
 		 *  `allUsers` — Domain Restricted Sharing would reject that binding. */
 		ObjectViewer: 'roles/storage.objectViewer',
+		/** Read, list, create, replace and delete objects, without the bucket
+		 *  IAM-policy rights of `objectAdmin`. Granted bucket-scoped to the
+		 *  admin-console-api workload so the admin Organizer deletion can remove
+		 *  a deleted Organizer's series images (deleting variants lists a key prefix). */
+		ObjectUser: 'roles/storage.objectUser',
 	},
 	Iam: {
 		/** Allows a principal to mint short-lived credentials / signatures for a

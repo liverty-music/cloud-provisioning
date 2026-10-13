@@ -1,188 +1,51 @@
 <poly-repo-context repo="cloud-provisioning">
-  <responsibilities>GCP infrastructure via Pulumi (TypeScript). Kubernetes manifests
-  managed by ArgoCD with Kustomize base/overlays. Multi-environment (dev/staging/prod).</responsibilities>
-  <essential-commands>
-    make lint              # All linters: biome + tsc + kustomize render + kube-linter + spot check
-    make lint-ts           # TypeScript only: biome check + tsc (matches CI)
-    make lint-k8s          # K8s manifests: render + kube-linter + spot nodeSelector check
-    make fix               # Auto-fix formatting (biome check --write)
-    make check             # Pre-commit check (lint-ts; lint-k8s requires kustomize/kube-linter)
-    pulumi preview         # Preview infra changes
-    pulumi up              # Deploy (requires user approval)
-  </essential-commands>
+  <responsibilities>GCP, Cloudflare, GitHub and Zitadel resources via Pulumi (TypeScript).
+  Kubernetes manifests applied by ArgoCD from Kustomize base/overlays. Stacks: dev, prod.</responsibilities>
 </poly-repo-context>
 
 <agent-rules>
 
-## Operating Protocols
+## OpenSpec (planning lives in the store)
 
-### Pulumi Deployment Approval
+This repository carries no planning of its own. `openspec/config.yaml` declares `store: openspec-store` (the `liverty-music/specification` repository), so every `openspec` command run here resolves to that store; the `Using OpenSpec root: openspec-store` banner confirms it. The full workflow, local and cloud, is in the `specification` README ("Development workflow"); the rules that bind a session here are:
 
-Before executing `pulumi up` or any deployment command, follow this workflow:
+- **Before implementing**, read the change's artifacts and the affected specs in the store: `openspec show <change>`, `openspec instructions apply --change <change>`, and `openspec show <spec-id> --type spec`. Implement against the spec, not against memory.
+- **Run `openspec doctor` first** on a fresh machine and at the start of every cloud thread. If the store is not registered, register a `specification` checkout: the sibling clone when one exists (`openspec store register "$(git rev-parse --show-toplevel)/../specification" --id openspec-store`, the layout of a multi-repo Claude Project thread), otherwise clone the public repo first (`git clone --depth 1 https://github.com/liverty-music/specification.git /tmp/openspec-store`) and register that path. Keep that checkout on `main` and pull it before implementing: OpenSpec never pulls.
+- **Isolate local work with `claude --worktree <change>`** (`.claude/worktrees/<change>`, branch `worktree-<change>`). In `specification`, the main checkout is the shared store and stays on `main`; branch work there (plan PR, proto PR, archive) goes through its own worktrees (`specification` README "Branch work in this repository").
+- **Record progress in the store, never commit there.** `/opsx:apply` checks off `tasks.md` and updates `design.md` in the `specification` checkout's working tree on `main`, uncommitted. Several changes share that working tree, so never run `git stash`, `git reset --hard`, `git checkout -- .` / `git restore .` or `git clean` there, never `git add -A` / `git add .`, and never switch its branch.
+- **Every PR must cite its change**: fill the `OpenSpec-Change` (or `OpenSpec-Spec`) field and the store commit SHA in the PR template's OpenSpec Traceability section. One PR per repository.
+- **Close-out happens in `specification`**, after every implementing PR has merged and the release is confirmed in production: `/opsx:verify`, then archive in a `<change>-archive` worktree of `specification`, staging only that change's paths (README "Lifecycle of a change", step 5). Do not archive from this repository.
+- **Cloud threads run no repository hooks**: run `make check` before committing; CI is the gate.
 
-1. **Preview first**: Run `pulumi preview` (or `pulumi preview --diff`)
-2. **Present to user**: Show the preview output, highlight destructive operations (deletions, replacements)
-3. **Wait for explicit approval**: Do not proceed until the user says "yes", "proceed", or "approve"
-4. **Execute**: Only after approval, run `pulumi up`
+## Cross-repo workflow (poly-repo)
 
-Never skip this workflow, even for small changes. Exception: the user has given explicit advance authorization for a specific deployment in the current session.
+This repo is one of four under `liverty-music/`: `specification` (proto schema + OpenSpec store), `backend`, `frontend`, `cloud-provisioning`. Infrastructure here is not gated by the proto release flow (that process lives in the specification repo's AGENTS.md). When a change spans repositories, keep this repo's PR independently mergeable and cite the same OpenSpec change in every PR so reviewers can follow the set.
 
-### Pulumi Deployments (Automated)
+## Scope of this file
 
-**dev**: Merging a PR to `main` with changes under `src/**` automatically
-triggers `pulumi up` via Pulumi Cloud Deployments.
-Never run `pulumi up` locally for dev — it conflicts with the automated job.
-Monitor: https://app.pulumi.com/pannpers/liverty-music/dev/deployments
+General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claude/settings.json` (`pulumi-best-practices`, `provider-upgrade`, `pulumi-debug-failed-operation`, ...). This file holds only what is specific to this repository; where it disagrees with a skill, this file wins.
 
-**prod**: PRs trigger `pulumi preview` only. `pulumi up` does not run
-automatically on merge. Trigger manually from the Pulumi Cloud console:
-https://app.pulumi.com/pannpers/liverty-music/prod/deployments
+## Deployments
 
-### Pulumi State Recovery
+- **dev is stopped indefinitely** to save cost (`liverty-music:workloadEnabled: "false"` in `Pulumi.dev.yaml`): its cluster and workloads do not exist. Verify changes in prod with unit tests and read-only checks, and do not plan work that needs dev running.
+- **dev**: merging to `main` runs `pulumi up` via Pulumi Cloud Deployments. Agents may also run `pulumi up -s dev` locally after showing the preview and getting the user's approval; the next merge to `main` re-applies `main`, so a branch applied this way is temporary.
+- **prod**: agents run `pulumi preview` and read-only state commands only. The user triggers `pulumi up` from the Pulumi Cloud console (https://app.pulumi.com/pannpers/liverty-music/prod/deployments). Write out any `destroy`, `refresh`, `import` or `state` command for the user instead of running it.
+- **Pull-request previews** run on Pulumi Cloud Deployments, triggered by the `paths` in `src/pulumi-cloud/deployment-settings.ts`. Do not add a GitHub Actions preview or up job (design D6 of `automate-dependency-updates`), and do not add dependency manifests to `paths`.
 
-Before considering `pulumi state delete --target-dependents` (its
-blast radius follows ALL transitive dependents, not just the
-ComponentResource subtree — the §13.4 cutover incident
-cascade-removed 87 resources from ~9 intended targets) **or**
-when recovering from a post-incident state cascade, read
-[`docs/runbooks/pulumi-state-recovery.md`](docs/runbooks/pulumi-state-recovery.md).
-The runbook documents the preferred path (`pulumi destroy --target`
-through normal `preview → up`, visible via Pulumi Cloud's
-`previewPullRequests`) and the five-step recovery procedure
-(snapshot, merge, import, scrub `__pulumi_raw_state_delta`, verify
-clean preview) for when the cascade has already happened.
+## Changing Pulumi code
 
-### Kubernetes Manifest Dry-Run
+- Introduce a `ComponentResource` only after working out which resources outside it will need to reference its children. Moving an existing resource under a parent changes its URN and needs `aliases`. `Gcp` in `src/gcp/index.ts` stays a plain class on purpose.
+- Resource names are kebab-case. Regions and zones come from `src/gcp/region.ts`.
+- **Provider upgrades** (the Renovate `pulumi` group, which never automerges and is not previewed by Pulumi Cloud): run the `provider-upgrade` skill on the Renovate branch against both stacks, and post its Upgrade Summary as a comment on that pull request instead of opening a new one. A preview of `main` is not empty: compare against the baseline table in "A Pulumi preview reports resource changes" (`liverty-music/.github` `renovate-runbook.md`) before attributing a diff to the upgrade.
 
-Before committing any changes to `k8s/` manifests, run a Kustomize dry-run:
+## Configuration and secrets
 
-```bash
-# Plain Kustomize overlays (no Helm)
-kubectl kustomize k8s/<path>/overlays/<env>
+- Stacks import the ESC environments `liverty-music/dev` and `liverty-music/prod`, which both import `liverty-music/common`. ESC `pulumiConfig.<key>` is the config key `liverty-music:<key>`.
+- Set an environment-specific value with `pulumi env set liverty-music/<env> pulumiConfig.<key> --file <path|-> [--secret --string]`. Never use `pulumi config set --secret` (it writes to the stack file), and never pass a value as an argument: it lands in shell history, and a value starting with `-` (a PEM key) is parsed as a flag and echoed in the error.
 
-# Helm-based overlays (ESO, Reloader, etc.)
-kubectl kustomize --enable-helm k8s/<path>/overlays/<env>
-```
+## Before you act on
 
-Check `k8s/<path>/base/kustomization.yaml` for `helmCharts:` to determine if `--enable-helm` is needed.
-
-Verify:
-- All targeted resources render without errors
-- Patches apply to the correct resources (name, nodeSelector, replicas)
-- No unintended resources are modified
-
-Do not commit if `kubectl kustomize` returns an error or patches are missing.
-
-### Dev Cost Optimization
-
-When creating or modifying Kubernetes workload manifests for `dev` environment:
-
-1. **Explicit resource requests/limits**: Every container needs `resources.requests` and `resources.limits` for CPU and memory.
-
-2. **Spot VM nodeSelector**: Every Pod template needs:
-   ```yaml
-   nodeSelector:
-     cloud.google.com/gke-spot: "true"
-   ```
-
-3. **Disable non-essential sidecars**: Debug tools (e.g., nats-box), test pods, and optional sidecars should be disabled in dev overlays unless actively needed.
-
-4. **Verify before commit**: In the Kustomize dry-run, also check that no container has empty `resources: {}`, all workloads have `gke-spot: "true"` nodeSelector, and no unnecessary Pods are rendered.
-
-## ESC Secret Management
-
-This project uses Pulumi ESC (Environment, Secrets, and Configuration) for all configuration and secrets.
-
-### ESC Environment Hierarchy
-
-```
-liverty-music/common          ← shared config inherited by all envs
-├── liverty-music/dev          ← dev-specific config (imports common)
-└── liverty-music/prod         ← prod-specific config (imports common)
-
-liverty-music/cloud-provisioning/common  ← project-level shared config
-├── liverty-music/cloud-provisioning/dev  ← project dev (imports above)
-└── liverty-music/cloud-provisioning/prod
-```
-
-### `esc env set` vs `pulumi config set`
-
-This distinction is critical — using the wrong command stores secrets in the wrong location:
-
-- **`pulumi config set --secret`**: Writes to the stack YAML file or common ESC environment. Wrong for environment-specific secrets.
-- **`esc env set`**: Writes directly to a specific ESC environment. This is the correct approach.
-
-```bash
-# Correct: writes to liverty-music/dev ESC environment
-esc env set liverty-music/dev pulumiConfig.gcp.someSecret "value" --secret
-
-# Wrong: may write to common env or stack file
-pulumi -s dev config set --secret --path 'liverty-music:gcp.someSecret' "value"
-```
-
-### ESC Path Mapping
-
-| ESC Path | Pulumi Config Key |
-|----------|-------------------|
-| `pulumiConfig.gcp.billingAccount` | `liverty-music:gcp.billingAccount` |
-| `pulumiConfig.gcp.postgresAdminPassword` | `liverty-music:gcp.postgresAdminPassword` |
-| `pulumiConfig.github.token` | `liverty-music:github.token` |
-
-### Common ESC Commands
-
-```bash
-esc env ls                                              # List all environments
-esc env get liverty-music/dev                           # View resolved values
-esc env set liverty-music/dev pulumiConfig.gcp.key "v" --secret  # Set secret
-esc env set liverty-music/dev pulumiConfig.gcp.key "v"  # Set plaintext
-```
-
-## Configuration
-
-All configuration and secrets are managed through Pulumi ESC. Use `esc env set` for environment-specific secrets. Stack YAML files (`Pulumi.{env}.yaml`) reference ESC environments.
-
-Store secrets in Pulumi ESC — hardcoded secrets in code are exposed in version control. Use IAM roles instead of service account keys. Use GCP Secret Manager for application secrets.
-
-## File Organization
-
-- **`src/index.ts`**: Main entry point dispatching to GCP and GitHub components
-- **`src/gcp/`**: GCP infrastructure
-  - **`config/`**: Configuration management (`constants.ts`, `environments.ts`)
-  - **`components/`**: Infrastructure components (`project.ts`, `network.ts`, `kubernetes.ts`, `postgres.ts`, `workload-identity.ts`, `concert-data-store.ts`)
-  - **`services/`**: API enablement helpers
-- **`src/github/`**: GitHub organization and repository management
-- **`k8s/`**: Kubernetes manifests managed by ArgoCD
-  - **`argocd-apps/dev/`**: ArgoCD Application definitions
-  - **`namespaces/`**: Per-namespace Kustomize bases and overlays
-
-## Code Conventions
-
-- Use kebab-case for Pulumi resource names: `my-storage-bucket`
-- GCP region defaults to `asia-northeast2` via `DEFAULT_REGION` constant
-
-## Infrastructure Patterns
-
-1. **Organization/Project** (`project.ts`): Folders, projects, billing, Secret Manager
-2. **Networking** (`network.ts`): Custom VPC, Cloud NAT, Private Service Connect
-3. **Compute/GKE** (`kubernetes.ts`): GKE Autopilot, Workload Identity
-4. **Database** (`postgres.ts`): Cloud SQL PostgreSQL 18, PSC-only, IAM auth
-5. **GitOps/ArgoCD** (`k8s/`): App of Apps pattern, Kustomize overlays, Atlas Operator, ESO
-
-## Stack Management
-
-- **dev**: Development environment
-- **staging**: Staging environment (mirrors production)
-- **prod**: Production environment (restricted access)
-
-```bash
-pulumi stack select dev
-pulumi stack select staging
-pulumi stack select prod
-```
-
-## Review criteria (flag violations)
-
-- Environment-specific secrets use `esc env set`, never `pulumi config set --secret` or a hardcoded value.
-- Renaming a lifecycle-sensitive resource (MachineKey, IAM/SA keys) uses `aliases: [{ name: 'old-urn' }]` to avoid replace-delete.
+- **`pulumi state delete --target-dependents`, or recovery from a state cascade**: read `docs/runbooks/pulumi-state-recovery.md` first. The blast radius follows all transitive dependents, not just a component's subtree; one incident removed 87 resources instead of ~9.
+- **Changes under `k8s/`**: follow `k8s/AGENTS.md`.
 
 </agent-rules>

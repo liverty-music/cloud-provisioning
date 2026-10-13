@@ -7,6 +7,33 @@ spec:
   - name: external-gateway
     namespace: gateway
   rules:
+  # Public Stripe webhook endpoint (ticket-settlement-and-payout §5.1). Exposes
+  # ONLY the exact path `/stripe-webhook` on the fan-api webhook server
+  # (fan-api-webhook-svc, port 9090) so Stripe can POST settlement/payout events
+  # (transfer / payout / refund / dispute). Gateway API rule precedence: an
+  # `Exact` PathMatch outranks the catch-all rule below (which has no matches and
+  # is treated as `PathPrefix: /`), so this path routes to :9090 while everything
+  # else stays on fan-api-svc:80.
+  #
+  # SECURITY — path-limited on purpose: the same webhook server (:9090) also
+  # serves the INTERNAL Zitadel Actions v2 endpoints (`/pre-access-token`,
+  # `/account-login-event`). We match ONLY `/stripe-webhook` here and NEVER route
+  # the whole `fan-api-webhook-svc`, so those Zitadel paths remain unreachable
+  # from the public gateway. The handler additionally verifies the
+  # `Stripe-Signature` header (STRIPE_WEBHOOK_SIGNING_SECRET) and fails closed
+  # (503) when the signing secret is absent (external prerequisite 0.1).
+  #
+  # This rule lives in the base route (not a separate HTTPRoute) so it inherits
+  # the same per-overlay hostname patched onto `fan-api-route`
+  # (api.liverty-music.app / api.dev.liverty-music.app) — no dev/prod hostname
+  # duplication.
+  - matches:
+    - path:
+        type: Exact
+        value: /stripe-webhook
+    backendRefs:
+    - name: fan-api-webhook-svc
+      port: 9090
   # The fan-facing API route (unify-workload-naming). Replaces the old
   # `server-route` at delete-old: it claims the same env hostname
   # (api.liverty-music.app / api.dev.liverty-music.app, set per overlay) and

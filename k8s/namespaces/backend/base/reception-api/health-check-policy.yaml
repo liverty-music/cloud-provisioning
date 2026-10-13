@@ -1,0 +1,14 @@
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: reception-api-policy
+spec:
+  default:
+    config:
+      type: GRPC
+      grpcHealthCheck:
+        port: 8092
+  targetRef:
+    group: ""
+    kind: Service
+    name: reception-api-svc # Referenced via kustomizeconfig.yaml 'nameReference'

@@ -1,0 +1,16 @@
+{
+	// Type-checks the lint scripts, which Node 24 runs directly by stripping
+	// types (no build step), hence the explicit `.ts` import extensions.
+	"compilerOptions": {
+		"strict": true,
+		"target": "es2022",
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"allowImportingTsExtensions": true,
+		"erasableSyntaxOnly": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"types": ["node"]
+	},
+	"include": ["**/*.ts"]
+}

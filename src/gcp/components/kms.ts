@@ -70,7 +70,10 @@ export class KmsComponent extends pulumi.ComponentResource {
 				name: 'gke-etcd-encryption',
 				keyRing: this.keyRing.id,
 				purpose: 'ENCRYPT_DECRYPT',
-				rotationPeriod: '7776000s', // 90 days
+				// 365 days: each key version is billed while active, and etcd
+				// encryption has no compliance rule requiring faster rotation
+				// (optimize-prod-gke-cost D8).
+				rotationPeriod: '31536000s',
 				versionTemplate: {
 					algorithm: 'GOOGLE_SYMMETRIC_ENCRYPTION',
 					protectionLevel: 'SOFTWARE',
