@@ -168,6 +168,9 @@ export class Zitadel {
 	/** Instance-level OIDC token lifetimes (access 30m, refresh idle 30d,
 	 *  refresh absolute 90d). */
 	public readonly defaultOidcSettings: zitadel.DefaultOidcSettings
+	/** Instance default branding (Zitadel's stock colors) with the login name
+	 *  suffix hidden; applies to every org without its own LabelPolicy. */
+	public readonly defaultLabelPolicy: zitadel.DefaultLabelPolicy
 	public readonly adminOrg: zitadel.Org
 	public readonly productOrg: zitadel.Org
 	public readonly project: zitadel.Project
@@ -261,6 +264,40 @@ export class Zitadel {
 				idTokenLifetime: '12h0m0s',
 				refreshTokenExpiration: '2160h0m0s', // 90d (absolute)
 				refreshTokenIdleExpiration: '720h0m0s', // 30d (idle)
+			},
+			{ provider: this.provider },
+		)
+
+		// Instance default label policy. It is the branding of every org that
+		// has no LabelPolicy of its own: the admin org and each runtime-created
+		// Organizer Organization (the product org has its own, see
+		// `FrontendComponent.labelPolicy`). The organizer console signs in with
+		// the scope `urn:zitadel:iam:org:domain:primary:<org primary domain>`,
+		// and Login v2 then renders `@<short name>.auth.liverty-music.app`
+		// after the login-name input. People type their full email anyway (the
+		// email fallback finds the identity), so the suffix only confuses them:
+		// `hideLoginNameSuffix` removes it.
+		//
+		// Every other value is the instance's value at creation (Zitadel's
+		// stock palette, read from prod on 2026-10-16), kept unchanged so this
+		// resource only flips the suffix. `setActive` activates the policy
+		// instead of leaving it as a preview. See OpenSpec change
+		// `reuse-fan-email-for-organizer-sign-in`.
+		this.defaultLabelPolicy = new zitadel.DefaultLabelPolicy(
+			`${name}-default-label-policy`,
+			{
+				primaryColor: '#5469d4',
+				warnColor: '#cd3d56',
+				backgroundColor: '#fafafa',
+				fontColor: '#000000',
+				primaryColorDark: '#2073c4',
+				backgroundColorDark: '#111827',
+				warnColorDark: '#ff3b5b',
+				fontColorDark: '#ffffff',
+				themeMode: 'THEME_MODE_AUTO',
+				disableWatermark: false,
+				hideLoginNameSuffix: true,
+				setActive: true,
 			},
 			{ provider: this.provider },
 		)
