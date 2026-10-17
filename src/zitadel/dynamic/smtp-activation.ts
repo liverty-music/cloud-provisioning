@@ -222,7 +222,7 @@ function isAlreadyActive(body: string): boolean {
  * SMTP `INACTIVE` (the `@pulumiverse/zitadel.SmtpConfig` v0.2.0 resource
  * provisions configuration but does not call the separate `_activate`
  * admin endpoint), and first-sign-up email verification fails until an
- * operator runs `curl POST /admin/v1/smtp/{id}/_activate` manually.
+ * admin runs `curl POST /admin/v1/smtp/{id}/_activate` manually.
  *
  * Reactivation is idempotent: the upstream returns success when called
  * against an already-active SMTP, so this resource may be safely created

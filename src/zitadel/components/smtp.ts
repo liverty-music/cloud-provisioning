@@ -56,7 +56,7 @@ export class SmtpComponent extends pulumi.ComponentResource {
 		// endpoint that Zitadel v4 requires before SMTP traffic flows. Without
 		// this Dynamic Resource, every Zitadel rebuild silently re-introduces
 		// the cutover §13.16 incident (first-sign-up email verification
-		// failing) until an operator remembers to run the `_activate` curl.
+		// failing) until an admin remembers to run the `_activate` curl.
 		this.smtpActivation = new ZitadelSmtpActivation(
 			'smtp-activation',
 			{

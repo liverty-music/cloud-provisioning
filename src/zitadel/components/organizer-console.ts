@@ -4,19 +4,19 @@ import type { Environment } from '../../config.js'
 import { baseDomainMap } from '../constants.js'
 
 /**
- * Project role key for the Organizer console: the tenant **owner** — the
- * principal operator of one Organizer. An operator granted this role on a
- * Project-Granted Organizer tenant org carries `owner` in the token's
+ * Project role key for the Organizer console: **owner**, a member role — the
+ * role of the member who owns one Organizer. A member granted this role in a
+ * Project-Granted Organizer's Organization carries `owner` in the token's
  * `urn:zitadel:iam:org:project:roles` claim; the organizer API server's authz
  * gate reads exactly this string, so the two MUST stay in sync — changing this
  * value requires a matching backend change. Only `owner` is defined now; the
  * sub-owner roles (`editor`, `viewer`, `reception`) are a later change.
  *
  * Named `owner`, NOT `admin`: `admin` already denotes the Liverty Music-internal
- * operator role on the separate `admin-console` project
+ * admin role on the separate `admin-console` project
  * (`ADMIN_CONSOLE_ROLE_ADMIN`), so reusing it would overload the roles claim
- * and collide with Zitadel's own admin concepts. This principal is the
- * tenant's owner, not a platform administrator — `owner` is the accurate,
+ * and collide with Zitadel's own admin concepts. This member is the
+ * Organizer's owner, not a platform administrator — `owner` is the accurate,
  * industry-standard term (cf. Zitadel `ORG_OWNER`).
  */
 export const ORGANIZER_CONSOLE_ROLE_OWNER = 'owner'
@@ -26,10 +26,11 @@ export interface OrganizerConsoleComponentArgs {
 	/**
 	 * ID of the `liverty-music` product org. The `organizer-console` project
 	 * (its role + apps) is owned here — the console is a Liverty Music product
-	 * surface — and is Project-Granted to each Organizer tenant org at runtime
-	 * (the grant itself is NOT created by IaC). The owner org is only the
-	 * project's administrative home; operators authenticate in their own tenant
-	 * org, so this org's login policy never applies to them.
+	 * surface — and is Project-Granted to each Organizer's Organization at
+	 * runtime (the grant itself is NOT created by IaC). The owning product org
+	 * is only the project's administrative home; members authenticate in their
+	 * Organizer's Organization, so this org's login policy never applies to
+	 * them.
 	 */
 	productOrgId: pulumi.Input<string>
 	provider: zitadel.Provider
@@ -37,26 +38,27 @@ export interface OrganizerConsoleComponentArgs {
 
 /**
  * OrganizerConsoleComponent provisions the static Zitadel scaffolding for the
- * Organizer B2B tenancy model: a single, actor-named `organizer-console`
- * Project in the product org that every Organizer tenant shares via Project
- * Grant, plus the OIDC client the console SPA uses and the `backend-api` app
- * that names the audience the organizer API server validates.
+ * one-Organization-per-Organizer model: a single, actor-named
+ * `organizer-console` Project in the product org that every Organizer's
+ * Organization shares via Project Grant, plus the OIDC client the console SPA
+ * uses and the `backend-api` app that names the audience the organizer API
+ * server validates.
  *
  * ## Why actor-named, shared, and in the product org
  *
  * - **Actor-named (`organizer-console`, not generic `console`)** so a future
  *   `venue-console` never collides — RBAC (roles/grants) is project-scoped, so
  *   a distinct actor gets a distinct project.
- * - **Shared, single OIDC app** — one client serves operators of any Organizer
- *   tenant org; per-tenant isolation comes from the tenant org + Project Grant,
- *   not from a per-tenant app.
+ * - **Shared, single OIDC app** — one client serves the members of every
+ *   Organizer; isolation per Organizer comes from the Organizer's Organization
+ *   + Project Grant, not from an app per Organizer.
  * - **Owned by the product org** (not the internal-only `admin` org nor a new
  *   `platform` org) because the organizer console is an external-facing product
  *   surface; a *separate* project (not the fan `liverty-music` project) keeps
  *   its roles/grants/branding independent. See `docs/zitadel-tenancy-model.md`.
  *
- * This component provisions ONLY the project + role + apps. Per-Organizer
- * tenant orgs, their Project Grants, User Grants, and the passkey-only login
+ * This component provisions ONLY the project + role + apps. The Organizations
+ * per Organizer, their Project Grants, User Grants, and the passkey-only login
  * policy are runtime concerns of the later `organizer-accounts` change.
  */
 export class OrganizerConsoleComponent extends pulumi.ComponentResource {
@@ -99,7 +101,7 @@ export class OrganizerConsoleComponent extends pulumi.ComponentResource {
 		// server actually reads are turned on by `accessTokenRoleAssertion` on
 		// the OIDC app below. projectRoleCheck stays OFF so sign-in is not
 		// blocked on a missing grant — authorization is enforced at the backend,
-		// keeping the login flow resilient (an operator whose grant has not yet
+		// keeping the login flow resilient (a member whose grant has not yet
 		// been created can still authenticate).
 		this.project = new zitadel.Project(
 			'organizer-console',
@@ -113,8 +115,8 @@ export class OrganizerConsoleComponent extends pulumi.ComponentResource {
 			resourceOptions,
 		)
 
-		// The single `owner` role. Granted to an operator on their Organizer
-		// tenant org via a runtime User Grant (in `organizer-accounts`). The
+		// The single `owner` role. Granted to the owner in their Organizer's
+		// Organization via a runtime User Grant (in `organizer-accounts`). The
 		// sub-owner roles (editor/viewer/reception) are out of scope here.
 		this.ownerRole = new zitadel.ProjectRole(
 			'organizer-console-owner',
@@ -129,7 +131,7 @@ export class OrganizerConsoleComponent extends pulumi.ComponentResource {
 
 		// Organizer console OIDC app — mirrors the admin console / consumer SPA
 		// settings (public SPA, PKCE, no secret), a single client serving every
-		// Organizer tenant. Redirect URIs carry the organizer host per env.
+		// Organizer's Organization. Redirect URIs carry the organizer host per env.
 		this.application = new zitadel.ApplicationOidc(
 			'organizer-console',
 			{

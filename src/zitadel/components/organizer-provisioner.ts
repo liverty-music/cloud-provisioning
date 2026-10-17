@@ -16,10 +16,10 @@ export interface OrganizerProvisionerComponentArgs {
 
 /**
  * OrganizerProvisionerComponent provisions the dedicated machine user the
- * backend uses at runtime to provision Organizer tenant orgs: creating one
- * Zitadel Organization per vetted Organizer and wiring its cross-org Project
- * Grant (to the product org's `organizer-console` project) and the operator's
- * User Grant.
+ * backend uses at runtime to provision each Organizer's Organization: creating
+ * one Zitadel Organization per vetted Organizer and wiring its cross-org
+ * Project Grant (to the product org's `organizer-console` project) and the
+ * owner's User Grant.
  *
  * ## Least privilege: IAM_ORG_MANAGER, not IAM_OWNER
  *
