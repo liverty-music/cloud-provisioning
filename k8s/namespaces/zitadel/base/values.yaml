@@ -318,8 +318,9 @@ login:
   #
   # The login-config-dotenv ConfigMap (`/.env-file/.env`, sourced by the
   # image entrypoint with allexport, so container `env` cannot override it).
-  # This is the chart 10.4.0 default restated line for line, with ONE change:
-  # the public-host header key is lowercase. The Login UI's
+  # This is the chart 10.4.0 default restated line for line, with TWO changes.
+  #
+  # First, the public-host header key is lowercase. The Login UI's
   # GetSecuritySettings call (apps/login/src/lib/server/security-settings.ts)
   # builds headers in a plain object, sets `x-zitadel-public-host` itself and
   # then applies CUSTOM_REQUEST_HEADERS; the chart's `X-Zitadel-Public-Host`
@@ -331,14 +332,28 @@ login:
   #
   # Keep both headers: dropping X-Zitadel-Public-Host breaks instance
   # discovery for cluster-internal callers (see InstanceHostHeaders above).
+  #
+  # Second, ZITADEL_UI_LOCALES_OVERRIDE_COOKIE is ours, not the chart's (OpenSpec
+  # change carry-locale-across-auth-boundaries, design D3). The fan app and the
+  # organizer console send OIDC `ui_locales` with the language they show. At
+  # v4.19.4 the Login UI writes `ui_locales` into its NEXT_LOCALE cookie only
+  # when no cookie exists (apps/login/src/lib/server/flow-initiation.ts), unless
+  # this flag is "true" (apps/login/src/lib/i18n.ts); the cookie then wins over
+  # the request (apps/login/src/i18n/request.ts). Without it, a cookie left by
+  # an earlier visit or the in-login selector overrides the app's language.
+  # The admin app sends no `ui_locales`, so it is unaffected.
+  #
   # This replaces the chart's generated file, so re-check it against
-  # templates/configmap_login.yaml on chart upgrades, and delete this block
-  # once upstream builds those headers with `new Headers()`.
+  # templates/configmap_login.yaml on chart upgrades, keeping the
+  # ZITADEL_UI_LOCALES_OVERRIDE_COOKIE line. Once upstream builds those headers
+  # with `new Headers()`, reduce the block to the chart default plus that line
+  # (or move it to a chart value if one appears).
   customConfigmapConfig: |-
     ZITADEL_LOGINCLIENT_KEYFILE="/login-service-key/tls.key"
     AUDIENCE="https://${ZITADEL_EXTERNALDOMAIN}"
     ZITADEL_API_URL="http://zitadel-api:80"
     CUSTOM_REQUEST_HEADERS="Host:${ZITADEL_EXTERNALDOMAIN},x-zitadel-public-host:${ZITADEL_EXTERNALDOMAIN}"
+    ZITADEL_UI_LOCALES_OVERRIDE_COOKIE="true"
 
   resources:
     requests:
