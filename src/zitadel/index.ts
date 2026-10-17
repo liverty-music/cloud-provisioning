@@ -127,7 +127,7 @@ export interface ZitadelArgs {
  *
  * - **`admin` role org** — created by Zitadel at first-instance bootstrap
  *   because the configmap sets `ZITADEL_FIRSTINSTANCE_ORG_NAME=admin`.
- *   Hosts operator identities only: `pulumi-admin` (machine, IaC and
+ *   Hosts admin identities only: `pulumi-admin` (machine, IaC and
  *   break-glass) and human
  *   admins like `pannpers@pannpers.dev` (Google SSO via instance-level
  *   IdP). Holds an explicit `LoginPolicy` that disables username +
@@ -194,11 +194,12 @@ export class Zitadel {
 	public readonly e2eTestUser: E2eTestUserComponent
 
 	/** Shared `organizer-console` project (`owner` role + OIDC/API apps) in
-	 *  the product org, the static scaffolding for the Organizer B2B tenancy. */
+	 *  the product org, the static scaffolding shared by every Organizer's
+	 *  Organization. */
 	public readonly organizerConsole: OrganizerConsoleComponent
 
 	/** Dedicated `organizer-provisioner` machine user (IAM_ORG_MANAGER) used by
-	 *  the backend to provision Organizer tenant orgs at runtime. */
+	 *  the backend to provision each Organizer's Organization at runtime. */
 	public readonly organizerProvisioner: OrganizerProvisionerComponent
 
 	/** JWT profile JSON for the organizer-provisioner machine user. Store in
@@ -361,7 +362,7 @@ export class Zitadel {
 		// Topology invariant — no third IaC-managed org. Pulumi declares
 		// exactly these two `zitadel.Org` resources (`admin`, `liverty-music`)
 		// and NEVER enumerates the instance's orgs (no `getOrgs` data source, no
-		// import of any other org). Runtime-provisioned Organizer tenant orgs
+		// import of any other org). Runtime-provisioned Organizer Organizations
 		// (one per vetted Organizer, created out-of-band via the Zitadel
 		// Management API by the `organizer-provisioner` machine user) are
 		// therefore invisible to Pulumi state — they are neither reconciled nor
@@ -475,11 +476,12 @@ export class Zitadel {
 
 		this.machineKeyDetails = this.machineUser.keyDetails
 
-		// Organizer B2B tenancy scaffolding — the shared `organizer-console`
-		// project (its `owner` role + OIDC/API apps) owned by the product org.
-		// It is Project-Granted to each Organizer tenant org at runtime (the
-		// grant is NOT IaC-managed). Only the static project/role/apps live
-		// here; per-tenant orgs, grants, and login policy are the runtime
+		// Scaffolding shared by every Organizer's Organization — the shared
+		// `organizer-console` project (its `owner` role + OIDC/API apps) owned
+		// by the product org. It is Project-Granted to each Organizer's
+		// Organization at runtime (the grant is NOT IaC-managed). Only the
+		// static project/role/apps live here; the Organizations, grants, and
+		// login policy per Organizer are the runtime
 		// concern of the later `organizer-accounts` change. See OpenSpec change
 		// `organizer-tenancy`.
 		this.organizerConsole = new OrganizerConsoleComponent(name, {
@@ -490,7 +492,7 @@ export class Zitadel {
 
 		// Dedicated provisioner machine user (IAM_ORG_MANAGER at instance
 		// level) — the credential the backend uses at runtime to create
-		// Organizer tenant orgs and their cross-org Project/User Grants.
+		// Organizer Organizations and their cross-org Project/User Grants.
 		// Isolated from the single-org `backend-app` user for blast-radius
 		// control. Its JWT key flows to GSM
 		// (`zitadel-machine-key-for-organizer-provisioner`) via the parent

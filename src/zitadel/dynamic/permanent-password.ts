@@ -59,7 +59,7 @@ interface PermanentPasswordOutputs extends PermanentPasswordInputs {
  * Why `update()` re-POSTs even with unchanged inputs:
  *
  * - Cheap (one token exchange + one POST) and gives drift recovery for
- *   free if an operator manually clears the permanence flag in the
+ *   free if an admin manually clears the permanence flag in the
  *   Zitadel admin console. The smtp-activation precedent takes the
  *   opposite stance because re-activating SMTP fires an email-rotation
  *   side-effect downstream; `SetPassword` has no equivalent side-effect.

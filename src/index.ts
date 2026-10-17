@@ -42,9 +42,9 @@ const geminiSearchApiKey = config.getSecret('geminiSearchApiKey')
 // (spec: identity-verification), sourced via `esc env set liverty-music/<env>
 // pulumiConfig.pocketSignToken "sk_..." --secret`. MVP DECISION: every env,
 // INCLUDING prod, uses the FREE mock/sandbox token (verify.mock.p8n.app) — the
-// paid 加盟契約 + prod tenant are POST-MVP. Conditionally seeds a GSM secret read
-// by fan-api via ESO; when unset the backend falls back to StubVerifier
-// (UNAVAILABLE), so verification is simply unavailable rather than broken.
+// paid 加盟契約 + Liverty Music's prod account at Pocket Sign are POST-MVP.
+// Conditionally seeds a GSM secret read by fan-api via ESO; when unset the
+// backend falls back to StubVerifier (UNAVAILABLE), so verification is simply unavailable rather than broken.
 const pocketSignToken = config.getSecret('pocketSignToken')
 // Stripe secret key for the lottery ticketing flow (④). For the current
 // milestone this is a **test-mode** key (`sk_test_…`) so prod runs the lottery
@@ -145,7 +145,7 @@ const stripeWebhookEndpoint = stripeWebhookAdminKey
 			// dispute and refund events the settlement flow depends on, and it
 			// would fail silently: money-out keeps working, only the clawback
 			// path goes dark. A `pulumi destroy --target`, a URN-changing rename
-			// or an operator slip should not be able to do that. Removal requires
+			// or an admin's slip should not be able to do that. Removal requires
 			// a deliberate `pulumi state unprotect` first — the same
 			// blast-radius-proportional barrier used on the prod-CI Artifact
 			// Registry grants. This does not change what `delete` does; it
@@ -454,7 +454,7 @@ new GitHubRepositoryComponent({
 					INCIDENT_TRIAGE_SA_EMAIL: gcp.incidentTriageSAEmail,
 				}
 			: sharedVariables,
-	// Kill switch for automated incident triage. Created disabled; operators
+	// Kill switch for automated incident triage. Created disabled; admins
 	// flip it in the GitHub UI and Pulumi does not revert it.
 	operatorOwnedVariables:
 		env === 'prod' ? { INCIDENT_TRIAGE_ENABLED: 'false' } : undefined,
@@ -501,7 +501,7 @@ export const githubEnv = env
 
 // Frontend SPA OIDC client_id + product-org id — consumed by the
 // frontend repo's `.env.{dev,prod}` to bake into the SPA bundle at
-// build time. Operators retrieve via `pulumi stack output
+// build time. Retrieved via `pulumi stack output
 // webFrontendClientId` / `pulumi stack output productOrgId` after
 // `pulumi up`. See OpenSpec change `prepare-prod-service-in` §1.2 /
 // §2.3 for the prod consumption path; the identity-management spec's
@@ -544,8 +544,8 @@ export const productOrgId: string | pulumi.Output<string> =
 
 // Admin console OIDC client_id + admin-org id — consumed by the admin
 // runtime ConfigMap (`admin-app-runtime-config`) that serves the admin
-// pod's `/config.json` (admin org id + admin client id). Operators
-// retrieve via `pulumi stack output adminConsoleClientId` / `pulumi stack
+// pod's `/config.json` (admin org id + admin client id). Retrieved
+// via `pulumi stack output adminConsoleClientId` / `pulumi stack
 // output adminOrgId` after `pulumi up`. Same `DEV_SHUTDOWN_SENTINEL`
 // fallback contract as the consumer exports above (the Zitadel
 // orchestrator is skipped while `workloadEnabled=false`). The admin org
@@ -561,18 +561,18 @@ export const adminOrgId: string | pulumi.Output<string> =
 // Organizer console OIDC client_id — the shared client the organizer console
 // SPA will bake into its bundle at build time (consumed by the later
 // `organizer-console` change). The product-org id is already exported above as
-// `productOrgId` (the console authenticates operators in their own tenant org,
-// but the OIDC app is owned by the product org). Same `DEV_SHUTDOWN_SENTINEL`
-// fallback contract as the other Zitadel exports. See OpenSpec change
-// `organizer-tenancy`.
+// `productOrgId` (the console authenticates each member in their Organizer's
+// Organization, but the OIDC app is owned by the product org). Same
+// `DEV_SHUTDOWN_SENTINEL` fallback contract as the other Zitadel exports. See
+// OpenSpec change `organizer-tenancy`.
 export const organizerConsoleClientId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.application.clientId ?? DEV_SHUTDOWN_SENTINEL
 
 // Organizer console Zitadel project id — the backend admin workload
-// (admin-console-api) needs this to grant each newly provisioned operator org
-// access to the organizer-console project (via a runtime User Grant) during
-// Organizer tenant provisioning. Same `DEV_SHUTDOWN_SENTINEL` fallback contract
-// as the other Zitadel exports. See OpenSpec change `organizer-accounts`.
+// (admin-console-api) needs this to grant each newly provisioned Organizer's
+// Organization access to the organizer-console project (via a runtime User
+// Grant) during Organizer provisioning. Same `DEV_SHUTDOWN_SENTINEL` fallback
+// contract as the other Zitadel exports. See OpenSpec change `organizer-accounts`.
 export const organizerConsoleProjectId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
 
