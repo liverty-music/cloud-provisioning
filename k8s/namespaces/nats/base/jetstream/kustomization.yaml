@@ -41,4 +41,5 @@ resources:
 - consumer-log-poison.yaml
 - consumer-process-series-image.yaml
 - consumer-send-order-confirmation.yaml
+- consumer-send-resale-sold.yaml
 - consumer-mark-ticket-journey-paid.yaml
