@@ -1,5 +1,6 @@
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
+import * as random from '@pulumi/random'
 import * as tls from '@pulumi/tls'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import type { Environment } from '../config.js'
@@ -437,6 +438,23 @@ export class Gcp {
 						allowedUses: ['digital_signature'],
 					})
 				: undefined
+			// Secret the Login V2 pod signs its session cookie with (Zitadel
+			// v4.19.2+, chart `login.sessionCookieSecretName`). Without it the
+			// Login UI derives the key from the login service key above
+			// (deprecated), so rotating that key signs every user out. Kept in
+			// Pulumi state so re-applying the stack keeps the same value; a
+			// new value signs users out of the Login UI once. Alphanumeric so
+			// the value cannot be read as a list separator (the Login UI splits
+			// on commas to allow rotation).
+			const zitadelLoginSessionCookieSecret = zitadelEnabled
+				? new random.RandomString(
+						'zitadel-login-session-cookie-secret',
+						{
+							length: 64,
+							special: false,
+						},
+					)
+				: undefined
 
 			const kubernetes = new KubernetesComponent('kubernetes-cluster', {
 				project: this.project,
@@ -653,6 +671,18 @@ export class Gcp {
 									name: 'zitadel-login-service-key-key',
 									value: pulumi.secret(
 										zitadelLoginServiceKey.privateKeyPem,
+									),
+								},
+							]
+						: []),
+					// Session cookie signing secret for the Login V2 pod. ESO mirrors
+					// it into the Secret named by `login.sessionCookieSecretName`.
+					...(zitadelLoginSessionCookieSecret
+						? [
+								{
+									name: 'zitadel-login-session-cookie-secret',
+									value: pulumi.secret(
+										zitadelLoginSessionCookieSecret.result,
 									),
 								},
 							]
