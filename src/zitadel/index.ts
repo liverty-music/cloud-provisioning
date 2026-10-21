@@ -19,6 +19,7 @@ import { SmtpComponent } from './components/smtp.js'
 import {
 	adminOrgIdMap,
 	BACKEND_WEBHOOK_BASE_URL,
+	e2eTestFanSlots,
 	LOGIN_EVENT_PATH,
 	PRE_ACCESS_TOKEN_PATH,
 	zitadelDomainMap,
@@ -192,6 +193,8 @@ export class Zitadel {
 	public readonly adminRoleGrant: zitadel.UserGrant
 	/** Password-based Playwright E2E test user (every environment). */
 	public readonly e2eTestUser: E2eTestUserComponent
+	/** Extra E2E fans (`e2eTestFanSlots`), sharing the main user's password. */
+	public readonly e2eTestFans: E2eTestUserComponent[]
 
 	/** Shared `organizer-console` project (`owner` role + OIDC/API apps) in
 	 *  the product org, the static scaffolding shared by every Organizer's
@@ -590,5 +593,19 @@ export class Zitadel {
 			jwtProfileJson,
 			provider: this.provider,
 		})
+		// Extra fans for stories with more than one fan (official resale:
+		// one fan buys another's listing, two fans race for one).
+		this.e2eTestFans = e2eTestFanSlots.map(
+			(slot) =>
+				new E2eTestUserComponent(`${name}-${slot}`, {
+					env,
+					orgId: this.productOrg.id,
+					initialPassword: e2eTestUserPassword,
+					domain,
+					jwtProfileJson,
+					provider: this.provider,
+					slot,
+				}),
+		)
 	}
 }

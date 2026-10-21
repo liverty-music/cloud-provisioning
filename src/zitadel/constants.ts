@@ -31,6 +31,26 @@ export const e2eTestUserEmailMap: Record<Environment, string> = {
 }
 
 /**
+ * Extra password-based E2E test users, for stories that need more than one
+ * fan (one fan buys another's resale listing; two fans race for the last
+ * one). Each slot is `e2e-test-password-<slot>@<base domain>`, with the same
+ * password as the main E2E test user.
+ */
+export const e2eTestFanSlots = ['fan2', 'fan3'] as const
+
+export type E2eTestFanSlot = (typeof e2eTestFanSlots)[number]
+
+/** Email of the E2E test user of `slot` (the main user without one). */
+export function e2eTestUserEmail(
+	env: Environment,
+	slot?: E2eTestFanSlot,
+): string {
+	return slot
+		? `e2e-test-password-${slot}@${baseDomainMap[env]}`
+		: e2eTestUserEmailMap[env]
+}
+
+/**
  * Zitadel issuer hostname per environment.
  *
  *     https://auth.dev.liverty-music.app
