@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../../config.js'
-import { e2eTestUserEmailMap } from '../constants.js'
+import { type E2eTestFanSlot, e2eTestUserEmail } from '../constants.js'
 import { ZitadelHumanUserPasswordPermanent } from '../dynamic/permanent-password.js'
 
 export interface E2eTestUserComponentArgs {
@@ -31,6 +31,10 @@ export interface E2eTestUserComponentArgs {
 	 *  GCP Secret Manager for the other dynamic resources. */
 	jwtProfileJson: pulumi.Input<string>
 	provider: zitadel.Provider
+	/** An extra fan for multi-fan stories (`e2eTestFanSlots`). Absent for the
+	 *  main test user, whose resource names and email stay as first
+	 *  provisioned. A slot's user shares the main user's password. */
+	slot?: E2eTestFanSlot
 }
 
 /**
@@ -136,8 +140,11 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 			domain,
 			jwtProfileJson,
 			provider,
+			slot,
 		} = args
-		const email = e2eTestUserEmailMap[env]
+		const email = e2eTestUserEmail(env, slot)
+		// The main user keeps its original resource names (and URNs).
+		const suffix = slot ? `-${slot}` : ''
 
 		// Env guard removed per `refactor-unify-env-dispatch` D2: the parent
 		// `Zitadel` class gates instantiation via `if (env === 'dev')`. The
@@ -145,7 +152,7 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 		// wherever it's instantiated. The caller decides if-and-when.
 
 		this.humanUser = new zitadel.HumanUser(
-			'e2e-test-password',
+			`e2e-test-password${suffix}`,
 			{
 				orgId,
 				// userName + email aligned so Login V2's username field accepts
@@ -154,7 +161,9 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 				userName: email,
 				email,
 				firstName: 'E2E',
-				lastName: 'Password Test User',
+				lastName: slot
+					? `Password Test User ${slot}`
+					: 'Password Test User',
 				preferredLanguage: 'en',
 				// Pre-verified so the headless OIDC flow does not hit the
 				// Self-Registration OTP step. Paired with `initialPassword`
@@ -193,7 +202,7 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 		// new user with the new password — rotation works end-to-end
 		// with a single `--replace` on the HumanUser URN.
 		this.passwordPermanent = new ZitadelHumanUserPasswordPermanent(
-			'e2e-test-password-permanent',
+			`e2e-test-password${suffix}-permanent`,
 			{
 				domain,
 				jwtProfileJson,
