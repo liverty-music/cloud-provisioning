@@ -30,6 +30,8 @@ namespace: zitadel
 #   (chart reads via `zitadel.masterkeySecretName`)
 # - external-secret-login-service-key.yaml: ESO-managed TLS Secret for the
 #   Login V2 client's X.509 key (chart 10.x `login.loginServiceKeySecretName`)
+# - external-secret-login-session-cookie.yaml: ESO-managed Secret the Login V2
+#   pod signs its session cookie with (`login.sessionCookieSecretName`)
 # - external-secret-postgres-admin.yaml: ESO-managed Postgres admin
 #   password Secret (used by overlay `job-grant-db.yaml`)
 resources:
@@ -40,6 +42,7 @@ resources:
 - external-secret.yaml
 - external-secret-postgres-admin.yaml
 - external-secret-login-service-key.yaml
+- external-secret-login-session-cookie.yaml
 
 labels:
 - includeSelectors: false
