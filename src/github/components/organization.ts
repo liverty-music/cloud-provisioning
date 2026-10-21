@@ -77,6 +77,15 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			// same branch protection a human merge does. The strategy is
 			// merge-commit only, since squash and rebase are both false above.
 			allowAutoMerge: true,
+			// Secret scanning and push protection are free for PUBLIC
+			// repositories only, and all five are public. A repository that
+			// turns private on GitHub Free or Team needs GitHub Secret
+			// Protection for these, so drop them (or buy it) in the same
+			// change that flips its visibility (#665).
+			securityAndAnalysis: {
+				secretScanning: { status: 'enabled' },
+				secretScanningPushProtection: { status: 'enabled' },
+			},
 		}
 
 		// Create repositories

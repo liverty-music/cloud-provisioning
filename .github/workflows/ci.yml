@@ -62,13 +62,6 @@ jobs:
       - name: Run make lint-ts
         run: make lint-ts
 
-  lint-skip:
-    needs: changes
-    if: needs.changes.outputs.src == 'false'
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "No relevant changes, skipping lint"
 
   test:
     needs: changes
@@ -90,21 +83,14 @@ jobs:
       - name: Run make test
         run: make test
 
-  test-skip:
-    needs: changes
-    if: needs.changes.outputs.src == 'false'
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "No relevant changes, skipping tests"
 
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [changes, lint, lint-skip, test, test-skip]
+    needs: [changes, lint, test]
     if: always()
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # release/v1
         with:
-          allowed-skips: lint, lint-skip, test, test-skip
+          allowed-skips: lint, test
           jobs: ${{ toJSON(needs) }}
