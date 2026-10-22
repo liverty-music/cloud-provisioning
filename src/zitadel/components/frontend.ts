@@ -30,9 +30,18 @@ export class FrontendComponent extends pulumi.ComponentResource {
 		// Ternary spread (per `refactor-unify-env-dispatch`): localhost URIs
 		// are only meaningful when env === 'dev'. Other envs receive the
 		// public domain only.
+		// `/auth/passkeys-callback` is the passkey-management sign-in (a second
+		// OIDC request with `max_age=300` on the same client; OpenSpec change
+		// `fan-passkey-recovery-and-management`, design D3).
 		const redirectUris = [
 			`https://${domain}/auth/callback`,
-			...(env === 'dev' ? ['http://localhost:9000/auth/callback'] : []),
+			`https://${domain}/auth/passkeys-callback`,
+			...(env === 'dev'
+				? [
+						'http://localhost:9000/auth/callback',
+						'http://localhost:9000/auth/passkeys-callback',
+					]
+				: []),
 		]
 		const postLogoutRedirectUris = [
 			`https://${domain}/`,
