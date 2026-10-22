@@ -20,9 +20,12 @@ on:
   # `push-image.yaml` after a successful prod-AR retag. Runs unattended.
   repository_dispatch:
     types: [bump-prod-pin]
-  # Manual recovery path for a dropped/lost dispatch. Admin-gated via the
-  # `prod-pin` Environment (see the conditional `environment:` below) so it
-  # cannot be used to force an unreviewed prod change.
+  # Manual recovery path for a dropped/lost dispatch. It runs the same
+  # provenance gate and no-downgrade guard as the automated path, so it can
+  # only pin a tag whose prod image exists, and only forward unless
+  # `allow_rollback` is set. There is no approval step: the only member would
+  # approve their own run, and every other path to prod (a Release, a merged
+  # overlay change, `git revert`) has none either.
   workflow_dispatch:
     inputs:
       component:
@@ -74,14 +77,6 @@ env:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    # Conditional environment (OpenSpec design D8): the required-reviewer rule
-    # on the `prod-pin` Environment fires for EVERY job that references it
-    # (Environment protection rules have no trigger-type filter). Binding it
-    # unconditionally would also stall the automated `repository_dispatch`
-    # path on admin approval. So bind it ONLY on the manual trigger:
-    #   - workflow_dispatch -> `prod-pin` -> pauses for admin approval
-    #   - repository_dispatch -> '' (empty) -> runs unattended
-    environment: ${{ github.event_name == 'workflow_dispatch' && 'prod-pin' || '' }}
     permissions:
       # Push the bump commit to `main` with the built-in token (the
       # `github-actions[bot]` actor, which branch protection lets bypass).

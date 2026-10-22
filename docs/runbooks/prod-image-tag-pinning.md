@@ -138,7 +138,7 @@ pending-1, never a third) — no eviction.
 > `component: frontend` path (OpenSpec change `batch-frontend-prod-pin-dispatch`
 > task 4.4). The only accepted components are now `backend` and `frontend`.
 
-## Manual recovery: `workflow_dispatch` fallback (admin-only)
+## Manual recovery: `workflow_dispatch` fallback
 
 If a dispatch is dropped (e.g. a transient GitHub outage between the release
 workflow and `cloud-provisioning`), the bump never lands. Recover by running
@@ -154,36 +154,17 @@ The `component` input is a choice of `backend | frontend`. For a dropped
 atomically. An intentional rollback additionally needs `-f allow_rollback=true`
 (the no-downgrade guard fails closed otherwise).
 
-This path is **admin-gated**: `workflow_dispatch` runs bind the `prod-pin`
-GitHub Environment (via the conditional `environment:` expression
-`${{ github.event_name == 'workflow_dispatch' && 'prod-pin' || '' }}`), which has
-a required-reviewer rule, so the run pauses for admin approval before the bump
-executes. The automated `repository_dispatch` path resolves the environment to
-empty and runs unattended. The provenance gate AND the no-downgrade guard apply
-identically, so even an approved manual run cannot pin a tag whose prod image
-does not exist, nor silently roll prod backward.
+The manual run goes through the same provenance gate and no-downgrade guard as
+the automated path, so it cannot pin a tag whose prod image does not exist, nor
+roll prod backward without `allow_rollback`. It has no approval step. An
+admin-reviewer Environment (`prod-pin`) used to gate it, but it was removed
+(liverty-music/cloud-provisioning#665): the only org member was also the only
+reviewer, so it added a self-approval click and nothing more; every other path
+to prod (a Release, a merged overlay change, `git revert`) has no approval
+either; and required reviewers are unavailable for private repositories on
+GitHub Free and Team.
 
-This is a privileged recovery operation, **not** a routine path — use it only
-to replay a genuinely-dropped dispatch.
-
-**What the approval does and does not stop.** The only org member is also the
-only reviewer, self-review is allowed and admins can bypass, so the approval is
-a deliberate click in the GitHub UI rather than a second person. It does not
-stop an agent: Claude Code runs `gh` with the owner's token and could approve
-through `POST …/pending_deployments`. The guard against agents is the
-user-scope Claude Code `permissions.deny` (dotfiles `.claude/settings.json`):
-`Bash(gh workflow run *bump-prod-pin*)`,
-`Bash(gh api *workflows/bump-prod-pin*/dispatches*)` and
-`Bash(gh api *pending_deployments*)`. Agents write the command for the owner to
-run instead.
-
-**If `cloud-provisioning` turns private.** Required reviewers on an Environment
-work in private repositories on GitHub Enterprise only, not on Free or Team
-(GitHub Docs, "Deployments and environments"). In the same change that flips
-the visibility, drop the `reviewers` of the `prod-pin` Environment in
-`src/github/components/repository.ts`; the manual path then runs without a
-pause, still behind the provenance gate, the no-downgrade guard and the agent
-deny rules above (liverty-music/cloud-provisioning#665).
+Use it only to replay a genuinely-dropped dispatch; it is not a routine path.
 
 ## Rollback (`git revert`)
 
@@ -228,7 +209,7 @@ This is **expected and desired** when the policy is working. A 409 on a tag push
 
 ## Automation setup (one-time)
 
-The `automate-prod-pin-bump` pipeline depends on four pieces of GitHub
+The `automate-prod-pin-bump` pipeline depends on two pieces of GitHub
 configuration. The Pulumi-managed pieces live in `src/github/` and apply on a
 prod `pulumi up`; the rest are documented here because they require an
 out-of-band credential or a setting GitHub does not expose to this provider
@@ -337,15 +318,6 @@ the bump pushes as ci-bot instead.
 
 Verify after apply: a bump push from `bump-prod-pin.yml` lands on `main` without
 a PR; a human direct push to `main` is still rejected (PR + up-to-date required).
-
-### 3. `prod-pin` GitHub Environment (admin reviewer) — cloud-provisioning
-
-The `workflow_dispatch` manual fallback is gated behind the `prod-pin`
-Environment with a required-reviewer (admin) rule, bound **only** on the manual
-trigger via the conditional `environment:` expression in `bump-prod-pin.yml`.
-This Environment is Pulumi-managed in `src/github/` (created on the prod stack);
-the required reviewer is the org admin. Verify by test: a `workflow_dispatch`
-run pauses for approval; a `repository_dispatch` run does NOT.
 
 ## Recovery procedures
 
