@@ -43,6 +43,11 @@ General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claud
 - Stacks import the ESC environments `liverty-music/dev` and `liverty-music/prod`, which both import `liverty-music/common`. ESC `pulumiConfig.<key>` is the config key `liverty-music:<key>`.
 - Set an environment-specific value with `pulumi env set liverty-music/<env> pulumiConfig.<key> --file <path|-> [--secret --string]`. Never use `pulumi config set --secret` (it writes to the stack file), and never pass a value as an argument: it lands in shell history, and a value starting with `-` (a PEM key) is parsed as a flag and echoed in the error.
 
+## Public repository
+
+- **This repository is public**, and so are its Issues, PRs, commit messages and Actions logs. Never write production user data there: no emails, names, user or order IDs, payment or Stripe customer IDs, or log lines that carry them. Quote an ID only when it identifies a resource, not a person, and summarize user-bearing logs instead of pasting them. The same holds for `backend`, `frontend`, `specification` and `.github`.
+- **Visibility is set per repository** in `src/github/components/organization.ts` (`REPOSITORY_VISIBILITY`). Before changing it, follow `docs/runbooks/repository-visibility.md`.
+
 ## Before you act on
 
 - **`pulumi state delete --target-dependents`, or recovery from a state cascade**: read `docs/runbooks/pulumi-state-recovery.md` first. The blast radius follows all transitive dependents, not just a component's subtree; one incident removed 87 resources instead of ~9.

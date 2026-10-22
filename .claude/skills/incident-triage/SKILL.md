@@ -115,7 +115,10 @@ gets posted — so never postpone writing it.
 
 Keep it factual and short. Quote evidence verbatim (trim long output), always with the
 exact command that produced it. Never include credentials, tokens or Secret values, and
-never paste environment variables.
+never paste environment variables. The report is posted as an Issue in a **public**
+repository: never include data about a user either (emails, names, user or order IDs,
+payment IDs, IP addresses). When a log line carries one, quote the line with the value
+replaced by `<redacted>`.
 
 ~~~markdown
 ## Summary
