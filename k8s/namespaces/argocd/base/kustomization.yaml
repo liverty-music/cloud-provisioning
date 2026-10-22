@@ -6,6 +6,7 @@ namespace: argocd
 resources:
 - external-secret.yaml
 - github-access-token.yaml
+- repo-creds.yaml
 
 helmCharts:
 - name: argo-cd

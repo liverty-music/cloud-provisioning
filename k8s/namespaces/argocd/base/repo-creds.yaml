@@ -1,0 +1,37 @@
+# ArgoCD credential template for every repository under
+# https://github.com/liverty-music, so ArgoCD keeps fetching cloud-provisioning
+# and backend (backend-migrations) if one of them turns private
+# (docs/runbooks/repository-visibility.md). While they are public, ArgoCD uses
+# it too.
+#
+# It authenticates as the `liverty-music-cluster-bot` GitHub App, whose private
+# key this cluster already holds for ArgoCD Notifications
+# (github-access-token.yaml). The App has Contents: read and Actions: write and
+# is installed on cloud-provisioning and backend only. ArgoCD mints
+# installation tokens from the key itself.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: argocd-repo-creds-liverty-music
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: google-secret-manager-argocd
+    kind: ClusterSecretStore
+  target:
+    name: argocd-repo-creds-liverty-music
+    creationPolicy: Owner
+    template:
+      metadata:
+        labels:
+          argocd.argoproj.io/secret-type: repo-creds
+      data:
+        type: git
+        url: https://github.com/liverty-music
+        githubAppID: "5190363"
+        githubAppInstallationID: "167958034"
+        githubAppPrivateKey: "{{ .privateKey }}"
+  data:
+  - secretKey: privateKey
+    remoteRef:
+      key: argocd-cluster-bot-private-key
