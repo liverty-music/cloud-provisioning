@@ -166,6 +166,25 @@ does not exist, nor silently roll prod backward.
 This is a privileged recovery operation, **not** a routine path — use it only
 to replay a genuinely-dropped dispatch.
 
+**What the approval does and does not stop.** The only org member is also the
+only reviewer, self-review is allowed and admins can bypass, so the approval is
+a deliberate click in the GitHub UI rather than a second person. It does not
+stop an agent: Claude Code runs `gh` with the owner's token and could approve
+through `POST …/pending_deployments`. The guard against agents is the
+user-scope Claude Code `permissions.deny` (dotfiles `.claude/settings.json`):
+`Bash(gh workflow run *bump-prod-pin*)`,
+`Bash(gh api *workflows/bump-prod-pin*/dispatches*)` and
+`Bash(gh api *pending_deployments*)`. Agents write the command for the owner to
+run instead.
+
+**If `cloud-provisioning` turns private.** Required reviewers on an Environment
+work in private repositories on GitHub Enterprise only, not on Free or Team
+(GitHub Docs, "Deployments and environments"). In the same change that flips
+the visibility, drop the `reviewers` of the `prod-pin` Environment in
+`src/github/components/repository.ts`; the manual path then runs without a
+pause, still behind the provenance gate, the no-downgrade guard and the agent
+deny rules above (liverty-music/cloud-provisioning#665).
+
 ## Rollback (`git revert`)
 
 To roll prod back to the prior version, `git revert` the bump commit on
@@ -408,8 +427,8 @@ for this commit is still in-flight or failed — do NOT re-target an earlier com
 
 **Recovery**:
 1. Check the push-path `Deploy <repo>` run for the same commit SHA — for frontend: `gh run list --repo liverty-music/frontend --branch main --workflow push-image.yaml --limit 10`; for backend: `gh run list --repo liverty-music/backend --branch main --workflow deploy.yml --limit 10`. If it is still in-flight, wait and `gh run rerun --job <job-id>` the failed release matrix entry once it completes. **Do NOT re-target the release to an earlier commit** — main HEAD always has (or will have) an image; re-targeting is the old workaround that this change made unnecessary.
-2. If the push-path job for that SHA **failed**, fix the failure and re-run that run (push-path) so the `:<sha>` (built or inherited) lands in dev AR, then re-run the release matrix entry / bundle job. For the backend matrix (5 images) or the three frontend bundle jobs, only the failing job's dev `:<sha>` needs to be (re-)produced — the other jobs' tags from the original push are still resolvable.
-3. **Broken inherit chain**: if the push-path job failed because an inherit step could not resolve its parent digest (`Cannot resolve parent dev image … :<before> after 3 attempts`), the parent push for that image genuinely failed and left a gap. By design there is **no tag fallback** (inheriting `:main`/`HEAD^1` could pin non-equivalent bytes), so the gapped commit cannot be retroactively given a correct image. Seed the chain by pushing any build-relevant change (frontend: a `src/**` / `package.json` edit; backend: any `**.go` / `go.mod` edit) to `main` — that forces a fresh build and re-establishes the chain from that commit onward. Then **re-cut the release on the new HEAD** (which now has a valid image). The originally-targeted SHA stays imageless; that is expected — releases target HEAD, and HEAD now resolves. (If the resolve failure was instead `Auth failure … (dev AR read)`, it is an IAM/transient issue, not a chain gap — see the IAM section below; do not seed.)
+2. If the push-path job for that SHA **failed**, fix the failure and re-run that run (push-path) so the `:<sha>` (built or inherited) lands in dev AR, then re-run the release matrix entry / bundle job. For the backend, the push path is ONE job (`build-dev-images`) that builds or inherits every image, so re-running it re-produces all of them. For the three frontend bundle jobs, only the failing job's dev `:<sha>` needs to be (re-)produced — the other jobs' tags from the original push are still resolvable.
+3. **Broken inherit chain**: if the push-path job failed because an inherit step could not resolve its parent digest (`Cannot resolve parent dev image … :<before> after 3 attempts`), the parent push for that image genuinely failed and left a gap. (The backend no longer fails this way: `build-dev-images` resolves every parent digest before choosing inherit, and rebuilds all images when any one is missing.) By design there is **no tag fallback** (inheriting `:main`/`HEAD^1` could pin non-equivalent bytes), so the gapped commit cannot be retroactively given a correct image. Seed the chain by pushing any build-relevant change (frontend: a `src/**` / `package.json` edit; backend: any `**.go` / `go.mod` edit) to `main` — that forces a fresh build and re-establishes the chain from that commit onward. Then **re-cut the release on the new HEAD** (which now has a valid image). The originally-targeted SHA stays imageless; that is expected — releases target HEAD, and HEAD now resolves. (If the resolve failure was instead `Auth failure … (dev AR read)`, it is an IAM/transient issue, not a chain gap — see the IAM section below; do not seed.)
 4. If the dev `:<sha>` IS in AR and the digest-resolve step still failed, the IAM grant likely regressed — see "Cross-project IAM grant revoked" below.
 
 ### Failure: cross-project IAM grant revoked accidentally
