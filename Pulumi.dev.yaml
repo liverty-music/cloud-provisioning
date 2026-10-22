@@ -2,6 +2,9 @@ environment:
   - liverty-music/dev
 config:
   gcp:project: liverty-music-dev
+  # The organization folder the prod stack creates (prod output `folder.id`).
+  # Read by src/gcp/components/project.ts instead of a StackReference.
+  liverty-music:folderId: folders/670140204955
   # Dev workload tier shut down to reduce idle cost from ~¥7,000/mo to
   # ~¥300/mo. Path 2 design (#283): Cloud SQL is STOPped (not destroyed)
   # so dev data survives the shutdown window; `zitadel-masterkey` GSM

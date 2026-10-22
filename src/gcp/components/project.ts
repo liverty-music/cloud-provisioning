@@ -134,22 +134,15 @@ export class ProjectComponent extends pulumi.ComponentResource {
 				parent: `organizations/${gcpConfig.organizationId}`,
 			})
 		} else {
-			// For non-prod environments, reference the folder created in the prod stack.
-			// This requires the prod stack to export its folder.
-			const org = pulumi.getOrganization()
-			const project = pulumi.getProject()
-			// Construct the fully qualified name of the prod stack.
-			const prodStackRef = new pulumi.StackReference(
-				`${org}/${project}/prod`,
-			)
-			const folderOutput = prodStackRef.requireOutput('folder')
-
-			// Use Output.all to properly handle the async folder ID.
-			return pulumi
-				.output(folderOutput)
-				.apply((folder) =>
-					gcp.organizations.Folder.get(brandId, folder.id),
-				)
+			// Non-prod stacks look up the folder the prod stack created, by its
+			// ID in `liverty-music:folderId` (Pulumi.<stack>.yaml). This used to
+			// be a StackReference to the prod stack's `folder` output, but a
+			// Pulumi Deployments run started by a git push or pull request gets
+			// a token scoped to its own stack, so reading prod failed with
+			// `[403] You do not have permission to perform this operation`. The
+			// folder ID never changes, so a config value is enough.
+			const folderId = new pulumi.Config().require('folderId')
+			return gcp.organizations.Folder.get(brandId, folderId)
 		}
 	}
 
