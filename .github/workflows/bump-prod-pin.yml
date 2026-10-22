@@ -20,9 +20,12 @@ on:
   # `push-image.yaml` after a successful prod-AR retag. Runs unattended.
   repository_dispatch:
     types: [bump-prod-pin]
-  # Manual recovery path for a dropped/lost dispatch. Admin-gated via the
-  # `prod-pin` Environment (see the conditional `environment:` below) so it
-  # cannot be used to force an unreviewed prod change.
+  # Manual recovery path for a dropped/lost dispatch. It runs the same
+  # provenance gate and no-downgrade guard as the automated path, so it can
+  # only pin a tag whose prod image exists, and only forward unless
+  # `allow_rollback` is set. Only a human may start it: the first step refuses
+  # a bot (see "Refuse a manual run started by a bot"). There is no approval
+  # step: the only member would approve their own run.
   workflow_dispatch:
     inputs:
       component:
@@ -74,14 +77,6 @@ env:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    # Conditional environment (OpenSpec design D8): the required-reviewer rule
-    # on the `prod-pin` Environment fires for EVERY job that references it
-    # (Environment protection rules have no trigger-type filter). Binding it
-    # unconditionally would also stall the automated `repository_dispatch`
-    # path on admin approval. So bind it ONLY on the manual trigger:
-    #   - workflow_dispatch -> `prod-pin` -> pauses for admin approval
-    #   - repository_dispatch -> '' (empty) -> runs unattended
-    environment: ${{ github.event_name == 'workflow_dispatch' && 'prod-pin' || '' }}
     permissions:
       # Push the bump commit to `main` with the built-in token (the
       # `github-actions[bot]` actor, which branch protection lets bypass).
@@ -90,6 +85,21 @@ jobs:
       # provenance check against prod AR.
       id-token: write
     steps:
+      # `liverty-music-cluster-bot` holds Actions: write on this repository and
+      # its private key lives in the cluster (ArgoCD Notifications), so it can
+      # start `workflow_dispatch` and re-run runs. A manual pin-bump, with
+      # `allow_rollback` in reach, is for a human only (Workflow-gating rule D3
+      # in docs/runbooks/incident-triage.md). `triggering_actor` is whoever
+      # started this attempt, including a re-run. A re-run of a
+      # `repository_dispatch` run replays its own tag and stays allowed.
+      - name: Refuse a manual run started by a bot
+        if: github.event_name == 'workflow_dispatch' && endsWith(github.triggering_actor, '[bot]')
+        env:
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          echo "::error::A manual pin-bump must be started by a person, not ${TRIGGERING_ACTOR}."
+          exit 1
+
       # ----------------------------------------------------------------------
       # 1.2 Parse + validate the payload (from either trigger).
       # ----------------------------------------------------------------------

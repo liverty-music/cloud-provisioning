@@ -218,19 +218,22 @@ Actions: write can start existing workflows on existing refs and re-run past run
 reach is whatever those workflows can do behind their own gates. Rule:
 
 > **Every `cloud-provisioning` workflow that holds a write-capable credential and accepts
-> `workflow_dispatch` must be Environment-gated (required reviewers).**
+> `workflow_dispatch` must refuse a manual run started by a bot** (a first step that fails
+> when `github.triggering_actor` ends in `[bot]`). Environment required reviewers are not
+> used: the only org member would approve their own run, and they are unavailable for
+> private repositories on GitHub Free and Team.
 
 Audit (2026-10-04, `.github/workflows/`):
 
 | Workflow | Triggers | Write-capable credential | Reachable by Actions: write | Gate |
 |---|---|---|---|---|
-| `bump-prod-pin.yml` | `repository_dispatch`, `workflow_dispatch` | ci-bot token (pushes `main`) | `workflow_dispatch`; re-run of a past run | `workflow_dispatch` runs in the `prod-pin` Environment (admin approval, also on re-run); a re-run `repository_dispatch` replays its own tag — idempotent no-op or rejected by the no-downgrade guard |
+| `bump-prod-pin.yml` | `repository_dispatch`, `workflow_dispatch` | ci-bot token (pushes `main`) | `workflow_dispatch`; re-run of a past run | a `workflow_dispatch` run (or a re-run of one) started by a bot fails at its first step; a re-run `repository_dispatch` replays its own tag — idempotent no-op or rejected by the no-downgrade guard |
 | `claude.yml` | `issue_comment`, `pull_request_review_comment`, `issues`, `pull_request_review` | Claude App token (cannot reach `main`: ruleset) | re-run only | repeats a request a human already made |
 | `claude-code-review.yml`, `ci.yml`, `lint.yml` | `pull_request` / `push` | none (read-only) | re-run only | — |
 | `incident-triage.yml` | `workflow_dispatch` | `issues: write` in `report` only | dispatch (intended) | kill switch; read-only GCP identity |
 
-`bump-prod-pin.yml` is the only privileged `workflow_dispatch` path and it is gated, so
-the rule holds. Re-run this audit whenever a workflow gains `workflow_dispatch` or a
+`bump-prod-pin.yml` is the only privileged `workflow_dispatch` path and it refuses bots,
+so the rule holds (re-audited 2026-10-22, when the `prod-pin` Environment was removed). Re-run this audit whenever a workflow gains `workflow_dispatch` or a
 write-capable credential.
 
 ## Token freshness

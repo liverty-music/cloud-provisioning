@@ -20,19 +20,11 @@ export interface GitHubRepositoryComponentArgs {
 	/**
 	 * Repository-level Actions variables (not environment-scoped). Used by
 	 * workflows that run without an `environment:` binding — e.g.
-	 * `bump-prod-pin.yml`'s `repository_dispatch` path, whose conditional
-	 * environment resolves to empty, so it cannot read environment variables.
+	 * `bump-prod-pin.yml`, which binds none, so it cannot read environment
+	 * variables.
 	 * See OpenSpec change `automate-prod-pin-bump`.
 	 */
 	repositoryVariables?: Record<string, pulumi.Input<string>>
-	/**
-	 * When set, create a `prod-pin` GitHub Environment whose required reviewer
-	 * is this GitHub username (admin). Gates the `bump-prod-pin.yml`
-	 * `workflow_dispatch` manual-recovery path behind admin approval; the
-	 * automated `repository_dispatch` path does not enter the environment.
-	 * See OpenSpec change `automate-prod-pin-bump` design D8.
-	 */
-	pinBumpReviewerUsername?: string
 	/**
 	 * When true AND `botBypassAppId` is set, the prod `main` protection is
 	 * expressed as a `github.RepositoryRuleset` (replacing the classic
@@ -96,7 +88,6 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			requiredStatusCheckContexts,
 			requireUpToDateBranch,
 			repositoryVariables,
-			pinBumpReviewerUsername,
 			mainBranchBotBypass,
 			botBypassAppId,
 			repositorySecrets,
@@ -261,32 +252,6 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 					{ provider, parent: this },
 				)
 			}
-		}
-
-		// `prod-pin` Environment with a required-reviewer (admin) rule. Gates
-		// the `bump-prod-pin.yml` manual `workflow_dispatch` recovery path; the
-		// automated `repository_dispatch` path resolves the environment to empty
-		// and never enters it (OpenSpec change `automate-prod-pin-bump` D8).
-		if (pinBumpReviewerUsername) {
-			const reviewer = github.getUserOutput(
-				{ username: pinBumpReviewerUsername },
-				{ provider },
-			)
-			new github.RepositoryEnvironment(
-				`${repositoryName}-prod-pin`,
-				{
-					repository: repositoryName,
-					environment: 'prod-pin',
-					reviewers: [
-						{
-							// `github_user.id` is the numeric user ID as a string;
-							// the reviewers API expects a number.
-							users: [reviewer.id.apply((id) => Number(id))],
-						},
-					],
-				},
-				{ provider, parent: this },
-			)
 		}
 
 		this.registerOutputs({
