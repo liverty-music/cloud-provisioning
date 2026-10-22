@@ -23,9 +23,9 @@ on:
   # Manual recovery path for a dropped/lost dispatch. It runs the same
   # provenance gate and no-downgrade guard as the automated path, so it can
   # only pin a tag whose prod image exists, and only forward unless
-  # `allow_rollback` is set. There is no approval step: the only member would
-  # approve their own run, and every other path to prod (a Release, a merged
-  # overlay change, `git revert`) has none either.
+  # `allow_rollback` is set. Only a human may start it: the first step refuses
+  # a bot (see "Refuse a manual run started by a bot"). There is no approval
+  # step: the only member would approve their own run.
   workflow_dispatch:
     inputs:
       component:
@@ -85,6 +85,21 @@ jobs:
       # provenance check against prod AR.
       id-token: write
     steps:
+      # `liverty-music-cluster-bot` holds Actions: write on this repository and
+      # its private key lives in the cluster (ArgoCD Notifications), so it can
+      # start `workflow_dispatch` and re-run runs. A manual pin-bump, with
+      # `allow_rollback` in reach, is for a human only (Workflow-gating rule D3
+      # in docs/runbooks/incident-triage.md). `triggering_actor` is whoever
+      # started this attempt, including a re-run. A re-run of a
+      # `repository_dispatch` run replays its own tag and stays allowed.
+      - name: Refuse a manual run started by a bot
+        if: github.event_name == 'workflow_dispatch' && endsWith(github.triggering_actor, '[bot]')
+        env:
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          echo "::error::A manual pin-bump must be started by a person, not ${TRIGGERING_ACTOR}."
+          exit 1
+
       # ----------------------------------------------------------------------
       # 1.2 Parse + validate the payload (from either trigger).
       # ----------------------------------------------------------------------

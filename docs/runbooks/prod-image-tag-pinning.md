@@ -156,13 +156,15 @@ atomically. An intentional rollback additionally needs `-f allow_rollback=true`
 
 The manual run goes through the same provenance gate and no-downgrade guard as
 the automated path, so it cannot pin a tag whose prod image does not exist, nor
-roll prod backward without `allow_rollback`. It has no approval step. An
-admin-reviewer Environment (`prod-pin`) used to gate it, but it was removed
-(liverty-music/cloud-provisioning#665): the only org member was also the only
-reviewer, so it added a self-approval click and nothing more; every other path
-to prod (a Release, a merged overlay change, `git revert`) has no approval
-either; and required reviewers are unavailable for private repositories on
-GitHub Free and Team.
+roll prod backward without `allow_rollback`. Only a person may start it: its
+first step fails when the run was started by a bot, because
+`liverty-music-cluster-bot` (Actions: write, key in the cluster) could
+otherwise dispatch it (Workflow-gating rule D3 in `incident-triage.md`). It has
+no approval step. An admin-reviewer Environment (`prod-pin`) used to gate it,
+but it was removed (liverty-music/cloud-provisioning#665): the only org member
+was also the only reviewer, so it added a self-approval click and nothing more,
+and required reviewers are unavailable for private repositories on GitHub Free
+and Team.
 
 Use it only to replay a genuinely-dropped dispatch; it is not a routine path.
 
