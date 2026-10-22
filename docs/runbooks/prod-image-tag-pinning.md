@@ -138,7 +138,7 @@ pending-1, never a third) — no eviction.
 > `component: frontend` path (OpenSpec change `batch-frontend-prod-pin-dispatch`
 > task 4.4). The only accepted components are now `backend` and `frontend`.
 
-## Manual recovery: `workflow_dispatch` fallback (admin-only)
+## Manual recovery: `workflow_dispatch` fallback
 
 If a dispatch is dropped (e.g. a transient GitHub outage between the release
 workflow and `cloud-provisioning`), the bump never lands. Recover by running
@@ -154,17 +154,19 @@ The `component` input is a choice of `backend | frontend`. For a dropped
 atomically. An intentional rollback additionally needs `-f allow_rollback=true`
 (the no-downgrade guard fails closed otherwise).
 
-This path is **admin-gated**: `workflow_dispatch` runs bind the `prod-pin`
-GitHub Environment (via the conditional `environment:` expression
-`${{ github.event_name == 'workflow_dispatch' && 'prod-pin' || '' }}`), which has
-a required-reviewer rule, so the run pauses for admin approval before the bump
-executes. The automated `repository_dispatch` path resolves the environment to
-empty and runs unattended. The provenance gate AND the no-downgrade guard apply
-identically, so even an approved manual run cannot pin a tag whose prod image
-does not exist, nor silently roll prod backward.
+The manual run goes through the same provenance gate and no-downgrade guard as
+the automated path, so it cannot pin a tag whose prod image does not exist, nor
+roll prod backward without `allow_rollback`. Only a person may start it: its
+first step fails when the run was started by a bot, because
+`liverty-music-cluster-bot` (Actions: write, key in the cluster) could
+otherwise dispatch it (Workflow-gating rule D3 in `incident-triage.md`). It has
+no approval step. An admin-reviewer Environment (`prod-pin`) used to gate it,
+but it was removed (liverty-music/cloud-provisioning#665): the only org member
+was also the only reviewer, so it added a self-approval click and nothing more,
+and required reviewers are unavailable for private repositories on GitHub Free
+and Team.
 
-This is a privileged recovery operation, **not** a routine path — use it only
-to replay a genuinely-dropped dispatch.
+Use it only to replay a genuinely-dropped dispatch; it is not a routine path.
 
 ## Rollback (`git revert`)
 
@@ -209,7 +211,7 @@ This is **expected and desired** when the policy is working. A 409 on a tag push
 
 ## Automation setup (one-time)
 
-The `automate-prod-pin-bump` pipeline depends on four pieces of GitHub
+The `automate-prod-pin-bump` pipeline depends on two pieces of GitHub
 configuration. The Pulumi-managed pieces live in `src/github/` and apply on a
 prod `pulumi up`; the rest are documented here because they require an
 out-of-band credential or a setting GitHub does not expose to this provider
@@ -319,15 +321,6 @@ the bump pushes as ci-bot instead.
 Verify after apply: a bump push from `bump-prod-pin.yml` lands on `main` without
 a PR; a human direct push to `main` is still rejected (PR + up-to-date required).
 
-### 3. `prod-pin` GitHub Environment (admin reviewer) — cloud-provisioning
-
-The `workflow_dispatch` manual fallback is gated behind the `prod-pin`
-Environment with a required-reviewer (admin) rule, bound **only** on the manual
-trigger via the conditional `environment:` expression in `bump-prod-pin.yml`.
-This Environment is Pulumi-managed in `src/github/` (created on the prod stack);
-the required reviewer is the org admin. Verify by test: a `workflow_dispatch`
-run pauses for approval; a `repository_dispatch` run does NOT.
-
 ## Recovery procedures
 
 ### Re-running a GitHub Release workflow that partially failed
@@ -408,8 +401,8 @@ for this commit is still in-flight or failed — do NOT re-target an earlier com
 
 **Recovery**:
 1. Check the push-path `Deploy <repo>` run for the same commit SHA — for frontend: `gh run list --repo liverty-music/frontend --branch main --workflow push-image.yaml --limit 10`; for backend: `gh run list --repo liverty-music/backend --branch main --workflow deploy.yml --limit 10`. If it is still in-flight, wait and `gh run rerun --job <job-id>` the failed release matrix entry once it completes. **Do NOT re-target the release to an earlier commit** — main HEAD always has (or will have) an image; re-targeting is the old workaround that this change made unnecessary.
-2. If the push-path job for that SHA **failed**, fix the failure and re-run that run (push-path) so the `:<sha>` (built or inherited) lands in dev AR, then re-run the release matrix entry / bundle job. For the backend matrix (5 images) or the three frontend bundle jobs, only the failing job's dev `:<sha>` needs to be (re-)produced — the other jobs' tags from the original push are still resolvable.
-3. **Broken inherit chain**: if the push-path job failed because an inherit step could not resolve its parent digest (`Cannot resolve parent dev image … :<before> after 3 attempts`), the parent push for that image genuinely failed and left a gap. By design there is **no tag fallback** (inheriting `:main`/`HEAD^1` could pin non-equivalent bytes), so the gapped commit cannot be retroactively given a correct image. Seed the chain by pushing any build-relevant change (frontend: a `src/**` / `package.json` edit; backend: any `**.go` / `go.mod` edit) to `main` — that forces a fresh build and re-establishes the chain from that commit onward. Then **re-cut the release on the new HEAD** (which now has a valid image). The originally-targeted SHA stays imageless; that is expected — releases target HEAD, and HEAD now resolves. (If the resolve failure was instead `Auth failure … (dev AR read)`, it is an IAM/transient issue, not a chain gap — see the IAM section below; do not seed.)
+2. If the push-path job for that SHA **failed**, fix the failure and re-run that run (push-path) so the `:<sha>` (built or inherited) lands in dev AR, then re-run the release matrix entry / bundle job. For the backend, the push path is ONE job (`build-dev-images`) that builds or inherits every image, so re-running it re-produces all of them. For the three frontend bundle jobs, only the failing job's dev `:<sha>` needs to be (re-)produced — the other jobs' tags from the original push are still resolvable.
+3. **Broken inherit chain**: if the push-path job failed because an inherit step could not resolve its parent digest (`Cannot resolve parent dev image … :<before> after 3 attempts`), the parent push for that image genuinely failed and left a gap. (The backend no longer fails this way: `build-dev-images` resolves every parent digest before choosing inherit, and rebuilds all images when any one is missing.) By design there is **no tag fallback** (inheriting `:main`/`HEAD^1` could pin non-equivalent bytes), so the gapped commit cannot be retroactively given a correct image. Seed the chain by pushing any build-relevant change (frontend: a `src/**` / `package.json` edit; backend: any `**.go` / `go.mod` edit) to `main` — that forces a fresh build and re-establishes the chain from that commit onward. Then **re-cut the release on the new HEAD** (which now has a valid image). The originally-targeted SHA stays imageless; that is expected — releases target HEAD, and HEAD now resolves. (If the resolve failure was instead `Auth failure … (dev AR read)`, it is an IAM/transient issue, not a chain gap — see the IAM section below; do not seed.)
 4. If the dev `:<sha>` IS in AR and the digest-resolve step still failed, the IAM grant likely regressed — see "Cross-project IAM grant revoked" below.
 
 ### Failure: cross-project IAM grant revoked accidentally

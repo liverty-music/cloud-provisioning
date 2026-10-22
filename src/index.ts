@@ -460,8 +460,6 @@ new GitHubRepositoryComponent({
 		env === 'prod' ? { INCIDENT_TRIAGE_ENABLED: 'false' } : undefined,
 	requiredStatusCheckContexts: ['CI Success'],
 	requireUpToDateBranch: true,
-	// Admin-reviewer gate for the `bump-prod-pin.yml` manual recovery path.
-	pinBumpReviewerUsername: env === 'prod' ? 'pannpers' : undefined,
 	// Express prod `main` protection as a RepositoryRuleset whose sole bypass
 	// actor is the org-owned ci-bot App, so the bump workflow (pushing as a
 	// ci-bot installation token) can land the pin-bump on main past the PR +
