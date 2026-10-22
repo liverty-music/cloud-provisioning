@@ -2,6 +2,21 @@ import * as github from '@pulumi/github'
 import * as pulumi from '@pulumi/pulumi'
 import { type BufConfig, type GitHubConfig, RepositoryName } from '../config.js'
 
+/**
+ * Visibility of each repository. `backend` and `frontend` stay public
+ * (decided 2026-10-21; the frontend ships its code to every browser anyway).
+ * Before flipping one to `private`, follow
+ * docs/runbooks/repository-visibility.md: ArgoCD, CI and the plan need
+ * changes in the same rollout.
+ */
+const REPOSITORY_VISIBILITY: Record<RepositoryName, 'public' | 'private'> = {
+	[RepositoryName.CLOUD_PROVISIONING]: 'public',
+	[RepositoryName.SPECIFICATION]: 'public',
+	[RepositoryName.BACKEND]: 'public',
+	[RepositoryName.FRONTEND]: 'public',
+	[RepositoryName.DOT_GITHUB]: 'public',
+}
+
 export interface GitHubOrganizationComponentArgs {
 	brandId: string
 	displayName: string
@@ -46,9 +61,10 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			{ provider: this.provider, parent: this },
 		)
 
-		// Default repository configuration
+		// Default repository configuration. Visibility is per repository (see
+		// `visibilityArgs` below), so one repository can turn private without
+		// touching the others: docs/runbooks/repository-visibility.md.
 		const defaultRepositoryArgs: github.RepositoryArgs = {
-			visibility: 'public',
 			hasIssues: true,
 			deleteBranchOnMerge: true,
 			vulnerabilityAlerts: true,
@@ -72,22 +88,30 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			// preset is a policy choice, no longer the only gate there. The strategy is
 			// merge-commit only, since squash and rebase are both false above.
 			allowAutoMerge: true,
-			// Secret scanning and push protection are free for PUBLIC
-			// repositories only, and all five are public. A repository that
-			// turns private on GitHub Free or Team needs GitHub Secret
-			// Protection for these, so drop them (or buy it) in the same
-			// change that flips its visibility (#665).
-			securityAndAnalysis: {
-				secretScanning: { status: 'enabled' },
-				secretScanningPushProtection: { status: 'enabled' },
-			},
 		}
+
+		// Visibility per repository, and what goes with it. Secret scanning and
+		// push protection are free for public repositories only; a private one
+		// needs GitHub Secret Protection, so they are set only while public.
+		const visibilityArgs = (
+			name: RepositoryName,
+		): Pick<github.RepositoryArgs, 'visibility' | 'securityAndAnalysis'> =>
+			REPOSITORY_VISIBILITY[name] === 'public'
+				? {
+						visibility: 'public',
+						securityAndAnalysis: {
+							secretScanning: { status: 'enabled' },
+							secretScanningPushProtection: { status: 'enabled' },
+						},
+					}
+				: { visibility: 'private' }
 
 		// Create repositories
 		const cloudProvisioningRepo = new github.Repository(
 			RepositoryName.CLOUD_PROVISIONING,
 			{
 				...defaultRepositoryArgs,
+				...visibilityArgs(RepositoryName.CLOUD_PROVISIONING),
 				name: RepositoryName.CLOUD_PROVISIONING,
 				description: 'Cloud Provisioning',
 				template: {
@@ -102,6 +126,7 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			RepositoryName.SPECIFICATION,
 			{
 				...defaultRepositoryArgs,
+				...visibilityArgs(RepositoryName.SPECIFICATION),
 				name: RepositoryName.SPECIFICATION,
 				description: 'Specification',
 				template: {
@@ -116,6 +141,7 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			RepositoryName.BACKEND,
 			{
 				...defaultRepositoryArgs,
+				...visibilityArgs(RepositoryName.BACKEND),
 				name: RepositoryName.BACKEND,
 				description: 'Backend',
 				template: {
@@ -130,6 +156,7 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			RepositoryName.FRONTEND,
 			{
 				...defaultRepositoryArgs,
+				...visibilityArgs(RepositoryName.FRONTEND),
 				name: RepositoryName.FRONTEND,
 				description: 'Frontend',
 			},
@@ -145,6 +172,7 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			'dot-github',
 			{
 				...defaultRepositoryArgs,
+				...visibilityArgs(RepositoryName.DOT_GITHUB),
 				name: RepositoryName.DOT_GITHUB,
 				description: 'Org-wide community files and reusable workflows',
 			},
