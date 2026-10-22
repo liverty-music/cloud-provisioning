@@ -1068,6 +1068,12 @@ export class Gcp {
 						service: 'places.googleapis.com',
 						quotaId,
 						quotaConfig: { preferredValue },
+						// Every value is a decrease of more than 10% from the
+						// default, which the Cloud Quotas API rejects unless
+						// this check is waived. Each value is still above
+						// observed use, so QUOTA_DECREASE_BELOW_USAGE stays on.
+						ignoreSafetyChecks:
+							'QUOTA_DECREASE_PERCENTAGE_TOO_HIGH',
 						contactEmail: gcpConfig.quotaContactEmail,
 						justification:
 							'Cap paid Places API use near observed volume so a looping bug cannot run up charges.',
