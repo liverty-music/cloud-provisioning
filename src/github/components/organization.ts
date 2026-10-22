@@ -65,16 +65,11 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			// manages protection, environments, variables and secrets — not the
 			// repository resource itself.
 			//
-			// This reaches ALL FIVE repositories, including `.github`, which has
-			// no branch protection and no CI. Nothing stops an auto-merge landing
-			// there with no gate at all except Renovate's permanent exclusion for
-			// that repository in the org preset — so do not remove that rule
-			// while this is enabled (design D11, and follow-up 12.4 is the real
-			// remedy).
-			//
-			// The gate itself is unchanged: `requiredStatusCheckContexts` stays
-			// `['CI Success']` on the other four, and an auto-merge satisfies the
-			// same branch protection a human merge does. The strategy is
+			// This reaches ALL FIVE repositories. Every one, `.github` included
+			// (see `dot-github-protection` below), requires `CI Success` on
+			// `main`, and an auto-merge satisfies the same branch protection a
+			// human merge does. Renovate's exclusion of `.github` in the org
+			// preset is a policy choice, no longer the only gate there. The strategy is
 			// merge-commit only, since squash and rebase are both false above.
 			allowAutoMerge: true,
 			// Secret scanning and push protection are free for PUBLIC
@@ -152,6 +147,36 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 				...defaultRepositoryArgs,
 				name: RepositoryName.DOT_GITHUB,
 				description: 'Org-wide community files and reusable workflows',
+			},
+			{ provider: this.provider, parent: this },
+		)
+
+		// `main` of `.github` needs a pull request with a green `CI Success`
+		// (its CI checks the org Renovate policy), like the other four
+		// repositories. Without it, a policy defect or a broken reusable
+		// workflow (claude-review.yml, called by every repository) could land
+		// directly. Declared here rather than through GitHubRepositoryComponent,
+		// which also creates dev/prod Environments this repository does not use.
+		new github.BranchProtection(
+			'dot-github-protection',
+			{
+				repositoryId: dotGithubRepo.nodeId,
+				pattern: 'main',
+				enforceAdmins: true,
+				allowsDeletions: false,
+				allowsForcePushes: false,
+				requiredStatusChecks: [
+					{ strict: false, contexts: ['CI Success'] },
+				],
+				requiredPullRequestReviews: [
+					{
+						dismissStaleReviews: false,
+						restrictDismissals: false,
+						requiredApprovingReviewCount: 0,
+						requireCodeOwnerReviews: false,
+					},
+				],
+				restrictPushes: [],
 			},
 			{ provider: this.provider, parent: this },
 		)
