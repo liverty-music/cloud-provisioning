@@ -886,13 +886,9 @@ export class Gcp {
 		// 9. Cost Guardrails (all envs).
 		// Runs in any env that has `gcpConfig.billingAlertEmail` seeded in
 		// ESC. Per `refactor-unify-env-dispatch` D4, no env-gated wrapper.
-		// Both `cost-budget` and `billing-alert-email` resources are
-		// currently DORMANT in all envs (neither dev nor prod ESC has
-		// `billingAlertEmail` seeded). The rename from `dev-cost-budget` →
-		// `cost-budget` (and the parallel `dev-billing-alert-email` →
-		// `billing-alert-email`) triggers no destroy+create on the first
-		// `pulumi up` of this refactor because there's no existing state
-		// to migrate.
+		// Live in prod since 2026-05-15 (ESC `billingAlertEmail` and
+		// `budgetAmountJpy: '10000'`). This budget only alerts; the hard caps
+		// on paid APIs are the Places quotas and the Gemini spend cap in §10.
 		if (gcpConfig.billingAlertEmail) {
 			// Cloud Billing Budget needs `billingbudgets.googleapis.com`
 			// enabled on the consuming project. The `gcp.billing.Budget`
@@ -1019,6 +1015,77 @@ export class Gcp {
 				},
 				{ parent: this.project, dependsOn: [cloudQuotasApi] },
 			)
+
+			// Paid-API spend cap (OpenSpec `cap-paid-api-spend`): per-day
+			// request caps on Places API (New). The defaults let one looping
+			// bug cost about ¥377,000 a day on Text Search alone (75,000/day at
+			// $32 per 1,000); a daily quota refuses the request at once, while
+			// a budget acts only after billing data lands hours later. Places
+			// is not eligible for Cloud Billing spend caps. Values sit a little
+			// above observed use (Text Search peaked at 588/day, 2026-05-30 to
+			// 2026-10-20); methods the backend never calls get 0.
+			const placesDailyCaps: [
+				name: string,
+				quotaId: string,
+				value: string,
+			][] = [
+				['search-text', 'SearchTextRequestPerDayPerProject', '1000'],
+				['get-place', 'GetPlaceRequestPerDayPerProject', '100'],
+				[
+					'autocomplete',
+					'AutocompletePlacesRequestPerDayPerProject',
+					'100',
+				],
+				[
+					'get-photo-media',
+					'GetPhotoMediaRequestPerDayPerProject',
+					'0',
+				],
+				['lookup-media', 'LookupMediaRequestPerDayPerProject', '0'],
+				[
+					'lookup-review-posts',
+					'LookupReviewPostsRequestPerDayPerProject',
+					'0',
+				],
+				[
+					'lookup-user-content-summary',
+					'LookupUserContentSummaryRequestPerDayPerProject',
+					'0',
+				],
+				['search-media', 'SearchMediaRequestPerDayPerProject', '0'],
+				['search-nearby', 'SearchNearbyRequestPerDayPerProject', '0'],
+				[
+					'search-review-posts',
+					'SearchReviewPostsRequestPerDayPerProject',
+					'0',
+				],
+			]
+			for (const [name, quotaId, preferredValue] of placesDailyCaps) {
+				new gcp.cloudquota.SQuotaPreference(
+					`places-${name}-daily-quota`,
+					{
+						parent: pulumi.interpolate`projects/${this.projectId}`,
+						service: 'places.googleapis.com',
+						quotaId,
+						quotaConfig: { preferredValue },
+						// Every value is a decrease of more than 10% from the
+						// default, which the Cloud Quotas API rejects unless
+						// this check is waived. Each value is still above
+						// observed use, so QUOTA_DECREASE_BELOW_USAGE stays on.
+						ignoreSafetyChecks:
+							'QUOTA_DECREASE_PERCENTAGE_TOO_HIGH',
+						contactEmail: gcpConfig.quotaContactEmail,
+						justification:
+							'Cap paid Places API use near observed volume so a looping bug cannot run up charges.',
+					},
+					{ parent: this.project, dependsOn: [cloudQuotasApi] },
+				)
+			}
+
+			// The Gemini API's monthly spend cap (¥4,000, prod) lives outside
+			// IaC as the Cloud Billing budget "liverty-music-prod Gemini API
+			// spend cap" on `gcpConfig.billingAccount`: neither `gcp.billing.Budget` (provider 10.1.0) nor gcloud can set
+			// a spend cap yet. Import it here once the provider can.
 		}
 	}
 }
