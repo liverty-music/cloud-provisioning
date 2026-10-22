@@ -16,6 +16,10 @@ export interface ActionsV2ComponentArgs {
 	/** In-cluster URL of the backend `/account-login-event` webhook handler —
 	 *  the account.login source, bound to the session.user.checked event. */
 	loginEventEndpoint: pulumi.Input<string>
+	/** In-cluster URL of the backend `/passkey-event` webhook handler, bound to
+	 *  the passkey added (`user.human.passwordless.token.verified`) and removed
+	 *  (`user.human.passwordless.token.removed`) events. */
+	passkeyEventEndpoint: pulumi.Input<string>
 	/** Pulumi Zitadel v1 provider — required as a `dependsOn` marker so executions
 	 *  are created after the Management API is reachable via the provider. */
 	provider: zitadel.Provider
@@ -25,7 +29,8 @@ export interface ActionsV2ComponentArgs {
  * ActionsV2Component provisions the Zitadel Actions v2 Targets and Execution
  * bindings that replace the deprecated Actions v1 JavaScript mechanism.
  *
- * Currently wires only the `preaccesstoken` flow — injects the `email` claim
+ * Wires the `preaccesstoken` flow, the login event and the passkey events.
+ * The `preaccesstoken` flow injects the `email` claim
  * into JWT access tokens before issuance (replaces `addEmailClaim` v1 Action).
  * Email-claim injection MUST always fail closed: every backend code path
  * reads `email` from the access token, so a tokens-without-email outage is
@@ -73,6 +78,9 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 	public readonly preAccessTokenExecution: ZitadelExecutionFunction
 	public readonly loginEventTarget: ZitadelTarget
 	public readonly loginEventExecution: ZitadelExecutionEvent
+	public readonly passkeyEventTarget: ZitadelTarget
+	public readonly passkeyAddedExecution: ZitadelExecutionEvent
+	public readonly passkeyRemovedExecution: ZitadelExecutionEvent
 
 	constructor(
 		name: string,
@@ -86,6 +94,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			jwtProfileJson,
 			preAccessTokenEndpoint,
 			loginEventEndpoint,
+			passkeyEventEndpoint,
 			provider,
 		} = args
 
@@ -170,9 +179,66 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			},
 		)
 
+		// Passkey-event Target + two ExecutionEvents — the source of the fan's
+		// "passkey added / removed" security emails (OpenSpec change
+		// `fan-passkey-recovery-and-management`, design D6). Same shape as the
+		// login-event Target and for the same reasons: PAYLOAD_TYPE_JSON with the
+		// HMAC `signingKey` (plumbed to fan-api via GSM
+		// `webhook-passkey-event-signing-key`), and `interruptOnError` FALSE so a
+		// webhook failure never blocks a passkey registration or removal. Zitadel
+		// does not retry a failed event call, so a failure loses that one email.
+		this.passkeyEventTarget = new ZitadelTarget(
+			'passkey-event-webhook',
+			{
+				domain,
+				jwtProfileJson,
+				name: 'passkey-event-webhook',
+				endpoint: passkeyEventEndpoint,
+				targetType: 'REST_CALL',
+				timeout: '10s',
+				payloadType: 'PAYLOAD_TYPE_JSON',
+				interruptOnError: false,
+			},
+			{ parent: this, dependsOn: [provider] },
+		)
+
+		// A finished passkey registration (its payload carries
+		// `webAuthNTokenName`), including one made through a recovery link.
+		// Neither the `user.human.passwordless` group (it also fires on every
+		// passkey sign-in, `check.succeeded`) nor `token.added` (an unfinished
+		// registration challenge) is used.
+		this.passkeyAddedExecution = new ZitadelExecutionEvent(
+			'passkey-added-execution',
+			{
+				domain,
+				jwtProfileJson,
+				eventType: 'user.human.passwordless.token.verified',
+				targetIds: [this.passkeyEventTarget.targetId],
+			},
+			{
+				parent: this,
+				dependsOn: [this.passkeyEventTarget],
+			},
+		)
+
+		this.passkeyRemovedExecution = new ZitadelExecutionEvent(
+			'passkey-removed-execution',
+			{
+				domain,
+				jwtProfileJson,
+				eventType: 'user.human.passwordless.token.removed',
+				targetIds: [this.passkeyEventTarget.targetId],
+			},
+			{
+				parent: this,
+				dependsOn: [this.passkeyEventTarget],
+			},
+		)
+
 		this.registerOutputs({
 			preAccessTokenTargetId: this.preAccessTokenTarget.targetId,
 			loginEventTargetId: this.loginEventTarget.targetId,
+			passkeyEventTargetId: this.passkeyEventTarget.targetId,
 		})
 	}
 }

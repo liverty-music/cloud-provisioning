@@ -100,6 +100,24 @@ spec:
       consumer: "track-user-logged-in"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # USER.passkey_recovery_requested and USER.passkey_changed (OpenSpec change
+  # fan-passkey-recovery-and-management): recovery link and passkey change email.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "send-passkey-recovery-link"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "notify-passkey-change"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   # NOTIFICATION stream
   - type: nats-jetstream
     metadata:

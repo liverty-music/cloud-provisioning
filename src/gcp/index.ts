@@ -82,6 +82,12 @@ export interface GcpArgs {
 	 *  verifies the `ZITADEL-Signature` header against it. Present only when the
 	 *  Zitadel workload is provisioned. */
 	loginEventSigningKey?: pulumi.Output<string>
+	/** HMAC signing key Zitadel generated for the passkey-event Actions v2
+	 *  Target (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
+	 *  `webhook-passkey-event-signing-key` and synced into the fan-api secrets
+	 *  as `WEBHOOK_PASSKEY_EVENT_SIGNING_KEY`, exactly like the login-event key.
+	 *  Present only when the Zitadel workload is provisioned. */
+	passkeyEventSigningKey?: pulumi.Output<string>
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
 	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
@@ -94,6 +100,11 @@ export interface GcpArgs {
 	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`) for the
 	 *  backend to provision Organizer tenant orgs at runtime. */
 	zitadelOrganizerProvisionerKey?: pulumi.Output<string>
+	/** JWT profile JSON for the fan-passkey-recovery machine user (ORG_OWNER on
+	 *  the product org). Stored in Secret Manager
+	 *  (`zitadel-machine-key-for-fan-passkey-recovery`) with ESO-only access and
+	 *  mounted only on `event-consumer`. */
+	zitadelFanPasskeyRecoveryKey?: pulumi.Output<string>
 	/** Gate for the workload tier (GKE / Cloud SQL / monitoring / GSM
 	 *  Zitadel bootstrap secrets). When false (dev shutdown mode), these
 	 *  resources are not provisioned. See
@@ -189,11 +200,13 @@ export class Gcp {
 			stripeWebhookSigningSecret,
 			postmarkServerToken,
 			loginEventSigningKey,
+			passkeyEventSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
 			zitadelMachineKey,
 			zitadelEnabled,
 			zitadelOrganizerProvisionerKey,
+			zitadelFanPasskeyRecoveryKey,
 			workloadEnabled,
 			postgresAvailabilityType,
 		} = args
@@ -609,6 +622,19 @@ export class Gcp {
 								},
 							]
 						: []),
+					// HMAC signing key for the passkey-event Actions v2 Target
+					// (PAYLOAD_TYPE_JSON), verified by the fan-api `/passkey-event`
+					// webhook handler. Same lifecycle as the login-event key above.
+					...(passkeyEventSigningKey
+						? [
+								{
+									name: 'webhook-passkey-event-signing-key',
+									value: pulumi.secret(
+										passkeyEventSigningKey,
+									),
+								},
+							]
+						: []),
 					...(zitadelMachineKey
 						? [
 								{
@@ -634,6 +660,22 @@ export class Gcp {
 						: []),
 				],
 				esoOnlySecrets: [
+					// JWT key for the fan-passkey-recovery machine user (ORG_OWNER on
+					// the product org). ESO-only: no workload Service Account may read
+					// it from Secret Manager. ESO syncs it into the dedicated
+					// `event-consumer-secrets` Secret, mounted only on event-consumer
+					// and never on the internet-facing fan-api. See OpenSpec change
+					// `fan-passkey-recovery-and-management`, design D2.
+					...(zitadelFanPasskeyRecoveryKey
+						? [
+								{
+									name: 'zitadel-machine-key-for-fan-passkey-recovery',
+									value: pulumi.secret(
+										zitadelFanPasskeyRecoveryKey,
+									),
+								},
+							]
+						: []),
 					...(gcpConfig.argocdGoogleChatWebhookUrl
 						? [
 								{

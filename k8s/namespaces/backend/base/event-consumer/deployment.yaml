@@ -36,6 +36,18 @@ spec:
           items:
           - key: zitadel-machine-key-for-backend-app.json
             path: zitadel-machine-key-for-backend-app.json
+      # fan-passkey-recovery key (ORG_OWNER on the product org) from the
+      # DEDICATED event-consumer-secrets, a separate volume from the backend-app
+      # key. Only this workload mounts it; the recovery-link handler is the only
+      # code that loads it (ZITADEL_MACHINE_KEY_FOR_FAN_PASSKEY_RECOVERY_PATH in
+      # event-consumer-config). Not optional: until ESO has synced the Secret the
+      # pod waits in ContainerCreating and starts on its own once it exists.
+      - name: zitadel-fan-passkey-recovery-key
+        secret:
+          secretName: event-consumer-secrets
+          items:
+          - key: zitadel-machine-key-for-fan-passkey-recovery.json
+            path: zitadel-machine-key-for-fan-passkey-recovery.json
       containers:
       - name: consumer
         image: consumer
@@ -51,6 +63,9 @@ spec:
         volumeMounts:
         - name: zitadel-machine-key
           mountPath: /secrets/zitadel
+          readOnly: true
+        - name: zitadel-fan-passkey-recovery-key
+          mountPath: /secrets/zitadel-fan-passkey-recovery
           readOnly: true
         lifecycle:
           preStop:

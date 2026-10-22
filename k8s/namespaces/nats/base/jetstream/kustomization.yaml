@@ -25,6 +25,8 @@ resources:
 - consumer-verify-user-email.yaml
 - consumer-track-user-created.yaml
 - consumer-track-user-logged-in.yaml
+- consumer-send-passkey-recovery-link.yaml
+- consumer-notify-passkey-change.yaml
 - consumer-track-artist-followed.yaml
 - consumer-search-first-followed-artist.yaml
 - consumer-track-artist-unfollowed.yaml
