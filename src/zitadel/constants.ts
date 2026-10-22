@@ -89,6 +89,12 @@ export const PRE_ACCESS_TOKEN_PATH = '/pre-access-token'
 /** Backend login-event webhook path — the account.login source, bound to the
  *  Zitadel Actions v2 event execution on `session.user.checked`. */
 export const LOGIN_EVENT_PATH = '/account-login-event'
+/** Backend passkey-event webhook path, bound to the Zitadel Actions v2 event
+ *  executions on `user.human.passwordless.token.verified` (passkey added) and
+ *  `user.human.passwordless.token.removed` (passkey removed). The handler
+ *  announces `USER.passkey_changed` so the fan is emailed about the change.
+ *  See OpenSpec change `fan-passkey-recovery-and-management`, design D6. */
+export const PASSKEY_EVENT_PATH = '/passkey-event'
 
 /**
  * Bootstrap-created `admin` Role Org IDs per environment.

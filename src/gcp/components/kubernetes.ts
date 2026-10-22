@@ -53,7 +53,9 @@ export interface KubernetesComponentArgs {
 
 	/**
 	 * Secrets provisioned in GCP Secret Manager with ESO-only access (no backend-app SA binding).
-	 * Used for secrets consumed by non-backend workloads (e.g., ArgoCD) via ExternalSecret.
+	 * Used for secrets consumed only through an ExternalSecret: by non-backend workloads
+	 * (e.g., ArgoCD), or by a single backend workload whose secret no workload Service
+	 * Account may read directly (e.g., the fan-passkey-recovery key on event-consumer).
 	 */
 	esoOnlySecrets?: SecretConfig[]
 }
@@ -549,7 +551,8 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		}
 
 		// 3b. GCP Secret Manager secrets with ESO-only access
-		// These secrets are consumed by non-backend workloads (e.g., ArgoCD) via ExternalSecret.
+		// These secrets are consumed only via ExternalSecret (e.g., by ArgoCD, or the
+		// fan-passkey-recovery key by event-consumer).
 		// Only the ESO SA receives SecretAccessor — no backend-app SA binding.
 		for (const secret of esoOnlySecrets) {
 			const secretResource = new gcp.secretmanager.Secret(

@@ -9,6 +9,7 @@ import {
 } from './components/admin-console.js'
 import { AdminOrgConfigComponent } from './components/admin-org-config.js'
 import { E2eTestUserComponent } from './components/e2e-test-user.js'
+import { FanPasskeyRecoveryComponent } from './components/fan-passkey-recovery.js'
 import { FrontendComponent } from './components/frontend.js'
 import { GoogleAdminIdpComponent } from './components/google-admin-idp.js'
 import { HumanAdminComponent } from './components/human-admin.js'
@@ -21,6 +22,7 @@ import {
 	BACKEND_WEBHOOK_BASE_URL,
 	e2eTestFanSlots,
 	LOGIN_EVENT_PATH,
+	PASSKEY_EVENT_PATH,
 	PRE_ACCESS_TOKEN_PATH,
 	zitadelDomainMap,
 } from './constants.js'
@@ -66,6 +68,7 @@ export * from './components/actions-v2.js'
 export * from './components/admin-console.js'
 export * from './components/admin-org-config.js'
 export * from './components/e2e-test-user.js'
+export * from './components/fan-passkey-recovery.js'
 export * from './components/frontend.js'
 export * from './components/google-admin-idp.js'
 export * from './components/human-admin.js'
@@ -211,6 +214,14 @@ export class Zitadel {
 
 	/** JWT profile JSON for the backend-app machine user. Store in Secret Manager. */
 	public readonly machineKeyDetails: pulumi.Output<string>
+
+	/** Dedicated `fan-passkey-recovery` machine user (ORG_OWNER on the product
+	 *  org) the event consumer uses to issue passkey registration links. */
+	public readonly fanPasskeyRecovery: FanPasskeyRecoveryComponent
+
+	/** JWT profile JSON for the fan-passkey-recovery machine user. Store in
+	 *  Secret Manager (`zitadel-machine-key-for-fan-passkey-recovery`). */
+	public readonly fanPasskeyRecoveryKeyDetails: pulumi.Output<string>
 
 	constructor(name: string, args: ZitadelArgs) {
 		const {
@@ -466,6 +477,7 @@ export class Zitadel {
 			jwtProfileJson,
 			preAccessTokenEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${PRE_ACCESS_TOKEN_PATH}`,
 			loginEventEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${LOGIN_EVENT_PATH}`,
+			passkeyEventEndpoint: `${BACKEND_WEBHOOK_BASE_URL}${PASSKEY_EVENT_PATH}`,
 			provider: this.provider,
 		})
 
@@ -478,6 +490,19 @@ export class Zitadel {
 		})
 
 		this.machineKeyDetails = this.machineUser.keyDetails
+
+		// Dedicated passkey-recovery machine user (ORG_OWNER on the product org,
+		// the only org role with `user.passkey.write`). Its key flows to GSM
+		// (`zitadel-machine-key-for-fan-passkey-recovery`) via the parent stack
+		// and is mounted only on `event-consumer`, never on the internet-facing
+		// `fan-api`. See OpenSpec change `fan-passkey-recovery-and-management`,
+		// design D2.
+		this.fanPasskeyRecovery = new FanPasskeyRecoveryComponent(name, {
+			orgId: this.productOrg.id,
+			provider: this.provider,
+		})
+
+		this.fanPasskeyRecoveryKeyDetails = this.fanPasskeyRecovery.keyDetails
 
 		// Scaffolding shared by every Organizer's Organization — the shared
 		// `organizer-console` project (its `owner` role + OIDC/API apps) owned

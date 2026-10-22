@@ -295,6 +295,7 @@ const zitadel = workloadEnabled
 	: undefined
 const zitadelMachineKey = zitadel?.machineKeyDetails
 const zitadelOrganizerProvisionerKey = zitadel?.organizerProvisionerKeyDetails
+const zitadelFanPasskeyRecoveryKey = zitadel?.fanPasskeyRecoveryKeyDetails
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
@@ -315,6 +316,7 @@ const gcp = new Gcp({
 	zitadelMachineKey,
 	zitadelEnabled: zitadel !== undefined,
 	zitadelOrganizerProvisionerKey,
+	zitadelFanPasskeyRecoveryKey,
 	// HMAC signing key Zitadel generated for the login-event Target
 	// (PAYLOAD_TYPE_JSON). Plumbed to the backend as GSM secret
 	// `webhook-login-event-signing-key` so the login-event handler can verify
@@ -330,6 +332,18 @@ const gcp = new Gcp({
 			return key
 		},
 	),
+	// HMAC signing key Zitadel generated for the passkey-event Target
+	// (PAYLOAD_TYPE_JSON), plumbed to fan-api as GSM secret
+	// `webhook-passkey-event-signing-key` exactly like the login-event key.
+	passkeyEventSigningKey:
+		zitadel?.actionsV2.passkeyEventTarget.signingKey.apply((key) => {
+			if (!key) {
+				throw new Error(
+					'passkey-event Target signingKey missing — expected for PAYLOAD_TYPE_JSON',
+				)
+			}
+			return key
+		}),
 	workloadEnabled,
 	postgresAvailabilityType,
 })

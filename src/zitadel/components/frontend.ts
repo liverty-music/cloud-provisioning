@@ -30,9 +30,18 @@ export class FrontendComponent extends pulumi.ComponentResource {
 		// Ternary spread (per `refactor-unify-env-dispatch`): localhost URIs
 		// are only meaningful when env === 'dev'. Other envs receive the
 		// public domain only.
+		// `/auth/passkeys-callback` is the passkey-management sign-in (a second
+		// OIDC request with `max_age=300` on the same client; OpenSpec change
+		// `fan-passkey-recovery-and-management`, design D3).
 		const redirectUris = [
 			`https://${domain}/auth/callback`,
-			...(env === 'dev' ? ['http://localhost:9000/auth/callback'] : []),
+			`https://${domain}/auth/passkeys-callback`,
+			...(env === 'dev'
+				? [
+						'http://localhost:9000/auth/callback',
+						'http://localhost:9000/auth/passkeys-callback',
+					]
+				: []),
 		]
 		const postLogoutRedirectUris = [
 			`https://${domain}/`,
@@ -78,25 +87,20 @@ export class FrontendComponent extends pulumi.ComponentResource {
 			'default',
 			{
 				orgId: orgId,
-				// TODO: Revert to false once upstream fix is released.
-				// Login V2 Register page does not render form fields when userLogin=false,
-				// even with passwordlessType=ALLOWED. See: https://github.com/zitadel/zitadel/issues/11682
+				// MUST stay true. `userLogin` gates ALL local authentication (email
+				// plus passkey or password), not only passwords: with it off, the
+				// Login UI v2 renders no usable sign-in or register form, even with
+				// `passwordlessType: ALLOWED` (zitadel/zitadel#11682). Passkey-only
+				// is expressed by allowing passwordless sign-in and never issuing a
+				// fan a password, with `hidePasswordReset: true` below. See spec
+				// `components/infrastructure/fan/web/global/hosted-login`,
+				// requirement "Configure Login Policy" (corrected by OpenSpec change
+				// `fan-passkey-recovery-and-management`, design D9).
 				//
-				// LOAD-BEARING for E2E: the dev password-based test user provisioned
+				// Also load-bearing for E2E: the password-based test users provisioned
 				// by `E2eTestUserComponent` (see ../index.ts and OpenSpec change
-				// `playwright-password-test-user`) signs in via username + password
-				// against THIS productOrg LoginPolicy. Password sign-in only works
-				// while `userLogin: true`. When the upstream fix lands and this flag
-				// is reverted to `false`, the reverting PR MUST EITHER:
-				//   (a) remove `E2eTestUserComponent` and switch the headless E2E
-				//       capture path back to passkey (currently no working option
-				//       for WSL2), OR
-				//   (b) move the e2e-test-user into a separate org whose own
-				//       LoginPolicy has `userLogin: true`, OR
-				//   (c) defer the revert until per-user passwordless-override
-				//       support exists in Zitadel.
-				// See the design.md Risks table in the `playwright-password-test-user`
-				// OpenSpec change for the full mitigation record.
+				// `playwright-password-test-user`) sign in with username + password
+				// against THIS productOrg LoginPolicy.
 				userLogin: true,
 				// `allowRegister` surfaces the Login UI v2 Register page. NOTE:
 				// the register form's First name / Last name / Email fields are
@@ -116,7 +120,7 @@ export class FrontendComponent extends pulumi.ComponentResource {
 				forceMfaLocalOnly: false,
 				// Allow Passwordless (Passkeys) for better UX and security
 				passwordlessType: 'PASSWORDLESS_TYPE_ALLOWED',
-				hidePasswordReset: true, // Disable password reset flow since password login is disabled
+				hidePasswordReset: true, // Fans have no password, so the reset flow is hidden
 				// User convenience: allow trying usernames without immediate rejection (security trade-off: enumeration possible)
 				ignoreUnknownUsernames: true,
 				defaultRedirectUri: `https://${domain}`,
