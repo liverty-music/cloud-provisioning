@@ -22,14 +22,13 @@ spec:
       terminationGracePeriodSeconds: 75
       serviceAccountName: admin-console-api
       volumes:
-      # Regular backend key from the SHARED backend-secrets — the same binary's
-      # DI initializes the backend-app Zitadel client from it. This Secret is
-      # namespace-shared (consumer + cronjobs + admin) and now provisioned by the
-      # relocated `backend-secrets` ExternalSecret in the namespace base, not by
-      # the deleted server workload (unify-workload-naming).
+      # backend-app key from the DEDICATED admin-console-api-secrets — DI builds
+      # the fan identity remover (admin UserService Delete) from it. Admin is the
+      # only API workload that holds it; the shared backend-secrets does not
+      # carry it.
       - name: zitadel-machine-key
         secret:
-          secretName: backend-secrets
+          secretName: admin-console-api-secrets
           items:
           - key: zitadel-machine-key-for-backend-app.json
             path: zitadel-machine-key-for-backend-app.json
@@ -63,6 +62,10 @@ spec:
         # requires the provisioner credential below for it.
         - name: API_WORKLOAD
           value: admin
+        # The backend-app credential, required on the admin workload only. Set
+        # here because the shared fan-api-config no longer carries it.
+        - name: ZITADEL_MACHINE_KEY_FOR_BACKEND_APP_PATH
+          value: /secrets/zitadel/zitadel-machine-key-for-backend-app.json
         # The organizer-provisioner credential; the backend refuses it on any
         # workload other than admin.
         - name: ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH

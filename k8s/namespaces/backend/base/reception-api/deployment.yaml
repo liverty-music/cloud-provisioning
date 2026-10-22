@@ -13,15 +13,9 @@ spec:
     spec:
       terminationGracePeriodSeconds: 75
       serviceAccountName: reception-api
-      volumes:
-      # The shared binary's DI initializes the backend-app Zitadel client from
-      # this key at boot, even though the reception path never calls Zitadel.
-      - name: zitadel-machine-key
-        secret:
-          secretName: backend-secrets
-          items:
-          - key: zitadel-machine-key-for-backend-app.json
-            path: zitadel-machine-key-for-backend-app.json
+      # No identity-provider credential: the reception path never calls Zitadel,
+      # and the backend does not require it here (OpenSpec change
+      # remove-identity-key-from-fan-api).
       containers:
       - name: server
         image: server
@@ -51,10 +45,6 @@ spec:
         # without them, although the reception path never calls Stripe.
         - secretRef:
             name: api-stripe-secrets
-        volumeMounts:
-        - name: zitadel-machine-key
-          mountPath: /secrets/zitadel
-          readOnly: true
         lifecycle:
           preStop:
             exec:

@@ -30,9 +30,12 @@ spec:
       terminationGracePeriodSeconds: 90
       serviceAccountName: backend-app
       volumes:
+      # backend-app key from the DEDICATED event-consumer-secrets: the shared
+      # backend-secrets no longer carries it, so the API workloads and cronjobs
+      # that load that Secret whole cannot read it.
       - name: zitadel-machine-key
         secret:
-          secretName: backend-secrets
+          secretName: event-consumer-secrets
           items:
           - key: zitadel-machine-key-for-backend-app.json
             path: zitadel-machine-key-for-backend-app.json
