@@ -54,7 +54,9 @@ scenario coverage when a change is archived. It uses the `IMPLEMENTING_REPOS_TOK
 secret when the repository has one and clones anonymously otherwise, so it keeps
 working while everything is public. Before any of the three turns private, set
 that secret on `specification` to a fine-grained token with only
-`Contents: read` on the three repositories (it expires, so note the date).
+`Contents: read` on the three repositories (liverty-music/specification#1220). It
+expires, and an expired token fails the clone even of a public repository, so
+renew it before the date or delete the secret.
 
 ### Cloud threads
 
