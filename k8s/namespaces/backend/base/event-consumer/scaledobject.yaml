@@ -75,7 +75,8 @@ spec:
       consumer: "track-artist-unfollowed"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # USER stream — USER.created fans out to two behaviors; login is now a USER event.
+  # USER stream — USER.created fans out to two behaviors; login is now a USER
+  # event; a verification resend request wakes the consumer that sends the code.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
@@ -125,6 +126,14 @@ spec:
       account: "$G"
       stream: "USER"
       consumer: "record-passkey-change"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "reissue-email-verification"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # NOTIFICATION stream

@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: reissue-email-verification
+spec:
+  streamName: USER
+  durableName: reissue-email-verification
+  # PULL work-queue, like verify-user-email. The backend event consumer sends
+  # the fresh verification code the fan API announced (the fan API holds no
+  # identity-provider credential).
+  deliverPolicy: new
+  filterSubject: USER.email_verification_resend_requested
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true

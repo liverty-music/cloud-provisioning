@@ -23,6 +23,7 @@ resources:
 - consumer-resolve-artist-name.yaml
 - consumer-resolve-artist-image.yaml
 - consumer-verify-user-email.yaml
+- consumer-reissue-email-verification.yaml
 - consumer-track-user-created.yaml
 - consumer-track-user-logged-in.yaml
 - consumer-send-passkey-recovery-link.yaml
