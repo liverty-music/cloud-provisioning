@@ -11,6 +11,7 @@ import {
 	RepositoryName,
 } from './github/index.js'
 import { ErrorTracking } from './posthog/components/error-tracking.js'
+import { ProductAnalytics } from './posthog/components/product-analytics.js'
 import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
 import {
 	StripePaymentMethodDomain,
@@ -88,6 +89,13 @@ const posthogSourcemapApiKey = config.getSecret('posthogSourcemapApiKey')
 // pulumiConfig.posthogManagementApiKey --file - --secret --string`. When
 // unset, no PostHog resource is managed.
 const posthogManagementApiKey = config.getSecret('posthogManagementApiKey')
+// PostHog personal API key for the organization-scoped managed reverse proxy
+// record, the one resource a project-scoped key cannot reach: not limited to a
+// project, `organization:write` only. Sourced via `pulumi env set
+// liverty-music/prod pulumiConfig.posthogOrganizationApiKey --file - --secret
+// --string`. When unset, no proxy is managed. See
+// docs/runbooks/posthog-project-settings.md.
+const posthogOrganizationApiKey = config.getSecret('posthogOrganizationApiKey')
 // Restricted Stripe key used ONLY to register the webhook endpoint below.
 // Stripe recommends restricted keys over secret keys; this one should carry
 // `Webhook Endpoints: write` and nothing else, so a compromised Pulumi run
@@ -543,6 +551,19 @@ if (env === 'prod' && posthogManagementApiKey) {
 		apiKey: posthogManagementApiKey,
 	})
 }
+
+// The fan app's PostHog project settings and its managed reverse proxy
+// (OpenSpec `expand-product-analytics`). Manual settings it cannot hold are in
+// docs/runbooks/posthog-project-settings.md.
+export const posthogProxyHost =
+	env === 'prod' && posthogManagementApiKey
+		? new ProductAnalytics('posthog-product-analytics', {
+				apiKey: posthogManagementApiKey,
+				organizationApiKey: posthogOrganizationApiKey,
+				publicDomain: 'liverty-music.app',
+				cloudflareConfig,
+			}).proxyHost
+		: undefined
 
 // Export common resources
 export const folder = gcp.folder

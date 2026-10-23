@@ -75,6 +75,15 @@ spec:
       consumer: "track-artist-unfollowed"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # Product analytics (expand-product-analytics): hype changes.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "track-artist-hype-changed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   # USER stream — USER.created fans out to two behaviors; login is now a USER
   # event; a verification resend request wakes the consumer that sends the code.
   - type: nats-jetstream
@@ -192,6 +201,39 @@ spec:
       account: "$G"
       stream: "ORDER"
       consumer: "send-resale-sold"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # Product analytics (expand-product-analytics): order lifecycle events.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "track-order-paid"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "track-lottery-entry-drawn"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "track-checkout-expired"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "track-ticket-admitted"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # TICKET_JOURNEY / TICKET_EMAIL streams

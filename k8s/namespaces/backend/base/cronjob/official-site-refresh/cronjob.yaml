@@ -26,6 +26,8 @@ spec:
           - name: official-site-refresh
             image: official-site-refresh
             imagePullPolicy: Always
+            # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+            env: []
             envFrom:
             - configMapRef:
                 name: official-site-refresh-job-config

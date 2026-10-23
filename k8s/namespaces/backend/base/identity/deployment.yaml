@@ -31,6 +31,8 @@ spec:
           name: event-consumer
         - containerPort: 9101
           name: admin-console
+        # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+        env: []
         envFrom:
         - configMapRef:
             name: identity-config
