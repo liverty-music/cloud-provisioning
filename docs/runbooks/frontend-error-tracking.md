@@ -1,0 +1,191 @@
+# Runbook: frontend error tracking (PostHog)
+
+> **Background:** the OpenSpec change `capture-client-errors` sends every error
+> the fan app captures to PostHog Error Tracking (EU project `190464`,
+> "liverty-music-prod"), with source maps uploaded by the frontend image build.
+> The code lives in the frontend repository; the settings below live in PostHog
+> and are configured by hand, so this runbook records each one and how to check
+> it.
+
+## What runs where
+
+| Piece | Where | Managed by |
+| --- | --- | --- |
+| Error reports (`$exception`) | Fan app → `eu.i.posthog.com` | frontend code (`AnalyticsService.captureException`) |
+| Source-map upload | frontend `push-image.yaml`, main-push build of the fan image | `@posthog/rollup-plugin` in `vite.config.ts` |
+| Upload key | GitHub repo-level Actions secret `POSTHOG_SOURCEMAP_API_KEY` on `liverty-music/frontend` | this repository, prod stack (`src/index.ts`, `posthogSourcemapApiKey`) |
+| Billing limit, rate limits, alerts | PostHog project `190464` | by hand, this runbook |
+| Alert channel | Slack `#alert-frontend-prod`, PostHog Slack integration id `83774` | the owner (Slack admin) |
+
+## The upload key
+
+### Scope
+
+A **personal API key** of the owner's PostHog account:
+
+- **Project:** `190464` only (not "all projects").
+- **Scopes:** the **Source map upload** preset of the key dialog:
+  `error_tracking:write` and `organization:read`. posthog-cli's README lists
+  only `error_tracking:write` for `sourcemap`, but PostHog's upload guides and
+  the preset both include `organization:read`; follow the preset.
+- **Label:** `frontend-sourcemap-upload-<YYYYMMDD>`.
+
+With those scopes the key cannot read events or change settings; a leak lets an
+attacker upload symbol sets to the project and read the organization's
+metadata (name, members, projects).
+
+Scopes the key was issued with (2026-10-23): the **Source map upload** preset,
+which grants `error_tracking:write` and `organization:read` and nothing else.
+
+### Why a personal key (workaround)
+
+A CI credential should not belong to a person. PostHog's **project secret API
+keys** are made for this (project-scoped, not tied to a user, only the scopes
+granted), but as of October 2026 they support only `feature_flag:read`,
+`endpoint:read` and `support_ticket:read`. Every PostHog source-map guide
+requires a personal API key, and PostHog documents no OIDC login for the CLI.
+So the key depends on its owner's account: if that account is removed, the key
+is deleted and main-push builds fail at the upload.
+
+**Exit condition:** when
+[project secret API keys](https://posthog.com/docs/api/project-secret-api-keys)
+accept `error_tracking:write` for source-map upload, create one with that scope,
+store it in place of this key (same ESC path, same steps), and delete the
+personal key. Check the scope list at each 6-monthly rotation.
+
+### Issue and store
+
+1. In PostHog EU, **Account → Personal API keys → Create personal API key**:
+   **Organization & project access** limited to project `190464`, expiration
+   **Never** (rotation below replaces it), scopes from the **Source map upload**
+   preset. Copy the value; PostHog does not show it again.
+2. Store it in ESC through stdin, so it never appears in shell history or a
+   process list:
+
+   ```sh
+   pulumi env set liverty-music/prod pulumiConfig.posthogSourcemapApiKey \
+     --file - --secret --string
+   # paste the key, then Ctrl-D
+   ```
+
+3. Check that the key is listed without printing it:
+
+   ```sh
+   pulumi env get liverty-music/prod pulumiConfig.posthogSourcemapApiKey
+   ```
+
+   The output shows `[secret]`, not the value.
+4. Run `pulumi up` on the prod stack. The preview shows one new
+   `github:index/actionsSecret:ActionsSecret` for `POSTHOG_SOURCEMAP_API_KEY`.
+5. Check: `gh secret list --repo liverty-music/frontend` lists
+   `POSTHOG_SOURCEMAP_API_KEY`.
+
+### Rotate
+
+Rotate every 6 months (with the other PostHog keys,
+[posthog-secret-rotation.md](./posthog-secret-rotation.md)), when the key may
+have leaked, or when its owner leaves.
+
+1. Issue a new key as above; leave the old one active.
+2. Store it in ESC (step 2 above) and run the prod `pulumi up`.
+3. Re-run the latest `Deploy Frontend` run on `main` (or merge the next
+   change) and check its log for a successful source-map upload.
+4. Delete the old key in PostHog.
+
+## Volume limits
+
+With no users yet, a runaway loop is the only way to reach these limits. They
+are the backstop behind the SDK's own limiter (burst 10, refill 1 per second)
+and the banner's 60-second repeat rule.
+
+### Billing limit: 0 USD
+
+**Organization → Billing → Error tracking → Set billing limit**, `0`. Ingestion
+then stops at the free 100,000 exceptions a month instead of charging. The
+organization owner receives emails at 80 % and 100 % of the free allotment.
+
+Check: the billing page shows the limit under Error tracking.
+
+### Rate limits
+
+**Error Tracking → Configuration → Rate limits.** Both are token buckets; an
+exception over the limit is dropped before ingestion and not billed.
+
+- **Project-wide:** the lowest value the UI offers that still keeps the
+  per-issue limit below.
+- **Per issue:** 100 exceptions an hour per issue, or the closest the UI
+  offers.
+
+Record what was set:
+
+| Limit | Value | Set on | By |
+| --- | --- | --- | --- |
+| Project-wide | _not set yet_ | | |
+| Per issue | _not set yet_ | | |
+
+## Alerts to `#alert-frontend-prod`
+
+Two alerts: one when a new issue appears, one when a resolved issue comes back.
+Spiking is not alerted: with no users, any recurrence is already a new or
+reopened issue.
+
+### Prerequisite (owner, Slack admin)
+
+1. Create the channel `#alert-frontend-prod`.
+2. Invite the PostHog app to it (`/invite @PostHog`).
+
+### Create
+
+Through the PostHog MCP (`exec`), or **Error Tracking → Alerts** in the UI:
+
+1. List existing alerts (`error-tracking-alerts-list`,
+   `type: ["internal_destination"]`) and skip any that already send the same
+   event to this channel.
+2. Find the channel id: `integrations-channels-retrieve` for integration
+   `83774`.
+3. Create one alert per event with `error-tracking-alerts-create`
+   (`template_id: "template-slack"`), named by the convention
+   `<trigger> · #alert-frontend-prod`:
+   - `Issue created · #alert-frontend-prod`, event
+     `$error_tracking_issue_created`;
+   - `Issue reopened · #alert-frontend-prod`, event
+     `$error_tracking_issue_reopened`.
+
+### Check
+
+- `error-tracking-alerts-list` shows both, enabled.
+- Throw an error from the browser console on liverty-music.app with analytics
+  on (`setTimeout(() => { throw new Error('alert check') })`), and check that a
+  post arrives in `#alert-frontend-prod`. Resolve the issue afterwards.
+
+## Building without source maps while PostHog is down
+
+The upload runs inside the image build, and a failed upload fails the build on
+purpose: a missing map only shows up later, as unreadable stacks. If PostHog is
+down for longer than a re-run can wait and a fix must ship:
+
+1. Delete the repo secret: `gh secret delete POSTHOG_SOURCEMAP_API_KEY --repo
+   liverty-music/frontend`. The build then skips the upload and is otherwise
+   unchanged.
+2. Ship the fix. Errors from that image show minified stacks.
+3. When PostHog is back, restore the secret with the prod `pulumi up` (the ESC
+   value is unchanged), and let the next main push upload maps again.
+
+## Adding a suppression rule
+
+When an issue is noise that no code change can fix (a third-party "Script
+error." with no frames, a browser bug), drop it at ingestion instead of letting
+it alert:
+
+1. Open the issue and confirm it is not ours: no frame from
+   `liverty-music.app`, or a known browser/extension message.
+2. **Error Tracking → Configuration → Suppression rules → Add rule**, scoped as
+   tightly as possible (exception type **and** message, not message alone).
+3. Record the rule and the issue link below.
+
+Suppressed errors are dropped permanently, including any later occurrence that
+is ours. Prefer resolving an issue over suppressing it when unsure.
+
+| Rule | Issue | Added on | Why |
+| --- | --- | --- | --- |
+| _none yet_ | | | |
