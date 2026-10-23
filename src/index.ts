@@ -10,6 +10,7 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
+import { ErrorTracking } from './posthog/components/error-tracking.js'
 import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
 import {
 	StripePaymentMethodDomain,
@@ -78,6 +79,15 @@ const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
 // the secret is not created and the build uploads nothing. See
 // docs/runbooks/frontend-error-tracking.md.
 const posthogSourcemapApiKey = config.getSecret('posthogSourcemapApiKey')
+// PostHog personal API key this program manages the prod PostHog project's
+// error-tracking alerts and settings with (`hog_function:write`,
+// `project:write`, limited to project 190464). Separate from
+// posthogSourcemapApiKey, which a CI build holds and which must not be able to
+// change alerts. Personal for the same reason: PostHog's project secret API
+// keys accept neither scope yet. Sourced via `pulumi env set liverty-music/prod
+// pulumiConfig.posthogManagementApiKey --file - --secret --string`. When
+// unset, no PostHog resource is managed.
+const posthogManagementApiKey = config.getSecret('posthogManagementApiKey')
 // Restricted Stripe key used ONLY to register the webhook endpoint below.
 // Stripe recommends restricted keys over secret keys; this one should carry
 // `Webhook Endpoints: write` and nothing else, so a compromised Pulumi run
@@ -524,6 +534,15 @@ new GitHubRepositoryComponent({
 				}
 			: undefined,
 })
+
+// PostHog Error Tracking for the fan app (prod project only; OpenSpec
+// `capture-client-errors`). Manual settings it cannot hold are in
+// docs/runbooks/frontend-error-tracking.md.
+if (env === 'prod' && posthogManagementApiKey) {
+	new ErrorTracking('posthog-error-tracking', {
+		apiKey: posthogManagementApiKey,
+	})
+}
 
 // Export common resources
 export const folder = gcp.folder

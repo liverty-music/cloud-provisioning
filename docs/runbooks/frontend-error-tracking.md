@@ -3,9 +3,10 @@
 > **Background:** the OpenSpec change `capture-client-errors` sends every error
 > the fan app captures to PostHog Error Tracking (EU project `190464`,
 > "liverty-music-prod"), with source maps uploaded by the frontend image build.
-> The code lives in the frontend repository; the settings below live in PostHog
-> and are configured by hand, so this runbook records each one and how to check
-> it.
+> The code lives in the frontend repository. The PostHog settings are declared
+> in this repository where the PostHog provider can hold them (alerts, exception
+> autocapture) and set by hand where it cannot (billing limit, rate limits);
+> this runbook records both and how to check them.
 
 ## What runs where
 
@@ -14,8 +15,10 @@
 | Error reports (`$exception`) | Fan app → `eu.i.posthog.com` | frontend code (`AnalyticsService.captureException`) |
 | Source-map upload | frontend `push-image.yaml`, main-push build of the fan image | `@posthog/rollup-plugin` in `vite.config.ts` |
 | Upload key | GitHub repo-level Actions secret `POSTHOG_SOURCEMAP_API_KEY` on `liverty-music/frontend` | this repository, prod stack (`src/index.ts`, `posthogSourcemapApiKey`) |
-| Billing limit, rate limits, alerts | PostHog project `190464` | by hand, this runbook |
-| Alert channel | Slack `#alert-frontend-prod`, PostHog Slack integration id `83774` | the owner (Slack admin) |
+| Alerts to Slack, exception autocapture off | PostHog project `190464` | this repository, prod stack (`src/posthog/components/error-tracking.ts`, bridged Terraform provider `PostHog/posthog`) |
+| Management key | ESC `liverty-music/prod` `pulumiConfig.posthogManagementApiKey` | the owner, [below](#the-management-key) |
+| Billing limit, rate limits | PostHog organization billing and project `190464` | by hand, this runbook (no provider resource) |
+| Alert channel | Slack `#alert-frontend-prod` (`C0CBL2URPA6`), PostHog Slack integration id `83774` | the owner (Slack admin) |
 
 ## The upload key
 
@@ -92,6 +95,33 @@ have leaked, or when its owner leaves.
    change) and check its log for a successful source-map upload.
 4. Delete the old key in PostHog.
 
+## The management key
+
+The PostHog provider in the prod stack authenticates with its own key. It is not
+the upload key: that one sits in GitHub Actions, and a key a CI build can read
+must not be able to change alerts.
+
+- **Kind:** personal API key of the owner's PostHog account, for the same reason
+  as the upload key (project secret API keys accept neither scope below yet).
+  The exit condition above applies to this key too.
+- **Project:** `190464` only.
+- **Scopes:** **Hog functions: Write** (`hog_function:write`, for the alerts)
+  and **Project: Write** (`project:write`, for the project settings), nothing
+  else.
+- **Label:** `pulumi-posthog-management-<YYYYMMDD>`.
+
+Issue it like the upload key, then store it:
+
+```sh
+pulumi env set liverty-music/prod pulumiConfig.posthogManagementApiKey \
+  --file - --secret --string
+```
+
+Until the value is set, the prod stack manages no PostHog resource
+(`src/index.ts`). Rotate it on the same schedule: issue a new key, store it,
+run the prod `pulumi up` (the preview shows only the provider's `apiKey`
+changing), then delete the old key.
+
 ## Volume limits
 
 With no users yet, a runaway loop is the only way to reach these limits. They
@@ -132,28 +162,30 @@ reopened issue.
 ### Prerequisite (owner, Slack admin)
 
 1. Create the channel `#alert-frontend-prod`.
-2. Invite the PostHog app to it (`/invite @PostHog`).
+2. Invite the PostHog app to it (`/invite @PostHog`). The alerts post to the
+   channel by id, `C0CBL2URPA6`; a renamed channel keeps working, a new channel
+   needs its id changed in `src/posthog/components/error-tracking.ts`.
 
-### Create
+### Declared in code
 
-Through the PostHog MCP (`exec`), or **Error Tracking → Alerts** in the UI:
+`src/posthog/components/error-tracking.ts` declares both alerts as
+`posthog.HogFunction` resources (`type: internal_destination`,
+`template_id: template-slack`), with the message layout PostHog's own alert
+wizard uses:
 
-1. List existing alerts (`error-tracking-alerts-list`,
-   `type: ["internal_destination"]`) and skip any that already send the same
-   event to this channel.
-2. Find the channel id: `integrations-channels-retrieve` for integration
-   `83774`.
-3. Create one alert per event with `error-tracking-alerts-create`
-   (`template_id: "template-slack"`), named by the convention
-   `<trigger> · #alert-frontend-prod`:
-   - `Issue created · #alert-frontend-prod`, event
-     `$error_tracking_issue_created`;
-   - `Issue reopened · #alert-frontend-prod`, event
-     `$error_tracking_issue_reopened`.
+- `Issue created · #alert-frontend-prod`, event `$error_tracking_issue_created`;
+- `Issue reopened · #alert-frontend-prod`, event
+  `$error_tracking_issue_reopened`.
+
+Change them there, not in the PostHog UI: the next prod `pulumi up` reverts a
+UI edit. An alert made in the UI is not managed; bring it under the stack with
+`pulumi import posthog:index/hogFunction:HogFunction <name> 190464/<uuid>` or
+delete it.
 
 ### Check
 
-- `error-tracking-alerts-list` shows both, enabled.
+- The PostHog MCP `error-tracking-alerts-list`
+  (`type: ["internal_destination"]`) shows both, enabled.
 - Throw an error from the browser console on liverty-music.app with analytics
   on (`setTimeout(() => { throw new Error('alert check') })`), and check that a
   post arrives in `#alert-frontend-prod`. Resolve the issue afterwards.
