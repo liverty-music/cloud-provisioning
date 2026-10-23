@@ -26,6 +26,8 @@ spec:
           - name: artist-image-sync
             image: artist-image-sync
             imagePullPolicy: Always
+            # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+            env: []
             envFrom:
             - configMapRef:
                 name: artist-image-sync-job-config

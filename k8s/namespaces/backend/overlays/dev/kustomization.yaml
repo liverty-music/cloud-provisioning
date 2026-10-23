@@ -7,6 +7,35 @@ resources:
 namespace: backend
 
 patches:
+# Release version for telemetry (expand-product-analytics): every backend
+# container reads TELEMETRY_SERVICE_VERSION from its own Pod's
+# `app.kubernetes.io/version` label through the Downward API, so the
+# OpenTelemetry resource and PostHog `app_version` carry the release without
+# a second place to bump. Targeted by kind so new workloads are covered; the
+# patch appends to `containers/0/env`, so each base container declares `env:`
+# (an empty list when it has no other entry) or this build fails.
+# Dev sets no `app.kubernetes.io/version` label (Image Updater moves the tag),
+# so the value there is an empty string.
+- target:
+    kind: Deployment
+  patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: TELEMETRY_SERVICE_VERSION
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.labels['app.kubernetes.io/version']
+- target:
+    kind: CronJob
+  patch: |-
+    - op: add
+      path: /spec/jobTemplate/spec/template/spec/containers/0/env/-
+      value:
+        name: TELEMETRY_SERVICE_VERSION
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.labels['app.kubernetes.io/version']
 # Target backend-app (no longer affected by namePrefix)
 - path: serviceaccount_patch.yaml
   target:
