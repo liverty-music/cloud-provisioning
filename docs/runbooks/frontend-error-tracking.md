@@ -63,12 +63,14 @@ personal key. Check the scope list at each 6-monthly rotation.
    **Never** (rotation below replaces it), scopes from the **Source map upload**
    preset. Copy the value; PostHog does not show it again.
 2. Store it in ESC through stdin, so it never appears in shell history or a
-   process list:
+   process list. `tr` drops the line break that pressing Enter after the paste
+   adds: a key stored with it breaks every request (`invalid header field value
+   for "Authorization"`).
 
    ```sh
-   pulumi env set liverty-music/prod pulumiConfig.posthogSourcemapApiKey \
-     --file - --secret --string
-   # paste the key, then Ctrl-D
+   tr -d '\r\n' | pulumi env set liverty-music/prod \
+     pulumiConfig.posthogSourcemapApiKey --file - --secret --string
+   # paste the key, press Enter, then Ctrl-D
    ```
 
 3. Check that the key is listed without printing it:
@@ -113,8 +115,9 @@ must not be able to change alerts.
 Issue it like the upload key, then store it:
 
 ```sh
-pulumi env set liverty-music/prod pulumiConfig.posthogManagementApiKey \
-  --file - --secret --string
+tr -d '\r\n' | pulumi env set liverty-music/prod \
+  pulumiConfig.posthogManagementApiKey --file - --secret --string
+# paste the key, press Enter, then Ctrl-D
 ```
 
 Until the value is set, the prod stack manages no PostHog resource
@@ -134,24 +137,30 @@ and the banner's 60-second repeat rule.
 then stops at the free 100,000 exceptions a month instead of charging. The
 organization owner receives emails at 80 % and 100 % of the free allotment.
 
-Check: the billing page shows the limit under Error tracking.
+Check: the billing page shows the limit under Error tracking, or the PostHog
+MCP `billing-overview-get` returns `custom_limits_usd.error_tracking: 0` and
+error tracking's `usage_limit: 100000`. Set on 2026-10-23; confirmed with the
+MCP the same day.
 
 ### Rate limits
 
 **Error Tracking → Configuration → Rate limits.** Both are token buckets; an
 exception over the limit is dropped before ingestion and not billed.
 
-- **Project-wide:** the lowest value the UI offers that still keeps the
-  per-issue limit below.
-- **Per issue:** 100 exceptions an hour per issue, or the closest the UI
-  offers.
+- **Project-wide: 100 exceptions per hour.** Even at the limit all month,
+  that is at most about 72,000 exceptions, under the free 100,000, so this
+  limit stops a runaway before the billing limit does.
+- **Per issue: 20 exceptions per hour.** It must be well below the
+  project-wide limit: at the same value, one looping issue would use the whole
+  project budget and drop every other issue's exceptions. Twenty occurrences
+  carry the stack, steps and trace ID needed to investigate.
 
 Record what was set:
 
 | Limit | Value | Set on | By |
 | --- | --- | --- | --- |
-| Project-wide | _not set yet_ | | |
-| Per issue | _not set yet_ | | |
+| Project-wide | 100 per 1 hour | 2026-10-23 | owner (UI) |
+| Per issue | 20 per 1 hour | 2026-10-23 | owner (UI) |
 
 ## Alerts to `#alert-frontend-prod`
 
