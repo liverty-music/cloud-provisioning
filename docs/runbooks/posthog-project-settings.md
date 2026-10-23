@@ -82,7 +82,7 @@ patterns (PostHog MCP `project-get`, or the settings page).
 
 | Date | What | By |
 | --- | --- | --- |
-| | Project import, proxy, recording on (`pulumi up`) | |
+| 2026-10-23 | Project import, proxy, recording on (`pulumi up`, prod update 277). The proxy served `/flags/`, `/array/…/config` and `/static/array.js` with 200 at once while PostHog still reported it as issuing | owner |
 | | Time zone `Asia/Tokyo` (`pulumi up`) | |
 | | Recording URL blocklist (by hand) | |
 | | `posthogApiHost` switched to the proxy | |
