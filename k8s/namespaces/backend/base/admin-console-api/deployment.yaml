@@ -62,6 +62,12 @@ spec:
         # requires the provisioner credential below for it.
         - name: API_WORKLOAD
           value: admin
+        # Identity service listener for this workload. When set, fan identity
+        # removal and Organization provisioning go through it and the two
+        # Zitadel keys below are not read (they are unmounted once the backend
+        # drops the direct client).
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity:9101
         # The backend-app credential, required on the admin workload only. Set
         # here because the shared fan-api-config no longer carries it.
         - name: ZITADEL_MACHINE_KEY_FOR_BACKEND_APP_PATH

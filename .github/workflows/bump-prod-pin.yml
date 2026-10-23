@@ -157,10 +157,11 @@ jobs:
               # (backend/series-image-consumer).
               # They MUST be listed here too or they stay frozen while the rest
               # advance, and schema-drift (e.g. a dropped column) then breaks the
-              # stale image at runtime. The backend release retag matrix already
-              # publishes all eight under the release tag, so a single dispatch pins
-              # them in lock-step.
-              IMAGES="api consumer concert-discovery artist-image-sync official-site-refresh sales-phase-discovery sales-reminders series-image-consumer"
+              # stale image at runtime. `identity` is the identity service, the
+              # only workload holding the identity-provider keys. The backend
+              # release retag matrix already publishes all nine under the release
+              # tag, so a single dispatch pins them in lock-step.
+              IMAGES="api consumer identity concert-discovery artist-image-sync official-site-refresh sales-phase-discovery sales-reminders series-image-consumer"
               BUMP_LABEL=true ;;
             frontend)
               # One frontend release ships four web bundles from the same tag —

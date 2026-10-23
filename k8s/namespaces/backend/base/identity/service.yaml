@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Reached only inside the cluster: no HTTPRoute points here. Each port is one
+  # caller's listener; NetworkPolicy identity-ingress admits only that caller.
+  name: identity
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9100
+    targetPort: 9100
+    protocol: TCP
+    name: event-consumer
+    appProtocol: kubernetes.io/h2c
+  - port: 9101
+    targetPort: 9101
+    protocol: TCP
+    name: admin-console-api
+    appProtocol: kubernetes.io/h2c
