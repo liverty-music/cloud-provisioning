@@ -8,3 +8,10 @@ config:
   pulumi:tags:
     value:
       pulumi:template: gcp-typescript
+packages:
+  posthog:
+    source: terraform-provider
+    version: 1.5.0
+    parameters:
+      - PostHog/posthog
+      - 1.0.25
