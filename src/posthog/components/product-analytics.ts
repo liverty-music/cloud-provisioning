@@ -37,7 +37,7 @@ export interface ProductAnalyticsArgs {
  * The fan app's PostHog project and its managed reverse proxy (OpenSpec
  * `expand-product-analytics`, tasks 5.1 and 5.3):
  *
- * - the project, imported (its day boundary moves to Japan time next);
+ * - the project, imported, with its day boundary in Japan time;
  * - a managed reverse proxy on `beat.<publicDomain>`, so events and recordings
  *   reach PostHog through the app's own domain;
  * - the proxy's CNAME in Cloudflare, DNS-only: PostHog issues the certificate,
@@ -69,15 +69,14 @@ export class ProductAnalytics extends pulumi.ComponentResource {
 		)
 
 		// Holds every event and recording of the fan app: protected so no plan
-		// can delete or replace it. Imported with its current values (an import
-		// whose inputs differ from the live project fails); the time zone moves
-		// to Asia/Tokyo in the next update.
+		// can delete or replace it. Day boundaries of every insight follow the
+		// fans' time zone.
 		new posthog.Project(
 			`${name}-project`,
 			{
 				name: 'liverty-music-prod',
 				organizationId: ORGANIZATION_ID,
-				timezone: 'UTC',
+				timezone: 'Asia/Tokyo',
 			},
 			{
 				parent: this,
