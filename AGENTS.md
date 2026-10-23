@@ -34,6 +34,7 @@ General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claud
 
 ## Changing Pulumi code
 
+- **Repository visibility** is set per repository in `src/github/components/organization.ts` (`REPOSITORY_VISIBILITY`). Before changing it, follow `docs/runbooks/repository-visibility.md`.
 - Introduce a `ComponentResource` only after working out which resources outside it will need to reference its children. Moving an existing resource under a parent changes its URN and needs `aliases`. `Gcp` in `src/gcp/index.ts` stays a plain class on purpose.
 - Resource names are kebab-case. Regions and zones come from `src/gcp/region.ts`.
 - **Provider upgrades** (the Renovate `pulumi` group, which never automerges and is not previewed by Pulumi Cloud): run the `provider-upgrade` skill on the Renovate branch against both stacks, and post its Upgrade Summary as a comment on that pull request instead of opening a new one. A preview of `main` is not empty: compare against the baseline table in "A Pulumi preview reports resource changes" (`liverty-music/.github` `renovate-runbook.md`) before attributing a diff to the upgrade.
@@ -42,11 +43,6 @@ General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claud
 
 - Stacks import the ESC environments `liverty-music/dev` and `liverty-music/prod`, which both import `liverty-music/common`. ESC `pulumiConfig.<key>` is the config key `liverty-music:<key>`.
 - Set an environment-specific value with `pulumi env set liverty-music/<env> pulumiConfig.<key> --file <path|-> [--secret --string]`. Never use `pulumi config set --secret` (it writes to the stack file), and never pass a value as an argument: it lands in shell history, and a value starting with `-` (a PEM key) is parsed as a flag and echoed in the error.
-
-## Public repository
-
-- **This repository is public**, and so are its Issues, PRs, commit messages and Actions logs. Never write production user data there: no emails, names, user or order IDs, payment or Stripe customer IDs, or log lines that carry them. Quote an ID only when it identifies a resource, not a person, and summarize user-bearing logs instead of pasting them. The same holds for `backend`, `frontend`, `specification` and `.github`.
-- **Visibility is set per repository** in `src/github/components/organization.ts` (`REPOSITORY_VISIBILITY`). Before changing it, follow `docs/runbooks/repository-visibility.md`.
 
 ## Before you act on
 
