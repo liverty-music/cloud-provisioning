@@ -31,6 +31,8 @@ spec:
           name: event-consumer
         - containerPort: 9101
           name: admin-console
+        - containerPort: 9102
+          name: fan-api
         # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
         env: []
         envFrom:

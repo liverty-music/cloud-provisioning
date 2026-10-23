@@ -17,3 +17,8 @@ spec:
     protocol: TCP
     name: admin-console-api
     appProtocol: kubernetes.io/h2c
+  - port: 9102
+    targetPort: 9102
+    protocol: TCP
+    name: fan-api
+    appProtocol: kubernetes.io/h2c

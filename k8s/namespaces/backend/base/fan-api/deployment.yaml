@@ -34,6 +34,12 @@ spec:
         # lottery draw, issuance and settlement sweepers.
         - name: API_WORKLOAD
           value: fan
+        # Identity service listener for this workload: confirming an email
+        # address with the code from its verification email, and nothing else.
+        # The fan API holds no identity-provider key (OpenSpec change
+        # fan-email-verification-in-app).
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity:9102
         envFrom:
         - configMapRef:
             name: fan-api-config
