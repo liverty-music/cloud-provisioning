@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    spec:
+      terminationGracePeriodSeconds: 45
+      serviceAccountName: identity
+      automountServiceAccountToken: false
+      volumes:
+      # The three identity-provider keys. Not optional: until ESO has synced the
+      # Secret the pod waits in ContainerCreating.
+      - name: zitadel-machine-keys
+        secret:
+          secretName: identity-secrets
+      containers:
+      - name: identity
+        image: identity
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: health
+        - containerPort: 9100
+          name: event-consumer
+        - containerPort: 9101
+          name: admin-console
+        envFrom:
+        - configMapRef:
+            name: identity-config
+        volumeMounts:
+        - name: zitadel-machine-keys
+          mountPath: /secrets/zitadel
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: ["ALL"]
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
+        # Readiness reports the process only: ready once the callers'
+        # listeners are bound, not ready while shutting down. The identity
+        # provider is not checked; while it is down, requests fail with
+        # Unavailable and the pod stays ready.
+        readinessProbe:
+          grpc:
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          grpc:
+            port: 8080
+            service: liveness
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+            ephemeral-storage: 100Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+            ephemeral-storage: 100Mi

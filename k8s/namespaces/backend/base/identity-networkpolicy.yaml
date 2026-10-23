@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  # Ingress to the identity service, per port: 9100 from the event consumer,
+  # 9101 from the admin console API, 8080 (gRPC health) for the kubelet probes.
+  # Everything else, including every other pod, is denied. Enforced by
+  # Dataplane V2. OpenSpec change `identity-service`, design D3.
+  name: identity-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: identity
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: event-consumer
+    ports:
+    - protocol: TCP
+      port: 9100
+  - from:
+    - podSelector:
+        matchLabels:
+          app: admin-console-api
+    ports:
+    - protocol: TCP
+      port: 9101
+  # The probes come from the node; the health check reveals nothing.
+  - ports:
+    - protocol: TCP
+      port: 8080

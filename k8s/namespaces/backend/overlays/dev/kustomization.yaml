@@ -338,3 +338,7 @@ configMapGenerator:
   behavior: merge
   envs:
   - series-image-consumer/configmap.env
+- name: identity-config
+  behavior: merge
+  envs:
+  - identity/configmap.env

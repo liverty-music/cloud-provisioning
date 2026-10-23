@@ -381,6 +381,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - series-image-consumer/configmap.env
+  - name: identity-config
+    behavior: merge
+    envs:
+      - identity/configmap.env
 # Pin all backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -428,6 +432,12 @@ images:
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
+    newTag: v1.96.0 # commit 3ab9fdf3726f09138d621ea89f72cc05c3ddbee1
+  # identity: the identity service, the only workload holding the
+  # identity-provider keys (OpenSpec change identity-service). Bumped with the
+  # other backend images by bump-prod-pin.yml.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/identity
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/identity
     newTag: v1.96.0 # commit 3ab9fdf3726f09138d621ea89f72cc05c3ddbee1
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery

@@ -20,5 +20,11 @@ resources:
 - cronjob/sales-reminders
 - event-consumer
 - series-image-consumer
+# identity: the only workload holding the identity-provider keys (OpenSpec
+# change identity-service).
+- identity
+# Outside the identity sub-base on purpose: its `labels` transformer
+# (includeSelectors) would rewrite the `from` podSelectors to `app: identity`.
+- identity-networkpolicy.yaml
 
 namespace: backend
