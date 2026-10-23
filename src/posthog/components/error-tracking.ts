@@ -24,7 +24,8 @@ const ALERT_CHANNEL_NAME = '#alert-frontend-prod'
 export interface ErrorTrackingArgs {
 	/**
 	 * PostHog personal API key the provider authenticates with
-	 * (`hog_function:write`, `project:write`, limited to project 190464).
+	 * (`hog_function:write`, `project:write`, limited to project 190464; see
+	 * `posthogManagementApiKey` in src/index.ts).
 	 */
 	apiKey: pulumi.Input<string>
 }
@@ -136,7 +137,14 @@ export class ErrorTracking extends pulumi.ComponentResource {
 
 		new posthog.ProjectSettings(
 			`${name}-project-settings`,
-			{ projectId: PROJECT_ID, autocaptureExceptionsOptIn: false },
+			{
+				projectId: PROJECT_ID,
+				autocaptureExceptionsOptIn: false,
+				// Session replay is recorded from the fan app's own masking config
+				// (OpenSpec `expand-product-analytics`). Kept on this resource: the
+				// project has one settings resource.
+				sessionRecordingOptIn: true,
+			},
 			childOpts,
 		)
 
