@@ -97,13 +97,13 @@ export interface GcpArgs {
 	 *  instance consumes. */
 	zitadelEnabled?: boolean
 	/** JWT profile JSON for the organizer-provisioner machine user. Stored in
-	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`) for the
-	 *  backend to provision Organizer tenant orgs at runtime. */
+	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`) with
+	 *  ESO-only access and mounted only on the identity service. */
 	zitadelOrganizerProvisionerKey?: pulumi.Output<string>
 	/** JWT profile JSON for the fan-passkey-recovery machine user (ORG_OWNER on
 	 *  the product org). Stored in Secret Manager
 	 *  (`zitadel-machine-key-for-fan-passkey-recovery`) with ESO-only access and
-	 *  mounted only on `event-consumer`. */
+	 *  mounted only on the identity service. */
 	zitadelFanPasskeyRecoveryKey?: pulumi.Output<string>
 	/** Gate for the workload tier (GKE / Cloud SQL / monitoring / GSM
 	 *  Zitadel bootstrap secrets). When false (dev shutdown mode), these
@@ -635,6 +635,18 @@ export class Gcp {
 								},
 							]
 						: []),
+				],
+				esoOnlySecrets: [
+					// The identity-provider keys. ESO-only: no workload Service
+					// Account may read them from Secret Manager. ESO syncs them into
+					// `identity-secrets`, mounted only on the identity service. See
+					// OpenSpec change `identity-service`, design D5.
+					//   - backend-app (ORG_USER_MANAGER on the product org):
+					//     verification emails and fan identity removal
+					//   - organizer-provisioner (IAM_ORG_MANAGER): Organizers'
+					//     Organizations
+					//   - fan-passkey-recovery (ORG_OWNER on the product org):
+					//     passkey registration links
 					...(zitadelMachineKey
 						? [
 								{
@@ -643,11 +655,6 @@ export class Gcp {
 								},
 							]
 						: []),
-					// JWT key for the organizer-provisioner machine user — the
-					// backend reads it to provision Organizer tenant orgs at
-					// runtime. Backend-tier readable (same path as backend-app),
-					// but a distinct GSM secret + Zitadel identity so its blast
-					// radius stays isolated. See OpenSpec change `organizer-tenancy`.
 					...(zitadelOrganizerProvisionerKey
 						? [
 								{
@@ -658,14 +665,6 @@ export class Gcp {
 								},
 							]
 						: []),
-				],
-				esoOnlySecrets: [
-					// JWT key for the fan-passkey-recovery machine user (ORG_OWNER on
-					// the product org). ESO-only: no workload Service Account may read
-					// it from Secret Manager. ESO syncs it into the dedicated
-					// `event-consumer-secrets` Secret, mounted only on event-consumer
-					// and never on the internet-facing fan-api. See OpenSpec change
-					// `fan-passkey-recovery-and-management`, design D2.
 					...(zitadelFanPasskeyRecoveryKey
 						? [
 								{

@@ -21,28 +21,6 @@ spec:
     spec:
       terminationGracePeriodSeconds: 75
       serviceAccountName: admin-console-api
-      volumes:
-      # backend-app key from the DEDICATED admin-console-api-secrets — DI builds
-      # the fan identity remover (admin UserService Delete) from it. Admin is the
-      # only API workload that holds it; the shared backend-secrets does not
-      # carry it.
-      - name: zitadel-machine-key
-        secret:
-          secretName: admin-console-api-secrets
-          items:
-          - key: zitadel-machine-key-for-backend-app.json
-            path: zitadel-machine-key-for-backend-app.json
-      # Powerful organizer-provisioner key from the DEDICATED admin-console-api-secrets
-      # (not co-mingled into the shared backend-secrets). Presence of this mount +
-      # ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH is what activates the
-      # provisioner in this process. Renamed from admin-console-secrets to match the
-      # workload (unify-workload-naming cutover).
-      - name: zitadel-organizer-provisioner-key
-        secret:
-          secretName: admin-console-api-secrets
-          items:
-          - key: zitadel-machine-key-for-organizer-provisioner.json
-            path: zitadel-machine-key-for-organizer-provisioner.json
       containers:
       - name: server
         image: server
@@ -58,25 +36,17 @@ spec:
           name: http-admin
         env:
         # The API deployment this process runs as (backend API_WORKLOAD). admin
-        # is the only workload that provisions organizer tenants, and the backend
-        # requires the provisioner credential below for it.
+        # is the only workload that provisions Organizers' Organizations, through
+        # the identity service below.
         - name: API_WORKLOAD
           value: admin
-        # Identity service listener for this workload. When set, fan identity
-        # removal and Organization provisioning go through it and the two
-        # Zitadel keys below are not read (they are unmounted once the backend
-        # drops the direct client).
+        # Identity service listener for this workload: fan identity removal and
+        # Organization provisioning go through it. The admin console API holds
+        # no identity-provider key (OpenSpec change identity-service).
         - name: IDENTITY_SERVICE_URL
           value: http://identity:9101
-        # The backend-app credential, required on the admin workload only. Set
-        # here because the shared fan-api-config no longer carries it.
-        - name: ZITADEL_MACHINE_KEY_FOR_BACKEND_APP_PATH
-          value: /secrets/zitadel/zitadel-machine-key-for-backend-app.json
-        # The organizer-provisioner credential; the backend refuses it on any
-        # workload other than admin.
-        - name: ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH
-          value: /secrets/zitadel-organizer-provisioner/zitadel-machine-key-for-organizer-provisioner.json
-        # Env-specific Zitadel project the provisioner grants tenant orgs into.
+        # Env-specific Zitadel organizer-console project (the organizer server's
+        # role-claim check).
         # Value is a Pulumi output (organizerConsoleProjectId); set per overlay.
         - name: ORGANIZER_CONSOLE_PROJECT_ID
           value: REPLACE_ME_IN_OVERLAY
@@ -108,13 +78,6 @@ spec:
         # start outside local without them.
         - secretRef:
             name: api-stripe-secrets
-        volumeMounts:
-        - name: zitadel-machine-key
-          mountPath: /secrets/zitadel
-          readOnly: true
-        - name: zitadel-organizer-provisioner-key
-          mountPath: /secrets/zitadel-organizer-provisioner
-          readOnly: true
         lifecycle:
           preStop:
             exec:
