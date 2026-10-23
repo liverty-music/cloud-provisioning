@@ -64,6 +64,20 @@ const stripeSecretKey = config.getSecret('stripeSecretKey')
 // "sk_test_…" --secret`. When unset, the secret is simply not created and the
 // E2E job stays skipped.
 const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
+// PostHog personal API key the frontend's image build uses to upload source
+// maps to Error Tracking (OpenSpec `capture-client-errors`, design D7), scoped
+// to the prod project (190464) with the "Source map upload" preset
+// (`error_tracking:write`, `organization:read`). A personal key is a workaround
+// until PostHog's project secret API keys accept that scope (see the runbook's
+// exit condition). Exposed as the repo-level Actions secret
+// POSTHOG_SOURCEMAP_API_KEY on the frontend repo; repo-level and managed in the
+// prod stack only, like STRIPE_TEST_SECRET_KEY, because the key belongs to the
+// prod PostHog project while the image build runs in the `dev` environment.
+// Sourced via `pulumi env set liverty-music/prod
+// pulumiConfig.posthogSourcemapApiKey --file - --secret --string`. When unset,
+// the secret is not created and the build uploads nothing. See
+// docs/runbooks/frontend-error-tracking.md.
+const posthogSourcemapApiKey = config.getSecret('posthogSourcemapApiKey')
 // Restricted Stripe key used ONLY to register the webhook endpoint below.
 // Stripe recommends restricted keys over secret keys; this one should carry
 // `Webhook Endpoints: write` and nothing else, so a compromised Pulumi run
@@ -438,6 +452,12 @@ new GitHubRepositoryComponent({
 	variables: sharedVariables,
 	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
+	// Repo-level source-map upload key for `push-image.yaml` (see
+	// `posthogSourcemapApiKey` above). Absent until the ESC value is set.
+	repositorySecrets:
+		env === 'prod' && posthogSourcemapApiKey
+			? { POSTHOG_SOURCEMAP_API_KEY: posthogSourcemapApiKey }
+			: undefined,
 })
 
 // Specification Repository
