@@ -18,7 +18,7 @@
 | Session recording | on | this repository (`src/posthog/components/error-tracking.ts`, `posthog.ProjectSettings` `sessionRecordingOptIn`; the project has one settings resource) |
 | Managed reverse proxy | `https://beat.liverty-music.app` | this repository (`posthog.ProxyRecord` with [the organization key](#the-organization-key), and its Cloudflare CNAME, DNS-only) |
 | Screens never recorded | the checkout, lottery entry, identity check and Settings | the fan app ([below](#screens-never-recorded)), not a project setting |
-| Fan app `posthogApiHost` | the proxy host, once the proxy is valid | `k8s/namespaces/frontend/overlays/prod/fan-web-configmap.yaml` |
+| Fan app `posthogApiHost` | the proxy host, once the proxy is valid (the dev project is in the same organization, so dev uses the same proxy) | `k8s/namespaces/frontend/overlays/{prod,dev}/fan-web-configmap.yaml` |
 
 ## The organization key
 
@@ -82,4 +82,4 @@ stays empty.
 | --- | --- | --- |
 | 2026-10-23 | Project import, proxy, recording on (`pulumi up`, prod update 277). The proxy served `/flags/`, `/array/…/config` and `/static/array.js` with 200 at once while PostHog still reported it as issuing | owner |
 | 2026-10-23 | Time zone `Asia/Tokyo` (`pulumi up` of #687); `project-get` reads `timezone: Asia/Tokyo`. The proxy reached `valid` about two minutes after creation | owner |
-| | `posthogApiHost` switched to the proxy (prod ConfigMap) | |
+| 2026-10-24 | `posthogApiHost` switched to the proxy (prod ConfigMap, #700). A visit with `?utm_source=test` sent its page views, `$pageleave` and recording through `https://beat.liverty-music.app`, and PostHog stored them with `utm_source` and no referral code | agent |
