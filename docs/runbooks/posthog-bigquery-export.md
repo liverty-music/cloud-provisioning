@@ -26,14 +26,14 @@ Without them, the preview fails with `GET integrations/ failed (403)`, or `pulum
 
 Do this once, after the prod `pulumi up` has created `posthog-export` and its grants (`AnalyticsWarehouseComponent`), and before the `pulumi up` that creates the exports.
 
-1. In PostHog (EU cloud, project `liverty-music-prod`), open **Data pipelines → Destinations**, click **+ New destination**, search for **BigQuery** and click **+ Create**.
-2. In the connection field, choose **Configure new Google Cloud service account**.
+1. Open the BigQuery batch export form: <https://eu.posthog.com/project/190464/pipeline/batch-exports/new/BigQuery>. The list of existing exports is at `/project/190464/data-management/destinations`. Sources (`data-management/sources`) is for imports, not this.
+2. In the authentication (connection) field, choose **Configure new Google Cloud service account**.
 3. Choose **Impersonate service account**, enter:
    - Service account email: `posthog-export@liverty-music-prod.iam.gserviceaccount.com`
    - Project ID: `liverty-music-prod`
 
    Then save. PostHog checks the account's description here.
-4. Close the destination form without creating it. The integration stays; Pulumi creates the exports.
+4. Close the export form without creating it. The integration stays; Pulumi creates the exports.
 
 Until the integration exists, the preview fails with `... has no google-cloud-service-account integration for posthog-export@...`. If it is deleted, the exports stop. Create it again the same way; the next `pulumi up` finds the new one and updates the exports.
 
