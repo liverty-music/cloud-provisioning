@@ -4,6 +4,7 @@ import * as random from '@pulumi/random'
 import * as tls from '@pulumi/tls'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import type { Environment } from '../config.js'
+import { AnalyticsWarehouseComponent } from './components/analytics-warehouse.js'
 import { BillingExportComponent } from './components/billing-export.js'
 import { KmsComponent } from './components/kms.js'
 import { KubernetesComponent } from './components/kubernetes.js'
@@ -413,10 +414,23 @@ export class Gcp {
 		// docs/runbooks/enable-billing-export.md. See OpenSpec change
 		// `prod-cost-optimization` §3 for the motivation.
 		if (environment === 'prod') {
-			new BillingExportComponent('gcp-billing-export', {
-				project: this.project,
-				environment,
-			})
+			const billingExport = new BillingExportComponent(
+				'gcp-billing-export',
+				{
+					project: this.project,
+					environment,
+				},
+			)
+
+			// 4.7. Analytics warehouse — PostHog events and the backend's
+			// analytics log lines next to billing_export, in the same location
+			// so one query joins them. Depends on the billing export for the
+			// BigQuery API it enables. OpenSpec change `build-analytics-warehouse`.
+			new AnalyticsWarehouseComponent(
+				'analytics-warehouse',
+				{ project: this.project },
+				{ dependsOn: [billingExport] },
+			)
 		}
 
 		const osakaConfig = NetworkConfig.Osaka
