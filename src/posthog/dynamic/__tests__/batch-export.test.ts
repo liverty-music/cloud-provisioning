@@ -1,13 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
 	bigQueryExportProvider,
-	googleCloudServiceAccountIntegrationProvider,
+	findGoogleCloudServiceAccountIntegration,
 } from '../batch-export.js'
 
-const integrationProvider =
-	googleCloudServiceAccountIntegrationProvider as Required<
-		typeof googleCloudServiceAccountIntegrationProvider
-	>
 const exportProvider = bigQueryExportProvider as Required<
 	typeof bigQueryExportProvider
 >
@@ -33,13 +29,6 @@ function lastRequest() {
 	}
 }
 
-const integrationInputs = {
-	apiKey: 'phx_test',
-	gcpProjectId: 'liverty-music-prod',
-	serviceAccountEmail:
-		'posthog-export@liverty-music-prod.iam.gserviceaccount.com',
-}
-
 const exportInputs = {
 	apiKey: 'phx_test',
 	name: 'BigQuery events',
@@ -54,56 +43,82 @@ beforeEach(() => {
 	fetchMock.mockReset()
 })
 
-describe('googleCloudServiceAccountIntegrationProvider', () => {
-	it('creates a google-cloud-service-account integration and returns its id', async () => {
-		respond(201, { id: 42 })
+describe('findGoogleCloudServiceAccountIntegration', () => {
+	const email = 'posthog-export@liverty-music-prod.iam.gserviceaccount.com'
 
-		const result = await integrationProvider.create(integrationInputs)
+	it('returns the id of the integration for the service account', async () => {
+		respond(200, {
+			results: [
+				{ id: 7, kind: 'slack', config: {} },
+				{
+					id: 42,
+					kind: 'google-cloud-service-account',
+					config: { service_account_email: email },
+				},
+			],
+			next: null,
+		})
 
+		await expect(
+			findGoogleCloudServiceAccountIntegration('phx_test', email),
+		).resolves.toBe(42)
 		const req = lastRequest()
 		expect(req.url).toBe(
 			'https://eu.posthog.com/api/environments/190464/integrations/',
 		)
-		expect(req.method).toBe('POST')
+		expect(req.method).toBe('GET')
 		expect(req.headers.Authorization).toBe('Bearer phx_test')
-		expect(req.body).toEqual({
-			kind: 'google-cloud-service-account',
-			config: {
-				project_id: 'liverty-music-prod',
-				service_account_email: integrationInputs.serviceAccountEmail,
-			},
-		})
-		expect(result.id).toBe('42')
-		expect(result.outs.integrationId).toBe(42)
 	})
 
-	it('replaces on a new service account but not on a new API key', async () => {
-		const account = await integrationProvider.diff(
-			'42',
-			integrationInputs,
-			{
-				...integrationInputs,
-				serviceAccountEmail:
-					'other@liverty-music-prod.iam.gserviceaccount.com',
-			},
-		)
-		const key = await integrationProvider.diff('42', integrationInputs, {
-			...integrationInputs,
-			apiKey: 'phx_rotated',
+	it('follows the next page', async () => {
+		const next =
+			'https://eu.posthog.com/api/environments/190464/integrations/?offset=100'
+		respond(200, { results: [], next })
+		respond(200, {
+			results: [
+				{
+					id: 43,
+					kind: 'google-cloud-service-account',
+					config: { service_account_email: email },
+				},
+			],
+			next: null,
 		})
-
-		expect(account.replaces).toEqual(['serviceAccountEmail'])
-		expect(key).toMatchObject({ changes: true, replaces: [] })
-	})
-
-	it('surfaces the PostHog error', async () => {
-		respond(403, { detail: 'missing scope integration:write' })
 
 		await expect(
-			integrationProvider.create(integrationInputs),
-		).rejects.toThrow(
-			/POST integrations\/ failed \(403\).*integration:write/,
-		)
+			findGoogleCloudServiceAccountIntegration('phx_test', email),
+		).resolves.toBe(43)
+		expect(lastRequest().url).toBe(next)
+	})
+
+	it('names the runbook when the integration is missing', async () => {
+		respond(200, {
+			results: [
+				{
+					id: 9,
+					kind: 'google-cloud-service-account',
+					config: {
+						service_account_email:
+							'other@example.iam.gserviceaccount.com',
+					},
+				},
+			],
+			next: null,
+		})
+
+		await expect(
+			findGoogleCloudServiceAccountIntegration('phx_test', email),
+		).rejects.toThrow(/posthog-bigquery-export\.md/)
+	})
+
+	it('surfaces a missing scope', async () => {
+		respond(403, {
+			detail: "API key missing required scope 'integration:read'",
+		})
+
+		await expect(
+			findGoogleCloudServiceAccountIntegration('phx_test', email),
+		).rejects.toThrow(/GET integrations\/ failed \(403\).*integration:read/)
 	})
 })
 

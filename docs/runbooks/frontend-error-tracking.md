@@ -109,7 +109,7 @@ must not be able to change alerts.
 - **Project:** `190464` only.
 - **Scopes:** **Hog functions: Write** (`hog_function:write`, for the alerts),
   **Project: Write** (`project:write`, for the project settings), and
-  **Integration: Write** (`integration:write`) and **Batch export: Write**
+  **Integration: Read** (`integration:read`) and **Batch export: Write**
   (`batch_export:write`) for the BigQuery exports
   ([posthog-bigquery-export.md](posthog-bigquery-export.md)), nothing else.
 - **Label:** `pulumi-posthog-management-<YYYYMMDD>`.

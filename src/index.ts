@@ -83,7 +83,7 @@ const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
 const posthogSourcemapApiKey = config.getSecret('posthogSourcemapApiKey')
 // PostHog personal API key this program manages the prod PostHog project's
 // error-tracking alerts, settings and BigQuery exports with
-// (`hog_function:write`, `project:write`, `integration:write`,
+// (`hog_function:write`, `project:write`, `integration:read`,
 // `batch_export:write`, limited to project 190464). Separate from
 // posthogSourcemapApiKey, which a CI build holds and which must not be able to
 // change alerts. Personal for the same reason: PostHog's project secret API
@@ -575,7 +575,6 @@ if (env === 'prod' && posthogManagementApiKey && gcp.analyticsWarehouse) {
 		'posthog-warehouse-export',
 		{
 			apiKey: posthogManagementApiKey,
-			gcpProjectId: gcp.projectId,
 			serviceAccountEmail: gcp.analyticsWarehouse.posthogExportSaEmail,
 			datasetId: gcp.analyticsWarehouse.posthogRaw.datasetId,
 		},
