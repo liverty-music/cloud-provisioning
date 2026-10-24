@@ -108,7 +108,8 @@ must not be able to change alerts.
   The exit condition above applies to this key too.
 - **Project:** `190464` only.
 - **Scopes:** **Hog functions: Write** (`hog_function:write`, for the alerts),
-  **Project: Write** (`project:write`, for the project settings), and
+  **Project: Write** (`project:write`, for the project settings),
+  **Insight: Write** (`insight:write`, for the North Star insight), and
   **Integration: Read** (`integration:read`) and **Batch export: Write**
   (`batch_export:write`) for the BigQuery exports
   ([posthog-bigquery-export.md](posthog-bigquery-export.md)), nothing else.

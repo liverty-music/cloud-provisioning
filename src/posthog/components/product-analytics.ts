@@ -42,6 +42,7 @@ export interface ProductAnalyticsArgs {
  *   reach PostHog through the app's own domain;
  * - the proxy's CNAME in Cloudflare, DNS-only: PostHog issues the certificate,
  *   which Cloudflare's own proxy would break.
+ * - the North Star insight (OpenSpec `build-analytics-warehouse`).
  *
  * The recording URL blocklist has no provider field and stays manual; see
  * docs/runbooks/posthog-project-settings.md. The fan app's `posthogApiHost`
@@ -84,6 +85,46 @@ export class ProductAnalytics extends pulumi.ComponentResource {
 				protect: true,
 				import: `${ORGANIZATION_ID}/${PROJECT_ID}`,
 			},
+		)
+
+		// The North Star (OpenSpec `build-analytics-warehouse`): fans who opened
+		// a new-concert notification, per week. The service worker reports the
+		// message's `type` on `notification.opened`.
+		new posthog.Insight(
+			`${name}-north-star`,
+			{
+				name: 'North Star: fans who opened a new-concert notification',
+				description:
+					'Unique persons per week with notification.opened where type = new_concerts. ' +
+					'Test accounts excluded. See docs/runbooks/analytics-dashboards.md.',
+				queryJson: JSON.stringify({
+					kind: 'InsightVizNode',
+					source: {
+						kind: 'TrendsQuery',
+						interval: 'week',
+						dateRange: { date_from: '-180d' },
+						filterTestAccounts: true,
+						series: [
+							{
+								kind: 'EventsNode',
+								event: 'notification.opened',
+								math: 'dau',
+								properties: [
+									{
+										key: 'type',
+										operator: 'exact',
+										type: 'event',
+										value: ['new_concerts'],
+									},
+								],
+							},
+						],
+						trendsFilter: { display: 'ActionsLineGraph' },
+					},
+				}),
+				tags: ['north-star'],
+			},
+			{ parent: this, provider },
 		)
 
 		this.proxyHost =
