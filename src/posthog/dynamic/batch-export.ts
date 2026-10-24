@@ -1,17 +1,23 @@
 import * as pulumi from '@pulumi/pulumi'
 
 /**
- * Dynamic resources for PostHog's BigQuery batch export, which the PostHog
- * Terraform provider does not cover (1.0.26 has no batch export or
- * integration resource). They call the PostHog REST API with a personal API
- * key that holds `integration:write` and `batch_export:write`.
+ * PostHog's BigQuery batch export as a dynamic resource, which the PostHog
+ * Terraform provider does not cover (1.0.26 has no batch export resource). It
+ * calls the PostHog REST API with a personal API key that holds
+ * `batch_export:write`.
  *
- * Request shapes follow PostHog's serializers: `posthog/api/integration.py`
- * (kind `google-cloud-service-account`) and
+ * The export authenticates through a `google-cloud-service-account`
+ * integration. No API key can create one: PostHog withholds
+ * `integration:write` from personal API keys (`frontend/src/lib/scopes.tsx`,
+ * `disabledActions`) and project secret API keys accept a short allowlist
+ * without it. The integration is therefore made once in PostHog's UI, and
+ * `findGoogleCloudServiceAccountIntegration` looks it up with
+ * `integration:read`.
+ *
+ * Request shapes follow PostHog's serializers:
  * `products/batch_exports/backend/presentation/views/batch_export/destinations.py`.
  * Every key of `destination.config` that names a field of the workflow's
- * inputs reaches the export, `exclude_events` included, though PostHog's UI
- * offers that field only for S3 and Redshift (`service.py`,
+ * inputs reaches the export, `exclude_events` included (`service.py`,
  * `sync_batch_export`).
  *
  * The callbacks use the global `fetch` only: a module import here could
@@ -26,21 +32,21 @@ const POSTHOG_PROJECT_ID = '190464'
 
 async function posthogApi(
 	apiKey: string,
-	method: 'POST' | 'PATCH' | 'DELETE',
+	method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
 	path: string,
 	body?: unknown,
 ): Promise<Record<string, unknown> | undefined> {
-	const res = await fetch(
-		`${POSTHOG_HOST}/api/environments/${POSTHOG_PROJECT_ID}/${path}`,
-		{
-			method,
-			headers: {
-				Authorization: `Bearer ${apiKey}`,
-				'Content-Type': 'application/json',
-			},
-			body: body === undefined ? undefined : JSON.stringify(body),
+	const url = path.startsWith('https://')
+		? path
+		: `${POSTHOG_HOST}/api/environments/${POSTHOG_PROJECT_ID}/${path}`
+	const res = await fetch(url, {
+		method,
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			'Content-Type': 'application/json',
 		},
-	)
+		body: body === undefined ? undefined : JSON.stringify(body),
+	})
 	const text = await res.text()
 	if (method === 'DELETE' && res.status === 404) {
 		// Already gone: deleting is done.
@@ -54,90 +60,39 @@ async function posthogApi(
 	return text ? (JSON.parse(text) as Record<string, unknown>) : undefined
 }
 
-interface IntegrationInputs {
-	apiKey: string
-	/** Google Cloud project of the impersonated service account. */
-	gcpProjectId: string
-	serviceAccountEmail: string
-}
-
-export const googleCloudServiceAccountIntegrationProvider: pulumi.dynamic.ResourceProvider =
-	{
-		async create(
-			inputs: IntegrationInputs,
-		): Promise<pulumi.dynamic.CreateResult> {
-			const created = await posthogApi(
-				inputs.apiKey,
-				'POST',
-				'integrations/',
-				{
-					kind: 'google-cloud-service-account',
-					config: {
-						project_id: inputs.gcpProjectId,
-						service_account_email: inputs.serviceAccountEmail,
-					},
-				},
-			)
-			const id = String(created?.id)
-			return { id, outs: { ...inputs, integrationId: Number(id) } }
-		},
-
-		async diff(
-			_id: string,
-			olds: IntegrationInputs,
-			news: IntegrationInputs,
-		): Promise<pulumi.dynamic.DiffResult> {
-			const replaces = (
-				['gcpProjectId', 'serviceAccountEmail'] as const
-			).filter((k) => olds[k] !== news[k])
-			return {
-				changes: replaces.length > 0 || olds.apiKey !== news.apiKey,
-				replaces,
-				deleteBeforeReplace: false,
-			}
-		},
-
-		// Only the API key can change without a replace; nothing to send.
-		async update(
-			_id: string,
-			olds: IntegrationInputs & { integrationId: number },
-			news: IntegrationInputs,
-		): Promise<pulumi.dynamic.UpdateResult> {
-			return { outs: { ...news, integrationId: olds.integrationId } }
-		},
-
-		async delete(id: string, props: IntegrationInputs): Promise<void> {
-			await posthogApi(props.apiKey, 'DELETE', `integrations/${id}/`)
-		},
-	}
-
-export interface GoogleCloudServiceAccountIntegrationArgs {
-	apiKey: pulumi.Input<string>
-	gcpProjectId: pulumi.Input<string>
-	serviceAccountEmail: pulumi.Input<string>
+interface IntegrationRow {
+	id: number
+	kind: string
+	config?: { service_account_email?: string }
 }
 
 /**
- * A PostHog integration that impersonates one of our Google Cloud service
- * accounts. PostHog checks the account's description for
- * `posthog:<organization id>` when it is created.
+ * Returns the id of the project's `google-cloud-service-account` integration
+ * for `serviceAccountEmail`. Throws when there is none, naming the runbook
+ * that creates it.
  */
-export class GoogleCloudServiceAccountIntegration extends pulumi.dynamic
-	.Resource {
-	public readonly integrationId!: pulumi.Output<number>
-
-	constructor(
-		name: string,
-		args: GoogleCloudServiceAccountIntegrationArgs,
-		opts?: pulumi.CustomResourceOptions,
-	) {
-		super(
-			googleCloudServiceAccountIntegrationProvider,
-			name,
-			{ ...args, integrationId: undefined },
-			{ ...opts, additionalSecretOutputs: ['apiKey'] },
+export async function findGoogleCloudServiceAccountIntegration(
+	apiKey: string,
+	serviceAccountEmail: string,
+): Promise<number> {
+	let page: string | undefined = 'integrations/'
+	while (page) {
+		const res = await posthogApi(apiKey, 'GET', page)
+		const rows = (res?.results ?? []) as IntegrationRow[]
+		const match = rows.find(
+			(r) =>
+				r.kind === 'google-cloud-service-account' &&
+				r.config?.service_account_email === serviceAccountEmail,
 		)
+		if (match) {
+			return match.id
+		}
+		page = (res?.next as string | null) ?? undefined
 	}
+	throw new Error(
+		`PostHog project ${POSTHOG_PROJECT_ID} has no google-cloud-service-account integration for ` +
+			`${serviceAccountEmail}. Create it in PostHog's UI: docs/runbooks/posthog-bigquery-export.md.`,
+	)
 }
 
 interface BigQueryExportInputs {

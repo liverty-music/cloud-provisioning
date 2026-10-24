@@ -1,7 +1,7 @@
 import * as pulumi from '@pulumi/pulumi'
 import {
 	BigQueryExport,
-	GoogleCloudServiceAccountIntegration,
+	findGoogleCloudServiceAccountIntegration,
 } from '../dynamic/batch-export.js'
 
 /**
@@ -17,11 +17,9 @@ const PERFORMANCE_EVENTS = [
 ]
 
 export interface WarehouseExportArgs {
-	/** PostHog personal API key with `integration:write` and
+	/** PostHog personal API key with `integration:read` and
 	 *  `batch_export:write` on project 190464. */
 	apiKey: pulumi.Input<string>
-	/** Google Cloud project that holds the export's service account and dataset. */
-	gcpProjectId: pulumi.Input<string>
 	/** The account PostHog impersonates (`posthog-export`). */
 	serviceAccountEmail: pulumi.Input<string>
 	/** BigQuery dataset the exports write to (`posthog_raw`). */
@@ -30,9 +28,11 @@ export interface WarehouseExportArgs {
 
 /**
  * The prod PostHog project's hourly exports of events and persons into
- * BigQuery, by impersonation of `posthog-export` (no key). The Google Cloud
- * side is `AnalyticsWarehouseComponent`; pass it in `dependsOn` so the
- * account and its grants exist before PostHog checks them.
+ * BigQuery, by impersonation of `posthog-export` (no key). They use the
+ * project's `google-cloud-service-account` integration for that account,
+ * which is made once in PostHog's UI (docs/runbooks/posthog-bigquery-export.md).
+ * The Google Cloud side is `AnalyticsWarehouseComponent`; pass it in
+ * `dependsOn` so the account and its grants exist first.
  */
 export class WarehouseExport extends pulumi.ComponentResource {
 	constructor(
@@ -42,15 +42,12 @@ export class WarehouseExport extends pulumi.ComponentResource {
 	) {
 		super('liverty-music:posthog:WarehouseExport', name, {}, opts)
 
-		const integration = new GoogleCloudServiceAccountIntegration(
-			`${name}-integration`,
-			{
-				apiKey: args.apiKey,
-				gcpProjectId: args.gcpProjectId,
-				serviceAccountEmail: args.serviceAccountEmail,
-			},
-			{ parent: this },
-		)
+		// Made once in PostHog's UI: no API key can create an integration.
+		const integrationId = pulumi
+			.all([args.apiKey, args.serviceAccountEmail])
+			.apply(([apiKey, email]) =>
+				findGoogleCloudServiceAccountIntegration(apiKey, email),
+			)
 
 		for (const model of ['events', 'persons'] as const) {
 			new BigQueryExport(
@@ -59,7 +56,7 @@ export class WarehouseExport extends pulumi.ComponentResource {
 					apiKey: args.apiKey,
 					name: `BigQuery ${model}`,
 					model,
-					integrationId: integration.integrationId,
+					integrationId,
 					datasetId: args.datasetId,
 					tableId: model,
 					// The persons model has no event column; the filter is for events.
