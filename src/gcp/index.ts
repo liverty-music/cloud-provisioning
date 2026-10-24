@@ -147,6 +147,9 @@ export class Gcp {
 	public readonly githubActionsSAEmail: pulumi.Output<string>
 	public readonly incidentTriageSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
+	/** Prod only: the BigQuery side of the analytics warehouse, which the
+	 *  PostHog export in `src/index.ts` writes into. */
+	public readonly analyticsWarehouse?: AnalyticsWarehouseComponent
 	/** Workload-tier resources — all defined together when
 	 *  `workloadEnabled=true`, or the whole group is undefined when the
 	 *  workload tier is destroyed (dev shutdown mode). Grouping the
@@ -426,7 +429,7 @@ export class Gcp {
 			// analytics log lines next to billing_export, in the same location
 			// so one query joins them. Depends on the billing export for the
 			// BigQuery API it enables. OpenSpec change `build-analytics-warehouse`.
-			new AnalyticsWarehouseComponent(
+			this.analyticsWarehouse = new AnalyticsWarehouseComponent(
 				'analytics-warehouse',
 				{ project: this.project },
 				{ dependsOn: [billingExport] },
