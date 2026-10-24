@@ -11,7 +11,7 @@ data:
       "zitadelClientId": "373015520582107291",
       "zitadelOrgId": "373015514391249051",
       "vapidPublicKey": "BH-m9-6-0-y70MdQG7Lz-htDaz4T_NuYdmcgK5wBEElzXo22AyGs30gvHAtHbWtQBQa4XxySD6ZEaiM9Crwl6Pc",
-      "posthogApiHost": "https://eu.i.posthog.com",
+      "posthogApiHost": "https://beat.liverty-music.app",
       "posthogProjectKey": "phc_CVzLNs8ys4zeczYv36Td3aYgBhzdnaMKUqKBT7tM8H4Q",
       "stripePublishableKey": "pk_test_51UAmbzLhlskSSXfLeXSwZK1eXhdbHZBKCwBlp2Egi3LSi0FZeNiTnCxfRmEDjTmS3l18HUFovUpDWADyLMvlPKts00Xdb6BeNF",
       "previewArtistIds": [
