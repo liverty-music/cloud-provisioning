@@ -34,6 +34,15 @@ General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claud
 
 ## Changing Pulumi code
 
+- **Persistent settings live in this program**, whether they belong to GCP, Cloudflare, GitHub, Zitadel or PostHog. This holds even when a plan says "by hand" or an MCP tool could make the change now.
+  - Before choosing a manual step, check three places:
+    - the providers, including the bridged ones in `sdks/` (for example `sdks/posthog/insight.ts`)
+    - the service's REST API
+    - the dynamic-resource precedents in `src/zitadel/dynamic/` and `src/posthog/dynamic/`
+  - A manual step is right only in three cases, and its runbook says which one applies:
+    - the service has no API (Data Studio reports)
+    - the API refuses API keys (PostHog `integration:write`)
+    - the action happens once (a backfill)
 - Introduce a `ComponentResource` only after working out which resources outside it will need to reference its children. Moving an existing resource under a parent changes its URN and needs `aliases`. `Gcp` in `src/gcp/index.ts` stays a plain class on purpose.
 - Resource names are kebab-case. Regions and zones come from `src/gcp/region.ts`.
 - **Provider upgrades** (the Renovate `pulumi` group, which never automerges and is not previewed by Pulumi Cloud): run the `provider-upgrade` skill on the Renovate branch against both stacks, and post its Upgrade Summary as a comment on that pull request instead of opening a new one. A preview of `main` is not empty: compare against the baseline table in "A Pulumi preview reports resource changes" (`liverty-music/.github` `renovate-runbook.md`) before attributing a diff to the upgrade.
