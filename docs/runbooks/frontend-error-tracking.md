@@ -107,9 +107,11 @@ must not be able to change alerts.
   as the upload key (project secret API keys accept neither scope below yet).
   The exit condition above applies to this key too.
 - **Project:** `190464` only.
-- **Scopes:** **Hog functions: Write** (`hog_function:write`, for the alerts)
-  and **Project: Write** (`project:write`, for the project settings), nothing
-  else.
+- **Scopes:** **Hog functions: Write** (`hog_function:write`, for the alerts),
+  **Project: Write** (`project:write`, for the project settings), and
+  **Integration: Write** (`integration:write`) and **Batch export: Write**
+  (`batch_export:write`) for the BigQuery exports
+  ([posthog-bigquery-export.md](posthog-bigquery-export.md)), nothing else.
 - **Label:** `pulumi-posthog-management-<YYYYMMDD>`.
 
 Issue it like the upload key, then store it:

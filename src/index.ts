@@ -12,6 +12,7 @@ import {
 } from './github/index.js'
 import { ErrorTracking } from './posthog/components/error-tracking.js'
 import { ProductAnalytics } from './posthog/components/product-analytics.js'
+import { WarehouseExport } from './posthog/components/warehouse-export.js'
 import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
 import {
 	StripePaymentMethodDomain,
@@ -81,8 +82,9 @@ const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
 // docs/runbooks/frontend-error-tracking.md.
 const posthogSourcemapApiKey = config.getSecret('posthogSourcemapApiKey')
 // PostHog personal API key this program manages the prod PostHog project's
-// error-tracking alerts and settings with (`hog_function:write`,
-// `project:write`, limited to project 190464). Separate from
+// error-tracking alerts, settings and BigQuery exports with
+// (`hog_function:write`, `project:write`, `integration:write`,
+// `batch_export:write`, limited to project 190464). Separate from
 // posthogSourcemapApiKey, which a CI build holds and which must not be able to
 // change alerts. Personal for the same reason: PostHog's project secret API
 // keys accept neither scope yet. Sourced via `pulumi env set liverty-music/prod
@@ -564,6 +566,22 @@ export const posthogProxyHost =
 				cloudflareConfig,
 			}).proxyHost
 		: undefined
+
+// The prod PostHog project's hourly BigQuery exports into the analytics
+// warehouse (OpenSpec `build-analytics-warehouse`). See
+// docs/runbooks/posthog-bigquery-export.md.
+if (env === 'prod' && posthogManagementApiKey && gcp.analyticsWarehouse) {
+	new WarehouseExport(
+		'posthog-warehouse-export',
+		{
+			apiKey: posthogManagementApiKey,
+			gcpProjectId: gcp.projectId,
+			serviceAccountEmail: gcp.analyticsWarehouse.posthogExportSaEmail,
+			datasetId: gcp.analyticsWarehouse.posthogRaw.datasetId,
+		},
+		{ dependsOn: [gcp.analyticsWarehouse] },
+	)
+}
 
 // Export common resources
 export const folder = gcp.folder
