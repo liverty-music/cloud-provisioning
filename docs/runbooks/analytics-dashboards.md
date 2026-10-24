@@ -14,7 +14,7 @@ Where to read the analytics warehouse (OpenSpec `build-analytics-warehouse`): th
 
 **Fans who opened a new-concert notification, per week.** It counts unique persons per week with `notification.opened` where `type = new_concerts`, test accounts excluded, over the last 180 days.
 
-- **Where**: in PostHog, Product analytics → Insights, tag `north-star`.
+- **Where**: <https://eu.posthog.com/project/190464/insights/SBk3xMle> (tag `north-star`).
 - **Changing it**: edit the `queryJson` of `posthog-product-analytics-north-star` in code. A change made in the UI is overwritten by the next `pulumi up`.
 - **When it shows data**: `notification.opened` carries `type` only after these releases:
   - the frontend service worker change of `expand-product-analytics` (liverty-music/frontend#837)
