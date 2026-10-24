@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import * as gcp from '@pulumi/gcp'
 import * as pulumi from '@pulumi/pulumi'
 import { IamService, Roles } from '../services/iam.js'
@@ -22,6 +23,13 @@ const POSTHOG_ORGANIZATION_ID = '019e7b58-75ff-0000-79de-62f6f9ec2075'
 /** The label every analytics log line carries (backend `pkg/analyticslog`).
  *  A new topic needs no change here. */
 const ANALYTICS_LOG_FILTER = 'labels.sink="analytics"'
+
+/** Reads the view query `<name>.sql` from ../analytics/sql/. */
+const readSql = (name: string): string =>
+	readFileSync(
+		new URL(`../analytics/sql/${name}.sql`, import.meta.url),
+		'utf8',
+	)
 
 /**
  * AnalyticsWarehouseComponent puts PostHog events and the backend's analytics
@@ -153,7 +161,7 @@ export class AnalyticsWarehouseComponent extends pulumi.ComponentResource {
 			},
 			{ parent: this },
 		)
-		new gcp.logging.LinkedDataset(
+		const logLink = new gcp.logging.LinkedDataset(
 			'analytics-log-link',
 			{
 				linkId: 'logs_analytics',
@@ -163,6 +171,69 @@ export class AnalyticsWarehouseComponent extends pulumi.ComponentResource {
 			},
 			{ parent: this },
 		)
+
+		// The views Data Studio reads. Their SQL lives in ../analytics/sql/,
+		// with {{project}} and {{billing_account}} filled in here. A view that
+		// reads another view depends on it, so staging is created first.
+		const billingAccount = project.billingAccount.apply((id) =>
+			(id ?? '').replace(/-/g, '_'),
+		)
+		const view = (
+			dataset: gcp.bigquery.Dataset,
+			tableId: string,
+			dependsOn: pulumi.Resource[],
+		) =>
+			new gcp.bigquery.Table(
+				tableId.replace(/_/g, '-'),
+				{
+					project: project.projectId,
+					datasetId: dataset.datasetId,
+					tableId,
+					// A view holds no data; a changed query may replace it.
+					deletionProtection: false,
+					view: {
+						useLegacySql: false,
+						query: pulumi
+							.all([project.projectId, billingAccount])
+							.apply(([projectId, account]) =>
+								readSql(tableId)
+									.replace(/{{project}}/g, projectId)
+									.replace(/{{billing_account}}/g, account),
+							),
+					},
+				},
+				{ parent: this, dependsOn },
+			)
+
+		const stgEvents = view(this.staging, 'stg_events', [])
+		const stgPersons = view(this.staging, 'stg_persons', [])
+		const stgAiGenerations = view(this.staging, 'stg_ai_generations', [
+			stgEvents,
+		])
+		const stgBillingDaily = view(this.staging, 'stg_billing_daily', [])
+		const stgBillingResourceDaily = view(
+			this.staging,
+			'stg_billing_resource_daily',
+			[],
+		)
+		const stgLogLines = view(this.staging, 'stg_log_lines', [logLink])
+
+		const martGeminiCostDaily = view(this.marts, 'mart_gemini_cost_daily', [
+			stgBillingDaily,
+			stgAiGenerations,
+		])
+		view(this.marts, 'mart_cost_per_concert_monthly', [
+			martGeminiCostDaily,
+			stgEvents,
+			stgLogLines,
+		])
+		view(this.marts, 'mart_unit_economics_monthly', [
+			stgEvents,
+			stgBillingDaily,
+		])
+		view(this.marts, 'mart_infra_cost_daily', [stgBillingResourceDaily])
+		view(this.marts, 'mart_campaign_value', [stgEvents, stgPersons])
+		view(this.marts, 'mart_pipeline_health_daily', [stgLogLines])
 
 		this.registerOutputs({
 			posthogExportSaEmail: this.posthogExportSaEmail,
