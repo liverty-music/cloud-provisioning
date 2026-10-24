@@ -44,9 +44,9 @@ export interface ProductAnalyticsArgs {
  *   which Cloudflare's own proxy would break.
  * - the North Star insight (OpenSpec `build-analytics-warehouse`).
  *
- * The recording URL blocklist has no provider field and stays manual; see
- * docs/runbooks/posthog-project-settings.md. The fan app's `posthogApiHost`
- * moves to the proxy only once its status is valid.
+ * The screens never recorded are kept out by the fan app, not by a project
+ * URL blocklist; see docs/runbooks/posthog-project-settings.md. The fan app's
+ * `posthogApiHost` moves to the proxy only once its status is valid.
  */
 export class ProductAnalytics extends pulumi.ComponentResource {
 	public readonly proxyHost: pulumi.Output<string> | undefined
