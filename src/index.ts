@@ -82,9 +82,9 @@ const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
 // docs/runbooks/frontend-error-tracking.md.
 const posthogSourcemapApiKey = config.getSecret('posthogSourcemapApiKey')
 // PostHog personal API key this program manages the prod PostHog project's
-// error-tracking alerts, settings and BigQuery exports with
-// (`hog_function:write`, `project:write`, `integration:read`,
-// `batch_export:write`, limited to project 190464). Separate from
+// error-tracking alerts, settings, insights and BigQuery exports with
+// (`hog_function:write`, `project:write`, `insight:write`,
+// `integration:read`, `batch_export:write`, limited to project 190464). Separate from
 // posthogSourcemapApiKey, which a CI build holds and which must not be able to
 // change alerts. Personal for the same reason: PostHog's project secret API
 // keys accept neither scope yet. Sourced via `pulumi env set liverty-music/prod
