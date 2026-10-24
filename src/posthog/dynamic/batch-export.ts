@@ -17,8 +17,7 @@ import * as pulumi from '@pulumi/pulumi'
  * Request shapes follow PostHog's serializers:
  * `products/batch_exports/backend/presentation/views/batch_export/destinations.py`.
  * Every key of `destination.config` that names a field of the workflow's
- * inputs reaches the export, `exclude_events` included, though PostHog's UI
- * offers that field only for S3 and Redshift (`service.py`,
+ * inputs reaches the export, `exclude_events` included (`service.py`,
  * `sync_batch_export`).
  *
  * The callbacks use the global `fetch` only: a module import here could

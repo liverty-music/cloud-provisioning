@@ -39,7 +39,7 @@ Until the integration exists, the preview fails with `... has no google-cloud-se
 
 ## What is exported
 
-- **`perf.*` events are left out.** Performance telemetry is read in PostHog. The events export sets `exclude_events`, and PostHog matches the names exactly, not as a pattern. A new `perf.*` event must be added to `PERFORMANCE_EVENTS` in `warehouse-export.ts`. PostHog's UI shows this field only for S3 and Redshift, but the API applies it to every destination.
+- **`perf.*` events are left out.** Performance telemetry is read in PostHog. The events export sets `exclude_events`, and PostHog matches the names exactly, not as a pattern. A new `perf.*` event must be added to `PERFORMANCE_EVENTS` in `warehouse-export.ts`. The export form shows it as **Exclude events**; edit it in code, not there.
 - **`ip` is empty.** The BigQuery export cannot drop a column. The project discards client IPs at ingestion (project settings → **Discard client IP data**, `anonymize_ips: true`). Keep that setting on.
 
 PostHog creates each table on its first run, at the start of the next hour. The events table is partitioned by day on `timestamp`.
