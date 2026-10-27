@@ -55,6 +55,13 @@ spec:
         # gives precedence to `env` over `envFrom` for the same key. Set per overlay.
         - name: DATABASE_USER
           value: REPLACE_ME_IN_OVERLAY
+        # A pool of one: fan-api-config (envFrom) carries fan-api's share of
+        # the connection budget, and `env` takes precedence over it (OpenSpec
+        # change introduce-durable-workflows, design "Connections").
+        - name: DATABASE_MAX_OPEN_CONNS
+          value: "1"
+        - name: DATABASE_MAX_IDLE_CONNS
+          value: "1"
         envFrom:
         # Config: organizer borrows fan-api-config (identical content;
         # DATABASE_USER overridden above; ORGANIZER_CORS_ALLOWED_ORIGINS supplied
