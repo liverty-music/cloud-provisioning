@@ -161,11 +161,15 @@ const stripeWebhookEndpoint = stripeWebhookAdminKey
 				apiKey: stripeWebhookAdminKey,
 				url: stripeWebhookUrl,
 				description:
-					'Liverty Music — completed charges, transfer, payout, refund and dispute events',
+					'Liverty Music — completed card authentications and charges, transfer, payout, refund and dispute events',
 				enabledEvents: [
 					// A completed charge (checkout capture or lottery win) fulfils
 					// and announces the paid Order (first-come-ticket-sales D6).
 					'payment_intent.succeeded',
+					// A lottery card authorization the fan authenticated becomes
+					// their entry, or is released, even when the browser never
+					// calls Confirm (enter-lottery-at-confirm).
+					'payment_intent.amount_capturable_updated',
 					'charge.refunded',
 					'charge.dispute.created',
 					'charge.dispute.closed',
