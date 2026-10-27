@@ -161,7 +161,7 @@ jobs:
               # only workload holding the identity-provider keys. The backend
               # release retag matrix already publishes all nine under the release
               # tag, so a single dispatch pins them in lock-step.
-              IMAGES="api consumer identity concert-discovery artist-image-sync official-site-refresh sales-phase-discovery sales-reminders series-image-consumer"
+              IMAGES="api consumer identity worker concert-discovery artist-image-sync official-site-refresh sales-phase-discovery sales-reminders series-image-consumer"
               BUMP_LABEL=true ;;
             frontend)
               # One frontend release ships four web bundles from the same tag —

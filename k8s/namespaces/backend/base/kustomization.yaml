@@ -23,6 +23,9 @@ resources:
 # identity: the only workload holding the identity-provider keys (OpenSpec
 # change identity-service).
 - identity
+# workflow-worker: the only process that runs durable workflows (OpenSpec
+# change introduce-durable-workflows).
+- workflow-worker
 # Outside the identity sub-base on purpose: its `labels` transformer
 # (includeSelectors) would rewrite the `from` podSelectors to `app: identity`.
 - identity-networkpolicy.yaml
