@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# workflow-worker: the only backend process that runs durable workflows, their
+# queues and their schedules (OpenSpec change introduce-durable-workflows).
+# It runs as the fan workload: the fan-api ServiceAccount (Workload Identity
+# and the fan-api Cloud SQL IAM user), fan-api-config and the fan-api secrets,
+# so it holds the identity of the code its workflows take over.
+resources:
+- deployment.yaml
+
+labels:
+- includeSelectors: true
+  pairs:
+    app: workflow-worker
+
+# The bare container `image: worker` is rewritten to the dev-AR form here; the
+# prod overlay last-write-wins to the prod AR + semver pin on backend/worker.
+images:
+- name: worker
+  newName: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/worker
+  newTag: latest

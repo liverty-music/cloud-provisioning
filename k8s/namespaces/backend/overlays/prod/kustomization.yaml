@@ -466,6 +466,11 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/identity
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/identity
     newTag: v1.107.0 # commit f4cdc1edff65acfbc04f2d9b4eac87a441e3cef1
+  # worker: the workflow worker (OpenSpec change introduce-durable-workflows).
+  # Bumped with the other backend images by bump-prod-pin.yml.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/worker
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/worker
+    newTag: v1.107.0 # commit f4cdc1edff65acfbc04f2d9b4eac87a441e3cef1
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
     newTag: v1.107.0 # commit f4cdc1edff65acfbc04f2d9b4eac87a441e3cef1
