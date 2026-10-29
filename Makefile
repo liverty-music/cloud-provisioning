@@ -9,7 +9,7 @@ lint-ts:
 	npx tsc --noEmit
 	npx tsc --noEmit -p scripts
 
-## lint-k8s: render + kube-linter + spot nodeSelector check + CRD version/schema validation for K8s manifests
+## lint-k8s: patched Login V2 image check + render + kube-linter + spot nodeSelector check + CRD version/schema validation for K8s manifests
 ## Renders all four overlay groups (11 namespaces × 2 envs + 1 cluster × 2 envs = 24 overlays).
 ## NOTE: explicit listing of the four globs rather than `{dev,prod}` brace expansion.
 ## Make's default SHELL=/bin/sh is `dash` on Debian-family runners; dash does not
@@ -33,6 +33,7 @@ CRDS_CATALOG_REF ?= ad3b08c5045129d7bb1eeffd8e61719b2c8dd1e2
 KUBECONFORM_CACHE ?= $(HOME)/.cache/kubeconform
 
 lint-k8s:
+	node scripts/check-zitadel-login-image.ts
 	mkdir -p /tmp/rendered
 	@for overlay in k8s/namespaces/*/overlays/dev k8s/namespaces/*/overlays/prod k8s/cluster/overlays/dev k8s/cluster/overlays/prod; do \
 		namespace=$$(echo "$$overlay" | cut -d'/' -f3); \

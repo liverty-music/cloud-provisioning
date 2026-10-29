@@ -111,3 +111,13 @@ zitadel:
 login:
   # See the top-level `nodeSelector: null` above.
   nodeSelector: null
+  # The patched Login V2 image, which offers no way to set a password (OpenSpec
+  # change remove-password-setup-from-hosted-login). Built from
+  # zitadel-login/ by .github/workflows/zitadel-login.yml; the tag is
+  # <UPSTREAM_TAG>-lm.<first 12 chars of the zitadel-login/ git tree>, and
+  # `make lint-k8s` (scripts/check-zitadel-login-image.ts) fails unless it
+  # matches the checked-out zitadel-login/. Upgrade and rollback:
+  # docs/runbooks/zitadel-helm-chart.md.
+  image:
+    repository: asia-northeast2-docker.pkg.dev/liverty-music-prod/zitadel-login/zitadel-login
+    tag: v4.20.0-lm.dd6afad275b3
