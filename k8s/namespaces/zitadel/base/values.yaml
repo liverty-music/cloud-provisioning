@@ -19,7 +19,7 @@ fullnameOverride: zitadel-api
 # backup.
 image:
   repository: ghcr.io/zitadel/zitadel
-  tag: v4.19.5
+  tag: v4.20.0
   pullPolicy: IfNotPresent
 
 replicaCount: 1
@@ -241,7 +241,7 @@ zitadel:
 # top-level `env`, NOT `zitadel.env`).
 #
 # OpenTelemetry SDK env vars carry forward from the prior
-# `configmap.env`. Zitadel v4 (v4.14.0+, incl. the pinned v4.19.5)
+# `configmap.env`. Zitadel v4 (v4.14.0+, incl. the pinned v4.20.0)
 # supports OTEL_* via autoexport (release notes). Without these,
 # Zitadel emits no observability output (v4 has no `/debug/metrics`
 # HTTP scrape endpoint — verified empirically on v4.14.0: the path
@@ -262,7 +262,7 @@ env:
 - name: OTEL_LOGS_EXPORTER
   value: none
 - name: OTEL_RESOURCE_ATTRIBUTES
-  value: service.name=zitadel,service.version=v4.19.5
+  value: service.name=zitadel,service.version=v4.20.0
 # 60s push interval matches `zitadel-observability` design D4 — alert
 # evaluation window is also 60s, so each evaluation cycle sees ~1 fresh
 # data point.
@@ -288,7 +288,7 @@ login:
 
   image:
     repository: ghcr.io/zitadel/zitadel-login
-    tag: v4.19.5
+    tag: v4.20.0
     pullPolicy: IfNotPresent
 
   replicaCount: 1
@@ -304,7 +304,7 @@ login:
   # NOTE: NEXT_PUBLIC_BASE_PATH override (to /ui/v2) was reverted —
   # `NEXT_PUBLIC_*` env vars in Next.js are INLINED AT BUILD TIME, not
   # runtime. The upstream zitadel-login image (v4.14.0 through the
-  # pinned v4.19.5) is built with the chart-default base path
+  # pinned v4.20.0) is built with the chart-default base path
   # /ui/v2/login baked in; setting
   # NEXT_PUBLIC_BASE_PATH=/ui/v2 at runtime is silently ignored by
   # the Next.js binary. Routes still live at /ui/v2/login/*, so our
@@ -341,7 +341,7 @@ login:
   # Second, ZITADEL_UI_LOCALES_OVERRIDE_COOKIE is ours, not the chart's (OpenSpec
   # change carry-locale-across-auth-boundaries, design D3). The fan app and the
   # organizer console send OIDC `ui_locales` with the language they show. At
-  # v4.19.5 the Login UI writes `ui_locales` into its NEXT_LOCALE cookie only
+  # v4.20.0 the Login UI writes `ui_locales` into its NEXT_LOCALE cookie only
   # when no cookie exists (apps/login/src/lib/server/flow-initiation.ts), unless
   # this flag is "true" (apps/login/src/lib/i18n.ts); the cookie then wins over
   # the request (apps/login/src/i18n/request.ts). Without it, a cookie left by
