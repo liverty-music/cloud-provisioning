@@ -1,4 +1,6 @@
--- Gemini API cost by JST day, process and search. The bill has no process, so
+-- Gemini API cost of this project by JST day, process and search. Other
+-- projects on the billing account (dev) are left out: their calls send no
+-- $ai_generation here, so they cannot be split by process. The bill has no process, so
 -- each day's token cost is split by each (process, search)'s share of that
 -- day's tokens, and the search-query cost by its share of web search queries.
 -- A day with no matching generations keeps its cost as '(unattributed)', so
@@ -10,7 +12,7 @@ WITH cost AS (
     SUM(list_cost) AS list_cost,
     SUM(net_cost) AS net_cost
   FROM `{{project}}.analytics_staging.stg_billing_daily`
-  WHERE service = 'Gemini API'
+  WHERE service = 'Gemini API' AND project_id = '{{project}}'
   GROUP BY day_jst, kind
 ),
 usage AS (
