@@ -33,10 +33,14 @@ git -c user.name=zitadel-login-build -c user.email=zitadel-login-build@liverty-m
 
 # No Nx Cloud (upstream's workspace has an nxCloudId) and no daemon in CI.
 export NX_NO_CLOUD=true NX_DAEMON=false COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-corepack pnpm install --frozen-lockfile
+# Upstream's Nx targets call `pnpm` directly: put corepack's pnpm (the
+# version in upstream's packageManager) on PATH for this build only.
+corepack enable --install-directory "$work/bin" pnpm
+export PATH="$work/bin:$PATH"
+pnpm install --frozen-lockfile
 # test-unit depends on build, so this also builds the standalone app.
-corepack pnpm nx run --nxBail @zitadel/login:test-unit --outputStyle=static
-corepack pnpm nx run --nxBail @zitadel/login:build --outputStyle=static
+pnpm nx run --nxBail @zitadel/login:test-unit --outputStyle=static
+pnpm nx run --nxBail @zitadel/login:build --outputStyle=static
 
 # The upstream `pack` target runs this docker build with a hard-coded tag
 # (apps/login/project.json); run it directly to tag for Artifact Registry.
