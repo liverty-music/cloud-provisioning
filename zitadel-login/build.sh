@@ -5,8 +5,8 @@
 #   zitadel-login/build.sh <image-ref>
 #
 # Checks out zitadel/zitadel at UPSTREAM_TAG, applies patches/*.patch with
-# `git am`, runs the login app's unit tests, builds the standalone app with
-# the upstream `build` target and builds the image with the upstream
+# `git am`, builds the standalone app with the upstream `build` target, runs
+# the login app's unit tests and builds the image with the upstream
 # Dockerfile, tagged <image-ref>, for linux/amd64. It never pushes.
 #
 # Every step that shapes the image lives here, so the image tag
@@ -39,9 +39,10 @@ mkdir "$work/bin"
 corepack enable --install-directory "$work/bin" pnpm
 export PATH="$work/bin:$PATH"
 pnpm install --frozen-lockfile
-# test-unit depends on build, so this also builds the standalone app.
-pnpm nx run --nxBail @zitadel/login:test-unit --outputStyle=static
 pnpm nx run --nxBail @zitadel/login:build --outputStyle=static
+# The login app's unit tests (upstream's `test-unit` target, run directly so
+# the report is not buried in the tests' console output).
+pnpm --dir apps/login exec vitest --run --silent
 
 # The upstream `pack` target runs this docker build with a hard-coded tag
 # (apps/login/project.json); run it directly to tag for Artifact Registry.
