@@ -120,4 +120,4 @@ login:
   # docs/runbooks/zitadel-helm-chart.md.
   image:
     repository: asia-northeast2-docker.pkg.dev/liverty-music-prod/zitadel-login/zitadel-login
-    tag: v4.20.0-lm.58a1c218c9a3
+    tag: v4.20.0-lm.568fa9efb2c0

@@ -35,6 +35,7 @@ git -c user.name=zitadel-login-build -c user.email=zitadel-login-build@liverty-m
 export NX_NO_CLOUD=true NX_DAEMON=false COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # Upstream's Nx targets call `pnpm` directly: put corepack's pnpm (the
 # version in upstream's packageManager) on PATH for this build only.
+mkdir "$work/bin"
 corepack enable --install-directory "$work/bin" pnpm
 export PATH="$work/bin:$PATH"
 pnpm install --frozen-lockfile
