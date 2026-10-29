@@ -1,4 +1,5 @@
--- Total cloud cost per retained fan, by JST month. A retained fan is a person
+-- Total cloud cost of this project per retained fan, by JST month; dev cost
+-- is left out because dev serves no fan. A retained fan is a person
 -- with activity in at least 2 distinct weeks (Monday start) of the month.
 -- Pipeline events without a person are not activity.
 WITH activity AS (
@@ -24,6 +25,7 @@ cost AS (
     SUM(net_cost) AS net_cost,
     SUM(list_cost) AS list_cost
   FROM `{{project}}.analytics_staging.stg_billing_daily`
+  WHERE project_id = '{{project}}'
   GROUP BY month
 )
 SELECT
