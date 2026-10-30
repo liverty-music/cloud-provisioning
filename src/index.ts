@@ -516,7 +516,10 @@ new GitHubRepositoryComponent({
 	// flip it in the GitHub UI and Pulumi does not revert it.
 	operatorOwnedVariables:
 		env === 'prod' ? { INCIDENT_TRIAGE_ENABLED: 'false' } : undefined,
-	requiredStatusCheckContexts: ['CI Success'],
+	// `Zitadel Login` (zitadel-login.yml) builds the patched Login V2 image on
+	// every pull request that touches zitadel-login/ and is skipped otherwise,
+	// so a patch that no longer applies cannot merge.
+	requiredStatusCheckContexts: ['CI Success', 'Zitadel Login'],
 	requireUpToDateBranch: true,
 	// Express prod `main` protection as a RepositoryRuleset whose sole bypass
 	// actor is the org-owned ci-bot App, so the bump workflow (pushing as a

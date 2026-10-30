@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "k8s/**"
+      - "zitadel-login/**"
       - ".kube-linter.yaml"
       - "scripts/**"
       - "package.json"
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - "k8s/**"
+      - "zitadel-login/**"
       - ".kube-linter.yaml"
       - "scripts/**"
       - "package.json"

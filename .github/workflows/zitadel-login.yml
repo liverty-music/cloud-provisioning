@@ -1,0 +1,129 @@
+name: Zitadel Login
+
+# Builds the patched Zitadel Login V2 image from zitadel-login/ (OpenSpec
+# change remove-password-setup-from-hosted-login, design D3). Every step that
+# shapes the image is in zitadel-login/build.sh; this workflow only decides
+# when to run it, and on main authenticates and pushes.
+#
+# - Pull request: `Zitadel Login` builds and tests without pushing and without
+#   Google Cloud credentials. It is a required check, so it runs on every pull
+#   request and is skipped (which passes) when zitadel-login/ is untouched.
+# - main (push or workflow_dispatch): `Publish` builds and pushes
+#   <UPSTREAM_TAG>-lm.<tree> unless the tag already exists. Tags are immutable
+#   in the prod repository, and the tag is a function of the zitadel-login/
+#   tree, so an existing tag already holds this content.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths:
+      - "zitadel-login/**"
+      - ".github/workflows/zitadel-login.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Never cancel a main run halfway through a push.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: asia-northeast2-docker.pkg.dev/liverty-music-prod/zitadel-login/zitadel-login
+
+jobs:
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      login: ${{ steps.filter.outputs.login }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        id: filter
+        with:
+          filters: |
+            login:
+              - 'zitadel-login/**'
+              - '.github/workflows/zitadel-login.yml'
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.login == 'true'
+    name: Zitadel Login
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The Node.js major upstream CI builds the login app with.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+
+      - name: Build and test (no push)
+        run: zitadel-login/build.sh "${IMAGE}:$(cat zitadel-login/UPSTREAM_TAG)-lm.$(git rev-parse HEAD:zitadel-login | cut -c1-12)"
+
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    name: Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Image tag
+        id: tag
+        run: echo "ref=${IMAGE}:$(cat zitadel-login/UPSTREAM_TAG)-lm.$(git rev-parse HEAD:zitadel-login | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          # The github-actions service account (roles/artifactregistry.writer
+          # on the prod project); provisioned by Pulumi, see src/github/.
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Skip when the tag exists or a rollback is in place
+        id: exists
+        env:
+          REF: ${{ steps.tag.outputs.ref }}
+        run: |
+          # During an emergency rollback prod runs the upstream image; there
+          # is nothing to build (docs/runbooks/zitadel-helm-chart.md).
+          if [ -e zitadel-login/ROLLBACK ]; then
+            echo "zitadel-login/ROLLBACK exists; nothing to push."
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          elif gcloud artifacts docker images describe "${REF}" >/dev/null 2>&1; then
+            echo "${REF} already exists; nothing to push."
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: steps.exists.outputs.found == 'false'
+        with:
+          node-version: "22"
+
+      - name: Build and test
+        if: steps.exists.outputs.found == 'false'
+        run: zitadel-login/build.sh "${{ steps.tag.outputs.ref }}"
+
+      - name: Push
+        if: steps.exists.outputs.found == 'false'
+        env:
+          REF: ${{ steps.tag.outputs.ref }}
+        run: |
+          gcloud auth configure-docker asia-northeast2-docker.pkg.dev --quiet
+          docker push "${REF}"
