@@ -46,6 +46,12 @@ export interface KubernetesComponentArgs {
 	artifactRegistries: gcp.artifactregistry.Repository[]
 
 	/**
+	 * The Artifact Registry repository of the patched Zitadel Login V2 image.
+	 * Only the GKE node service account is granted pull access to it.
+	 */
+	zitadelLoginArtifactRegistry?: gcp.artifactregistry.Repository
+
+	/**
 	 * Runtime secrets to provision in GCP Secret Manager and grant access to the backend-app SA.
 	 * Each entry creates a secret, a version (value from Pulumi config), and an IAM accessor binding.
 	 */
@@ -109,6 +115,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			// downstream change at re-introduction time.
 			etcdCmekKeyName,
 			artifactRegistries,
+			zitadelLoginArtifactRegistry,
 			secrets = [],
 			esoOnlySecrets = [],
 		} = args
@@ -158,6 +165,15 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				`${registryNames[index]}-gke-node`,
 				gkeNodeSa.email,
 				registry,
+				region,
+				this,
+			)
+		}
+		if (zitadelLoginArtifactRegistry) {
+			iamSvc.bindArtifactRegistryReader(
+				'zitadel-login-gke-node',
+				gkeNodeSa.email,
+				zitadelLoginArtifactRegistry,
 				region,
 				this,
 			)

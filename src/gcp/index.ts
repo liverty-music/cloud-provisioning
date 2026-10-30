@@ -317,6 +317,29 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
+		// The patched Zitadel Login V2 image (remove-password-setup-from-hosted-login
+		// D3/D4), built from `zitadel-login/` by its GitHub Actions workflow.
+		// Prod only: dev's workload is disabled and its overlay keeps the
+		// upstream image. Only the GKE node service account pulls it.
+		const zitadelLoginArtifactRegistry =
+			environment === 'prod'
+				? new gcp.artifactregistry.Repository(
+						'zitadel-login-repository',
+						{
+							repositoryId: 'zitadel-login',
+							location: this.region,
+							format: 'DOCKER',
+							project: this.project.projectId,
+							description:
+								'Docker repository for the patched Zitadel Login V2 image',
+							dockerConfig,
+							cleanupPolicies,
+							cleanupPolicyDryRun,
+						},
+						{ parent: this.project },
+					)
+				: undefined
+
 		// The `series-image-consumer` image ships from the backend build into the
 		// SHARED `backend` Artifact Registry repo (as `backend/series-image-consumer`),
 		// exactly like the other backend binaries (consumer, concert-discovery,
@@ -501,6 +524,7 @@ export class Gcp {
 					backendArtifactRegistry,
 					frontendArtifactRegistry,
 				],
+				zitadelLoginArtifactRegistry,
 				secrets: [
 					...(lastFmApiKey
 						? [
