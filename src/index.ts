@@ -382,6 +382,20 @@ const gcp = new Gcp({
 			}
 			return key
 		}),
+	// HMAC signing key Zitadel generated for the password-setup-refusal Target
+	// (PAYLOAD_TYPE_JSON), plumbed to fan-api as GSM secret
+	// `webhook-password-setup-refusal-signing-key` like the keys above.
+	passwordSetupRefusalSigningKey:
+		zitadel?.actionsV2.passwordSetupRefusalTarget.signingKey.apply(
+			(key) => {
+				if (!key) {
+					throw new Error(
+						'password-setup-refusal Target signingKey missing — expected for PAYLOAD_TYPE_JSON',
+					)
+				}
+				return key
+			},
+		),
 	workloadEnabled,
 	postgresAvailabilityType,
 })
