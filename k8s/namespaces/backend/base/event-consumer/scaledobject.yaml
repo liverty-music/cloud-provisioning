@@ -145,6 +145,25 @@ spec:
       consumer: "reissue-email-verification"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # USER.passkey_added and USER.passkey_removed (OpenSpec change
+  # publish-events-through-outbox): the passkey change email of each announced
+  # Passkey.
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "notify-passkey-added"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "notify-passkey-removed"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   # NOTIFICATION stream
   - type: nats-jetstream
     metadata:

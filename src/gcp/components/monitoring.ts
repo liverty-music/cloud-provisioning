@@ -613,6 +613,74 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 			),
 		)
 
+		// Undelivered announcement alert (OpenSpec change
+		// publish-events-through-outbox, requirement "An announcement that
+		// cannot be delivered is reported").
+		//
+		// Entity operations record their announcements in the backend's outbox
+		// table in the transaction of the change; the forwarder in
+		// workflow-worker delivers each row to NATS JetStream and deletes it.
+		// The same `report-workflows-needing-admin` schedule sets, every 5
+		// minutes, the OTel gauge `event_delivery.oldest_undelivered_age_seconds`
+		// (0 when the outbox is empty), which lands in Cloud Monitoring as
+		// `workload.googleapis.com/event_delivery.oldest_undelivered_age_seconds`
+		// on `generic_node`, like the gauge above. An announcement still in the
+		// outbox 10 minutes after it was recorded (a broker that cannot be
+		// reached, a row no stream captures) fires it; the worker logs that
+		// announcement once with its subject and record time
+		// ("announcement not delivered").
+		this.alertPolicies.push(
+			new gcp.monitoring.AlertPolicy(
+				'alert-announcement-undelivered',
+				{
+					displayName: 'Announcement Not Delivered',
+					project: projectId,
+					combiner: 'OR',
+					conditions: [
+						{
+							displayName:
+								'An announcement is still undelivered 10 minutes after it was recorded',
+							conditionThreshold: {
+								filter: 'metric.type="workload.googleapis.com/event_delivery.oldest_undelivered_age_seconds" AND resource.type="generic_node"',
+								aggregations: [
+									{
+										// The schedule updates the gauge every 5 minutes.
+										alignmentPeriod: '300s',
+										perSeriesAligner: 'ALIGN_MAX',
+										crossSeriesReducer: 'REDUCE_MAX',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 600,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+					],
+					alertStrategy: {
+						// A gauge back under the threshold closes it at once; autoClose
+						// applies when the worker stops reporting.
+						autoClose: '3600s', // 1 hour
+					},
+					notificationChannels,
+					documentation: {
+						content: [
+							'## Announcement Not Delivered Alert',
+							'',
+							'An announcement recorded in the backend outbox (`watermill_events_outbox`) is still undelivered 10 minutes after it was recorded. Every later announcement waits behind it, because the forwarder reads the outbox in insertion order. Nothing is lost: it is delivered once delivery works again.',
+							'',
+							'### Triage',
+							'1. Read the workflow-worker log line "announcement not delivered" for the subject and record time of the oldest row.',
+							'2. Check that NATS is up and that a stream captures that subject (`USER.*`, `ORDER.*`, ...).',
+							'3. A row that can never be published (a subject no stream captures, a message over the size limit) is fixed forward: declare the stream, or record the row and delete it.',
+						].join('\n'),
+						mimeType: 'text/markdown',
+					},
+				},
+				{ parent: this },
+			),
+		)
+
 		// ClusterSecretStore not-ready alert (CP#457 detection hardening).
 		//
 		// The 2026-08-24 incident left `ClusterSecretStore google-secret-manager`

@@ -38,6 +38,24 @@ spec:
           value: "1"
         - name: TELEMETRY_SERVICE_NAME
           value: liverty-music-workflow-worker
+        # The identity service's listener for the backend workloads: the
+        # verification emails and passkey recovery links of the user
+        # workflows (OpenSpec change publish-events-through-outbox). The
+        # worker holds no identity-provider key.
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity:9100
+        # The pipeline signal of each create-from-discovered batch goes to the
+        # same PostHog project as the event consumer's.
+        - name: POSTHOG_API_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: event-consumer-config
+              key: POSTHOG_API_HOST
+        - name: POSTHOG_PROJECT_API_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: event-consumer-config
+              key: POSTHOG_PROJECT_API_KEY
         envFrom:
         - configMapRef:
             name: fan-api-config
@@ -45,6 +63,9 @@ spec:
             name: fan-api-backend-secrets
         - secretRef:
             name: api-stripe-secrets
+        # POSTMARK_SERVER_TOKEN, for the emails of the user workflows.
+        - secretRef:
+            name: backend-secrets
         # Ready only once the runtime runs its queues and schedules. The worker
         # waits up to 5 minutes for the database and 5 more for DBOS's tables.
         readinessProbe:
@@ -69,7 +90,9 @@ spec:
         resources:
           requests:
             cpu: 10m
-            memory: 64Mi
+            # 73 MB at the peak of 600 runs in a local run of every workflow
+            # (design "Migration Plan" of publish-events-through-outbox).
+            memory: 96Mi
             ephemeral-storage: 100Mi
           limits:
             cpu: 200m
