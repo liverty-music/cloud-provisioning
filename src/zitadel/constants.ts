@@ -95,6 +95,11 @@ export const LOGIN_EVENT_PATH = '/account-login-event'
  *  announces `USER.passkey_changed` so the fan is emailed about the change.
  *  See OpenSpec change `fan-passkey-recovery-and-management`, design D6. */
 export const PASSKEY_EVENT_PATH = '/passkey-event'
+/** Backend password-setup-refusal webhook path, bound to the Zitadel Actions
+ *  v2 request executions on the API methods that set the caller's own
+ *  password. The handler never answers 2xx, so Zitadel refuses them. See
+ *  OpenSpec change `remove-password-setup-from-hosted-login`, design D8. */
+export const PASSWORD_SETUP_REFUSAL_PATH = '/refuse-password-setup'
 
 /**
  * Bootstrap-created `admin` Role Org IDs per environment.

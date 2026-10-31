@@ -89,6 +89,12 @@ export interface GcpArgs {
 	 *  as `WEBHOOK_PASSKEY_EVENT_SIGNING_KEY`, exactly like the login-event key.
 	 *  Present only when the Zitadel workload is provisioned. */
 	passkeyEventSigningKey?: pulumi.Output<string>
+	/** HMAC signing key Zitadel generated for the password-setup-refusal
+	 *  Actions v2 Target (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
+	 *  `webhook-password-setup-refusal-signing-key` and synced into the fan-api
+	 *  secrets as `WEBHOOK_PASSWORD_SETUP_REFUSAL_SIGNING_KEY`, like the
+	 *  passkey-event key. Present only when the Zitadel workload is provisioned. */
+	passwordSetupRefusalSigningKey?: pulumi.Output<string>
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
 	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
@@ -205,6 +211,7 @@ export class Gcp {
 			postmarkServerToken,
 			loginEventSigningKey,
 			passkeyEventSigningKey,
+			passwordSetupRefusalSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
 			zitadelMachineKey,
@@ -672,6 +679,20 @@ export class Gcp {
 									name: 'webhook-passkey-event-signing-key',
 									value: pulumi.secret(
 										passkeyEventSigningKey,
+									),
+								},
+							]
+						: []),
+					// HMAC signing key for the password-setup-refusal Actions v2
+					// Target (PAYLOAD_TYPE_JSON), verified by the fan-api
+					// `/refuse-password-setup` webhook handler. Same lifecycle as
+					// the passkey-event key above.
+					...(passwordSetupRefusalSigningKey
+						? [
+								{
+									name: 'webhook-password-setup-refusal-signing-key',
+									value: pulumi.secret(
+										passwordSetupRefusalSigningKey,
 									),
 								},
 							]
