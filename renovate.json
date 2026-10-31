@@ -1,7 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "`ignorePaths` restates the organisation preset's `**/base/charts/**`: Renovate does not merge `ignorePaths` (it is `mergeable: false`), so a repository value replaces the inherited one. `sdks/**` is added because `sdks/posthog` is a Pulumi SDK generated from PostHog's Terraform provider (`pulumi package add`). A hand edit there is overwritten on the next regeneration and no CI job runs for it, so Renovate proposed updates to a file nobody maintains: TypeScript v6 (#690) and @types/node v24 (#689). Its dependencies move when the SDK is regenerated."
+  ],
   "extends": [
     "local>liverty-music/.github:renovate-config"
+  ],
+  "ignorePaths": [
+    "**/base/charts/**",
+    "sdks/**"
   ],
   "packageRules": [
     {
@@ -35,13 +42,25 @@
       "enabled": false
     },
     {
-      "description": "Zitadel server upgrades move as one pull request and are NEVER automerged. The API image, the Login V2 image and the OTEL `service.version` attribute in k8s/namespaces/zitadel/base/values.yaml carry the same version, and an upgrade runs boot-time Cloud SQL schema migrations on first start, so it is applied by a person after a database backup (see the commit that pinned v4.17.1, 6060419). The pin itself is what keeps the automerged Helm chart minors from upgrading the server: the chart's appVersion is overridden by these tags.",
+      "description": "Zitadel server upgrades move as one pull request and are NEVER automerged. The API image, the Login V2 image and the OTEL `service.version` attribute in k8s/namespaces/zitadel/base/values.yaml carry the same version, and an upgrade runs boot-time Cloud SQL schema migrations on first start, so it is applied by a person after a database backup (see the commit that pinned v4.17.1, 6060419). The pin itself is what keeps the automerged Helm chart minors from upgrading the server: the chart's appVersion is overridden by these tags. DIGEST PINNING is off for these two images: the version is also tracked by the custom regex manager on the OTEL `service.version` line, which carries no digest, so the `pin dependencies` branch failed with `update failure` on every run (dashboard \"Errored\"). A digest pin would add nothing here either, since a person applies every Zitadel upgrade after a backup.",
       "matchPackageNames": [
         "ghcr.io/zitadel/zitadel",
         "ghcr.io/zitadel/zitadel-login"
       ],
       "groupName": "zitadel server",
-      "automerge": false
+      "automerge": false,
+      "pinDigests": false
+    },
+    {
+      "description": "No digest pinning for Helm charts rendered by kustomize (`helmCharts:`). The kustomize manager can pin digests only in `images:` (`newTag` or `digest`); a `helmCharts:` entry has no field for a digest. So the `pin dependencies` branch for argo-cd, argocd-image-updater and atlas-operator (OCI charts) failed with `update failure` on every run and took the pinnable cloud-sql-proxy image down with it (dashboard \"Errored\"). Chart versions still update as usual.",
+      "matchManagers": [
+        "kustomize"
+      ],
+      "matchDepTypes": [
+        "HelmChart",
+        "OCIChart"
+      ],
+      "pinDigests": false
     }
   ],
   "customManagers": [
