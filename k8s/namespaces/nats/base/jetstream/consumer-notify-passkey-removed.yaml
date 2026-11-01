@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: notify-passkey-removed
+spec:
+  streamName: USER
+  durableName: notify-passkey-removed
+  # PULL work-queue. The backend event consumer starts the passkey change
+  # email of each Passkey that Passkey.Delete announces (OpenSpec change
+  # publish-events-through-outbox); the workflow worker sends it.
+  deliverPolicy: new
+  filterSubject: USER.passkey_removed
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true
