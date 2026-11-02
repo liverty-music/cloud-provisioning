@@ -5,7 +5,7 @@ metadata:
 spec:
   streamName: ORDER
   durableName: send-order-confirmation
-  # PULL work-queue (no deliverSubject/deliverGroup), like deliver-notification.
+  # PULL work-queue (no deliverSubject/deliverGroup), like the other event-consumer durables.
   deliverPolicy: new
   filterSubject: ORDER.paid
   ackPolicy: explicit

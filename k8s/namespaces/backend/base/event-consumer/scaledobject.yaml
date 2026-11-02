@@ -23,14 +23,6 @@ spec:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "CONCERT"
-      consumer: "ingest-concert"
-      lagThreshold: "10"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "CONCERT"
       consumer: "notify-concert"
       lagThreshold: "10"
       activationLagThreshold: "0"
@@ -85,7 +77,7 @@ spec:
       lagThreshold: "1"
       activationLagThreshold: "0"
   # USER stream — USER.created fans out to two behaviors; login is now a USER
-  # event; a verification resend request wakes the consumer that sends the code.
+  # event.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
@@ -108,41 +100,6 @@ spec:
       account: "$G"
       stream: "USER"
       consumer: "track-user-logged-in"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # USER.passkey_recovery_requested and USER.passkey_changed (OpenSpec change
-  # fan-passkey-recovery-and-management): recovery link, and USER.passkey_changed
-  # fans out to two behaviors (change email, change record).
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "send-passkey-recovery-link"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "notify-passkey-change"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "record-passkey-change"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "reissue-email-verification"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # USER.passkey_added and USER.passkey_removed (OpenSpec change
@@ -187,14 +144,6 @@ spec:
       account: "$G"
       stream: "NOTIFICATION"
       consumer: "track-notification-delivered"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "NOTIFICATION"
-      consumer: "deliver-notification"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # ORDER stream: purchase confirmation and the ticket journey update
@@ -272,21 +221,13 @@ spec:
       consumer: "track-ticket-email"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # SALES_PHASE stream — announcement + reminder (both push).
+  # SALES_PHASE stream — the announcement of a discovered sale.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "SALES_PHASE"
       consumer: "notify-sales-phase"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "SALES_PHASE"
-      consumer: "notify-sales-reminder"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # POISON stream — dead-letter logging.
