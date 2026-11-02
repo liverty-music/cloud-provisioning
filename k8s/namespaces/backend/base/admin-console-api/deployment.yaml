@@ -57,11 +57,14 @@ spec:
         # for the same key. Set per overlay to the admin-console-api IAM user.
         - name: DATABASE_USER
           value: REPLACE_ME_IN_OVERLAY
-        # A pool of one: fan-api-config (envFrom) carries fan-api's share of
+        # A pool of two: fan-api-config (envFrom) carries fan-api's share of
         # the connection budget, and `env` takes precedence over it (OpenSpec
-        # change introduce-durable-workflows, design "Connections").
+        # change introduce-durable-workflows, design "Connections"). The DBOS
+        # client it starts workflows through holds one connection for its
+        # notification listener (publish-events-through-outbox), so a pool of
+        # one leaves the server none.
         - name: DATABASE_MAX_OPEN_CONNS
-          value: "1"
+          value: "2"
         - name: DATABASE_MAX_IDLE_CONNS
           value: "1"
         # Stripe secret key for the admin OrderService.Refund. Optional so the
