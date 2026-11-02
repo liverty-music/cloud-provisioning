@@ -30,7 +30,7 @@ spec:
         env:
         # One pool of 5 shared by the workflows and DBOS, DBOS's documented
         # minimum; with Zitadel and the other workloads the instance stays
-        # within 22 of its 25 connections (design "Connections"). `env` takes
+        # within 23 of its 25 connections (design "Connections"). `env` takes
         # precedence over the fan-api share in fan-api-config.
         - name: DATABASE_MAX_OPEN_CONNS
           value: "5"
