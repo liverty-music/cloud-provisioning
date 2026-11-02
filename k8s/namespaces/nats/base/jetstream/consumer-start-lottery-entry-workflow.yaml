@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: start-lottery-entry-workflow
+spec:
+  streamName: ORDER
+  durableName: start-lottery-entry-workflow
+  # PULL work-queue, like the other event-consumer durables. Starts the issue
+  # workflow of a Won entry's Order and the release workflow of a Lost one
+  # (OpenSpec change make-lottery-draw-durable).
+  deliverPolicy: new
+  filterSubject: ORDER.lottery_entry_drawn
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true

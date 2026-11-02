@@ -46,5 +46,7 @@ resources:
 - consumer-track-artist-hype-changed.yaml
 - consumer-track-order-paid.yaml
 - consumer-track-lottery-entry-drawn.yaml
+- consumer-start-lottery-entry-workflow.yaml
+- consumer-send-lottery-loss.yaml
 - consumer-track-checkout-expired.yaml
 - consumer-track-ticket-admitted.yaml
