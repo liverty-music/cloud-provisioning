@@ -1,8 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  # Ingress to the identity service, per port: 9100 from the workflow worker
-  # (and the event consumer until publish-events-through-outbox is released),
+  # Ingress to the identity service, per port: 9100 from the workflow worker,
   # 9101 from the admin console API, 9102 from the fan API, 8080 (gRPC health)
   # for the kubelet probes. Everything else, including every other pod, is
   # denied. Enforced by Dataplane V2. OpenSpec changes `identity-service`
@@ -20,9 +19,6 @@ spec:
     - podSelector:
         matchLabels:
           app: workflow-worker
-    - podSelector:
-        matchLabels:
-          app: event-consumer
     ports:
     - protocol: TCP
       port: 9100
