@@ -42,6 +42,7 @@ resources:
 - consumer-send-order-confirmation.yaml
 - consumer-send-resale-sold.yaml
 - consumer-mark-ticket-journey-paid.yaml
+- consumer-mark-ticket-journey-applied.yaml
 - consumer-track-artist-hype-changed.yaml
 - consumer-track-order-paid.yaml
 - consumer-track-lottery-entry-drawn.yaml
