@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: release-released-checkout
+spec:
+  streamName: ORDER
+  durableName: release-released-checkout
+  # PULL work-queue, like the other event-consumer durables. Starts the
+  # release workflow of the card authorization of a Released Checkout's Order
+  # (OpenSpec change unify-order-issuance).
+  deliverPolicy: new
+  filterSubject: ORDER.checkout_released
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true

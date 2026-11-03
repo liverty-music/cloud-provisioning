@@ -49,4 +49,7 @@ resources:
 - consumer-start-lottery-entry-workflow.yaml
 - consumer-send-lottery-loss.yaml
 - consumer-track-checkout-expired.yaml
+- consumer-start-checkout-expiry.yaml
+- consumer-release-expired-checkout.yaml
+- consumer-release-released-checkout.yaml
 - consumer-track-ticket-admitted.yaml
