@@ -47,6 +47,9 @@ resources:
 - consumer-track-order-paid.yaml
 - consumer-track-lottery-entry-drawn.yaml
 - consumer-start-lottery-entry-workflow.yaml
+- consumer-start-resale-entry-workflow.yaml
+- consumer-send-resale-entry-ended.yaml
+- consumer-start-resale-refund.yaml
 - consumer-send-lottery-loss.yaml
 - consumer-track-checkout-expired.yaml
 - consumer-start-checkout-expiry.yaml
