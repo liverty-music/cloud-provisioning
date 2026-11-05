@@ -1,0 +1,19 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: start-resale-entry-workflow
+spec:
+  streamName: ORDER
+  durableName: start-resale-entry-workflow
+  # PULL work-queue, like the other event-consumer durables. Starts the issue
+  # workflow of a Won resale entry's Order and the release workflow of a
+  # Lapsed, Lost or Withdrawn one (OpenSpec change resell-tickets-by-lottery,
+  # design D4).
+  deliverPolicy: new
+  filterSubject: ORDER.resale_entry_changed
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true

@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: send-resale-entry-ended
+spec:
+  streamName: ORDER
+  durableName: send-resale-entry-ended
+  # PULL work-queue, like the other event-consumer durables. Sends the email
+  # and push of a Lapsed or Lost resale entry (OpenSpec change
+  # resell-tickets-by-lottery, design D6).
+  deliverPolicy: new
+  filterSubject: ORDER.resale_entry_changed
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true
