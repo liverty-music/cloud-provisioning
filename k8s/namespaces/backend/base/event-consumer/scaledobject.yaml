@@ -217,6 +217,30 @@ spec:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "ORDER"
+      consumer: "start-resale-entry-workflow"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "send-resale-entry-ended"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "start-resale-refund"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
       consumer: "start-checkout-expiry"
       lagThreshold: "1"
       activationLagThreshold: "0"
