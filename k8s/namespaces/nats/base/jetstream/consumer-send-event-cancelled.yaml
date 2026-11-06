@@ -1,0 +1,18 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: send-event-cancelled
+spec:
+  streamName: CONCERT
+  durableName: send-event-cancelled
+  # PULL work-queue, like the other event-consumer durables. Tells each fan
+  # with a Paid Order of a cancelled Event (OpenSpec change
+  # notify-fans-of-cancellation-and-refund, design D6).
+  deliverPolicy: new
+  filterSubject: CONCERT.cancelled
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true

@@ -26,6 +26,15 @@ spec:
       consumer: "notify-concert"
       lagThreshold: "10"
       activationLagThreshold: "0"
+  # Cancellation notice (notify-fans-of-cancellation-and-refund).
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "CONCERT"
+      consumer: "send-event-cancelled"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   # ARTIST stream — ARTIST.created fans out to two behaviors.
   - type: nats-jetstream
     metadata:
@@ -177,6 +186,15 @@ spec:
       account: "$G"
       stream: "ORDER"
       consumer: "send-resale-sold"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # Refund notice (notify-fans-of-cancellation-and-refund).
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "send-order-refunded"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # Product analytics (expand-product-analytics): order lifecycle events.

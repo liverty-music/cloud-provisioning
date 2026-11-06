@@ -56,3 +56,5 @@ resources:
 - consumer-release-expired-checkout.yaml
 - consumer-release-released-checkout.yaml
 - consumer-track-ticket-admitted.yaml
+- consumer-send-event-cancelled.yaml
+- consumer-send-order-refunded.yaml
