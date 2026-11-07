@@ -35,6 +35,16 @@ spec:
       consumer: "send-event-cancelled"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # Ending the lottery entries of a cancelled Event
+  # (end-lottery-entries-of-cancelled-events).
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "CONCERT"
+      consumer: "end-lottery-entries-of-cancelled-event"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   # ARTIST stream — ARTIST.created fans out to two behaviors.
   - type: nats-jetstream
     metadata:

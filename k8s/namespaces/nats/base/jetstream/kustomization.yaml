@@ -57,4 +57,5 @@ resources:
 - consumer-release-released-checkout.yaml
 - consumer-track-ticket-admitted.yaml
 - consumer-send-event-cancelled.yaml
+- consumer-end-lottery-entries-of-cancelled-event.yaml
 - consumer-send-order-refunded.yaml

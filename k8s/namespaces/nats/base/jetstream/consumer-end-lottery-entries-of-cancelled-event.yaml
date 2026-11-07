@@ -1,0 +1,20 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Consumer
+metadata:
+  name: end-lottery-entries-of-cancelled-event
+spec:
+  streamName: CONCERT
+  durableName: end-lottery-entries-of-cancelled-event
+  # PULL work-queue, like the other event-consumer durables. Ends each Entered
+  # lottery entry of a cancelled Event (OpenSpec change
+  # end-lottery-entries-of-cancelled-events, design D6). It does not share
+  # send-event-cancelled, so a failure in one is retried without running the
+  # other.
+  deliverPolicy: new
+  filterSubject: CONCERT.cancelled
+  ackPolicy: explicit
+  ackWait: 30s
+  maxAckPending: 1000
+  maxDeliver: -1
+  replayPolicy: instant
+  preventDelete: true
