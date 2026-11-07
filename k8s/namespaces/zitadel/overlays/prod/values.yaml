@@ -82,7 +82,7 @@ zitadel:
   # See ../dev/values.yaml + base/values.yaml for full rationale.
   initContainers:
   - name: cloud-sql-proxy
-    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2@sha256:7d156a5c466e31596afd6c8ed134f19c207a297418392fdad2686524ca4e7a3c
     restartPolicy: Always
     args:
     - --psc
