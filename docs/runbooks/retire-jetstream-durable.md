@@ -3,8 +3,11 @@
 Every Consumer manifest in `k8s/namespaces/nats/base/jetstream/` sets
 `preventDelete: true`, so NACK never deletes a durable on its own. That keeps a
 durable and its position when its manifest is renamed or briefly broken, but it
-also means that removing a manifest leaves the durable on the server. It then
-keeps every message of its subject until it is deleted.
+also means that removing a manifest leaves the durable on the server. Nothing
+consumes it any more, so its unprocessed count (`num_pending`) only grows until
+it is deleted. It does not keep messages: every stream uses
+`retention: limits`, so messages expire by the stream's `maxAge` whatever its
+durables do.
 
 This is a manual step because it happens once per retired durable (AGENTS.md,
 "A manual step is right only in three cases").
