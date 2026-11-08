@@ -5,6 +5,9 @@ namespace: nats
 # which omitting it also means). NACK writes each CR back with a full Update
 # whose Go struct tags the field omitempty, so a 0 is stripped on every
 # reconcile and ArgoCD reports the Consumer OutOfSync forever.
+#
+# Every Consumer sets preventDelete, so removing one here leaves its durable on
+# the server: delete it by hand as docs/runbooks/retire-jetstream-durable.md says.
 resources:
 - stream-concert.yaml
 - stream-venue.yaml
