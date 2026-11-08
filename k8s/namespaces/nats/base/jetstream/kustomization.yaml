@@ -31,7 +31,6 @@ resources:
 - consumer-track-artist-unfollowed.yaml
 - consumer-track-notification-subscribed.yaml
 - consumer-track-notification-unsubscribed.yaml
-- consumer-track-notification-delivered.yaml
 - consumer-track-ticket-journey.yaml
 - consumer-track-ticket-email.yaml
 - consumer-analytics-organizer-created.yaml
