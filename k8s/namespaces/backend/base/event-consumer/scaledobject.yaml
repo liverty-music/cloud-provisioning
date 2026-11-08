@@ -157,14 +157,6 @@ spec:
       consumer: "track-notification-unsubscribed"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "NOTIFICATION"
-      consumer: "track-notification-delivered"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
   # ORDER stream: purchase confirmation and the ticket journey update
   - type: nats-jetstream
     metadata:
