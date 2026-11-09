@@ -46,12 +46,23 @@ spec:
       lagThreshold: "1"
       activationLagThreshold: "0"
   # ARTIST stream — ARTIST.created fans out to two behaviors.
+  # `refresh-artist` replaces `resolve-artist-name` (OpenSpec change
+  # hide-ended-artists-from-discovery); both stay until the backend image that
+  # binds `refresh-artist` is pinned in prod.
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "ARTIST"
       consumer: "resolve-artist-name"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ARTIST"
+      consumer: "refresh-artist"
       lagThreshold: "1"
       activationLagThreshold: "0"
   - type: nats-jetstream
