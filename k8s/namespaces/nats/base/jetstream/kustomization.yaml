@@ -22,7 +22,6 @@ resources:
 - stream-order.yaml
 - stream-poison.yaml
 - consumer-notify-concert.yaml
-- consumer-resolve-artist-name.yaml
 - consumer-refresh-artist.yaml
 - consumer-resolve-artist-image.yaml
 - consumer-verify-user-email.yaml

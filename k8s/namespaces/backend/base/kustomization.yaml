@@ -16,6 +16,7 @@ resources:
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
 - cronjob/official-site-refresh
+- cronjob/artist-refresh
 - cronjob/sales-phase-discovery
 - cronjob/sales-reminders
 - event-consumer
