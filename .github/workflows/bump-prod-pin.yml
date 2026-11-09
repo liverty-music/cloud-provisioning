@@ -151,7 +151,8 @@ jobs:
               # `api` is the shared Connect-RPC image (unify-workload-naming),
               # successor to `server`/`fan-api`; it pins both the fan-api and
               # admin-console-api workloads. `consumer` backs event-consumer.
-              # sales-phase-discovery / sales-reminders / official-site-refresh are
+              # sales-phase-discovery / sales-reminders / official-site-refresh /
+              # artist-refresh are
               # the CronJob images;
               # series-image-consumer is the KEDA-scaled long-running consumer
               # (backend/series-image-consumer).
@@ -159,9 +160,9 @@ jobs:
               # advance, and schema-drift (e.g. a dropped column) then breaks the
               # stale image at runtime. `identity` is the identity service, the
               # only workload holding the identity-provider keys. The backend
-              # release retag matrix already publishes all nine under the release
+              # release retag matrix already publishes all of them under the release
               # tag, so a single dispatch pins them in lock-step.
-              IMAGES="api consumer identity worker concert-discovery artist-image-sync official-site-refresh sales-phase-discovery sales-reminders series-image-consumer"
+              IMAGES="api consumer identity worker concert-discovery artist-image-sync official-site-refresh artist-refresh sales-phase-discovery sales-reminders series-image-consumer"
               BUMP_LABEL=true ;;
             frontend)
               # One frontend release ships four web bundles from the same tag —
