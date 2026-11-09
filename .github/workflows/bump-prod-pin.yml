@@ -242,10 +242,13 @@ jobs:
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
       # SHA-pinned: this action installs `crane`, which here runs with prod-AR
-      # read credentials. SHA of v0.4 matches the backend/frontend release
-      # workflows' pinning.
+      # read credentials. The crane version is pinned too: by default the
+      # action downloads the latest release, and on 2026-11-09 that file
+      # (v0.22.1) returned 504 for every request, which stopped the prod pin.
       - name: Install crane
         uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        with:
+          version: v0.22.0
 
       - name: Verify prod-AR image provenance
         id: provenance
