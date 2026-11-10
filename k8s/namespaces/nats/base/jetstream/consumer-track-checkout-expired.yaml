@@ -3,12 +3,12 @@ kind: Consumer
 metadata:
   name: track-checkout-expired
 spec:
-  streamName: ORDER
+  streamName: CHECKOUT
   durableName: track-checkout-expired
   # PULL work-queue (no deliverSubject/deliverGroup) — declarative, replaces the
   # push consumer whose random _INBOX deliver subject cannot be declared (D5).
   deliverPolicy: new
-  filterSubject: ORDER.checkout_expired
+  filterSubject: CHECKOUT.expired
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

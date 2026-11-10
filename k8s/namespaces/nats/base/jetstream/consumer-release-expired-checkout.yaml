@@ -3,13 +3,13 @@ kind: Consumer
 metadata:
   name: release-expired-checkout
 spec:
-  streamName: ORDER
+  streamName: CHECKOUT
   durableName: release-expired-checkout
   # PULL work-queue, like the other event-consumer durables. Starts the
   # release workflow of the card authorization of an Expired Checkout's Order
   # (OpenSpec change unify-order-issuance).
   deliverPolicy: new
-  filterSubject: ORDER.checkout_expired
+  filterSubject: CHECKOUT.expired
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

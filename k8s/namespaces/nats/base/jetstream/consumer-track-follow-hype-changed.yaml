@@ -1,14 +1,14 @@
 apiVersion: jetstream.nats.io/v1beta2
 kind: Consumer
 metadata:
-  name: track-artist-followed
+  name: track-follow-hype-changed
 spec:
-  streamName: ARTIST
-  durableName: track-artist-followed
+  streamName: FOLLOW
+  durableName: track-follow-hype-changed
   # PULL work-queue (no deliverSubject/deliverGroup) — declarative, replaces the
   # push consumer whose random _INBOX deliver subject cannot be declared (D5).
   deliverPolicy: new
-  filterSubject: ARTIST.followed
+  filterSubject: FOLLOW.hype_changed
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

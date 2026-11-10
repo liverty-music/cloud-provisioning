@@ -3,13 +3,13 @@ kind: Consumer
 metadata:
   name: notify-passkey-removed
 spec:
-  streamName: USER
+  streamName: PASSKEY
   durableName: notify-passkey-removed
   # PULL work-queue. The backend event consumer starts the passkey change
   # email of each Passkey that Passkey.Delete announces (OpenSpec change
   # publish-events-through-outbox); the workflow worker sends it.
   deliverPolicy: new
-  filterSubject: USER.passkey_removed
+  filterSubject: PASSKEY.removed
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

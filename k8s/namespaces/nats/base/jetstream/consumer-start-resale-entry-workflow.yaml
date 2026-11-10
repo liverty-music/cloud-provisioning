@@ -3,14 +3,14 @@ kind: Consumer
 metadata:
   name: start-resale-entry-workflow
 spec:
-  streamName: ORDER
+  streamName: RESALE_ENTRY
   durableName: start-resale-entry-workflow
   # PULL work-queue, like the other event-consumer durables. Starts the issue
   # workflow of a Won resale entry's Order and the release workflow of a
   # Lapsed, Lost or Withdrawn one (OpenSpec change resell-tickets-by-lottery,
   # design D4).
   deliverPolicy: new
-  filterSubject: ORDER.resale_entry_changed
+  filterSubjects: [RESALE_ENTRY.won, RESALE_ENTRY.lapsed, RESALE_ENTRY.lost, RESALE_ENTRY.withdrawn]
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

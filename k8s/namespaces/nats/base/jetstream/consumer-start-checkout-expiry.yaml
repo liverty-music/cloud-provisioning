@@ -3,13 +3,13 @@ kind: Consumer
 metadata:
   name: start-checkout-expiry
 spec:
-  streamName: ORDER
+  streamName: CHECKOUT
   durableName: start-checkout-expiry
   # PULL work-queue, like the other event-consumer durables. Starts the
   # expiry workflow of a new Held Checkout, delayed until its hold expiry
   # (OpenSpec change unify-order-issuance).
   deliverPolicy: new
-  filterSubject: ORDER.checkout_held
+  filterSubject: CHECKOUT.held
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

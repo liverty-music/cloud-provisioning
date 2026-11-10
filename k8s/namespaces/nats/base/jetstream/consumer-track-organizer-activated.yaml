@@ -1,14 +1,14 @@
 apiVersion: jetstream.nats.io/v1beta2
 kind: Consumer
 metadata:
-  name: analytics-organizer-created
+  name: track-organizer-activated
 spec:
   streamName: ORGANIZER
-  durableName: analytics-organizer-created
+  durableName: track-organizer-activated
   # PULL work-queue (no deliverSubject/deliverGroup) — declarative, replaces the
   # push consumer whose random _INBOX deliver subject cannot be declared (D5).
   deliverPolicy: new
-  filterSubject: ORGANIZER.created
+  filterSubject: ORGANIZER.activated
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

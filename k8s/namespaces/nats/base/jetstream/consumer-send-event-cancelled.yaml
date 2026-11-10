@@ -3,13 +3,13 @@ kind: Consumer
 metadata:
   name: send-event-cancelled
 spec:
-  streamName: CONCERT
+  streamName: EVENT
   durableName: send-event-cancelled
   # PULL work-queue, like the other event-consumer durables. Tells each fan
   # with a Paid Order of a cancelled Event (OpenSpec change
   # notify-fans-of-cancellation-and-refund, design D6).
   deliverPolicy: new
-  filterSubject: CONCERT.cancelled
+  filterSubject: EVENT.cancelled
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

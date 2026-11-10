@@ -3,13 +3,13 @@ kind: Consumer
 metadata:
   name: start-resale-refund
 spec:
-  streamName: ORDER
+  streamName: RESALE_LISTING
   durableName: start-resale-refund
   # PULL work-queue, like the other event-consumer durables. Starts the
   # refund workflow of each listing a won resale entry's Order bought
   # (OpenSpec change resell-tickets-by-lottery, design D10).
   deliverPolicy: new
-  filterSubject: ORDER.resale_listing_sold
+  filterSubject: RESALE_LISTING.sold
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

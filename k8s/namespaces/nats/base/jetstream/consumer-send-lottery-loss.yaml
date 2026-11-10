@@ -3,14 +3,14 @@ kind: Consumer
 metadata:
   name: send-lottery-loss
 spec:
-  streamName: ORDER
+  streamName: LOTTERY_ENTRY
   durableName: send-lottery-loss
   # PULL work-queue, like the other event-consumer durables. Sends the loss
   # email and push of a Lost entry, on a cursor of its own so a mail outage
   # never delays the start of a release (OpenSpec change
   # make-lottery-draw-durable).
   deliverPolicy: new
-  filterSubject: ORDER.lottery_entry_drawn
+  filterSubject: LOTTERY_ENTRY.lost
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

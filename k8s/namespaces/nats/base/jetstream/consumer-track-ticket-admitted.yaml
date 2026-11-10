@@ -3,12 +3,12 @@ kind: Consumer
 metadata:
   name: track-ticket-admitted
 spec:
-  streamName: ORDER
+  streamName: TICKET
   durableName: track-ticket-admitted
   # PULL work-queue (no deliverSubject/deliverGroup) — declarative, replaces the
   # push consumer whose random _INBOX deliver subject cannot be declared (D5).
   deliverPolicy: new
-  filterSubject: ORDER.ticket_admitted
+  filterSubject: TICKET.admitted
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000
