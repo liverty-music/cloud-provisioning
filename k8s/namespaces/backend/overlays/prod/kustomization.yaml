@@ -317,8 +317,8 @@ patches:
   # daily sales-phase discovery cron) pile up undelivered forever. Keeping one
   # replica always running holds the durables open so every event is consumed.
   # Long-lived streams created during earlier always-on periods (CONCERT,
-  # ARTIST, USER) survived by chance; SALES_PHASE, added later, exposed the
-  # deadlock. KEDA still scales up to maxReplicas under load.
+  # ARTIST, USER) survived by chance; the ticket sale stream, added later,
+  # exposed the deadlock. KEDA still scales up to maxReplicas under load.
   - target:
       kind: ScaledObject
       name: event-consumer
