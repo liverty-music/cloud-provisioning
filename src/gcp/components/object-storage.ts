@@ -81,8 +81,16 @@ export interface ObjectStorageArgs {
  * CORS:
  *   - The internal bucket has a CORS `PUT` rule for the organizer Web App
  *     origins (browser direct-upload via a V4 signed URL).
- *   - The served bucket has NO CORS: it is read by `<img>` tags via Cloud CDN
- *     and written server-side only.
+ *   - The served bucket itself has NO CORS rule. Instead, the CDN backend
+ *     bucket adds `Access-Control-Allow-Origin: *` to every response, so the
+ *     fan web app can load covers with `crossorigin="anonymous"` and draw
+ *     them into a canvas (virtual ticket share image). A GCS CORS rule would
+ *     not work here: GCS adds the header only when the request carries
+ *     `Origin`, the cache key ignores `Origin`, and `FORCE_CACHE_ALL` keeps
+ *     whichever response was fetched first for a year, so a plain `<img>`
+ *     request could cache a response without the header. A header set on the
+ *     backend bucket is added to cached and uncached responses alike. `*` is
+ *     safe because the objects are public images served without cookies.
  */
 export class ObjectStorageComponent extends pulumi.ComponentResource {
 	/** Served GCS bucket name — stable after creation. */
@@ -138,7 +146,8 @@ export class ObjectStorageComponent extends pulumi.ComponentResource {
 				softDeletePolicy: {
 					retentionDurationSeconds: 0,
 				},
-				// CORS: not configured — see class-level docstring.
+				// CORS: not configured here; the CDN backend bucket sets the
+				// header instead — see class-level docstring.
 			},
 			{ parent: this },
 		)
@@ -282,6 +291,10 @@ export class ObjectStorageComponent extends pulumi.ComponentResource {
 					defaultTtl: 31536000,
 					clientTtl: 31536000,
 				},
+				// Added by the load balancer to cached and uncached responses
+				// alike, so a `crossorigin` cover request never hits a cached
+				// response without it — see the class docstring's CORS section.
+				customResponseHeaders: ['Access-Control-Allow-Origin: *'],
 			},
 			{ parent: this },
 		)
