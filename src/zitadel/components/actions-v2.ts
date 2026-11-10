@@ -27,8 +27,9 @@ export interface ActionsV2ComponentArgs {
 	jwtProfileJson: pulumi.Input<string>
 	/** In-cluster URL of the backend `/pre-access-token` webhook handler. */
 	preAccessTokenEndpoint: pulumi.Input<string>
-	/** In-cluster URL of the backend `/account-login-event` webhook handler —
-	 *  the account.login source, bound to the session.user.checked event. */
+	/** In-cluster URL of the backend `/account-login-event` webhook handler,
+	 *  bound to the session.user.checked event. It records the sign-in, which
+	 *  announces USER.signed_in. */
 	loginEventEndpoint: pulumi.Input<string>
 	/** In-cluster URL of the backend `/passkey-event` webhook handler, bound to
 	 *  the passkey added (`user.human.passwordless.token.verified`) and removed
@@ -152,7 +153,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			},
 		)
 
-		// Login-event Target + ExecutionEvent — the account.login source.
+		// Login-event Target + ExecutionEvent — the source of USER.signed_in.
 		// REST_CALL with PAYLOAD_TYPE_JSON (the Zitadel-recommended default):
 		// Zitadel signs each body with an HMAC and the backend verifies the
 		// `ZITADEL-Signature` header with the Target's generated `signingKey`
