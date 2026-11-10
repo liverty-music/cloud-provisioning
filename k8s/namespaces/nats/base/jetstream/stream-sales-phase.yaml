@@ -11,4 +11,4 @@ spec:
   duplicateWindow: 2m
   discard: old
   replicas: 1
-  preventDelete: true
+  preventDelete: false

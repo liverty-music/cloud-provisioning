@@ -9,11 +9,12 @@ spec:
   maxReplicaCount: 3
   cooldownPeriod: 300
   pollingInterval: 30
-  # Triggers reference the behavior-named JetStream durables the consumer app
-  # creates (durable == deliver group == handler behavior name; see the backend
-  # messaging.behaviorTable). Each trigger's `consumer` MUST exactly match a live
-  # durable, else the HPA reports `<unknown>`. Three subjects have two behaviors
-  # each (ARTIST.created, ARTIST.followed, USER.created) → two durables/triggers
+  # One trigger per behavior-named JetStream durable the event consumer binds
+  # (durable == behavior name; see the backend behaviorTable in
+  # internal/di/consumer.go), on the stream named after the entity. Each
+  # trigger's `consumer` MUST exactly match a durable that NACK declares in
+  # k8s/namespaces/nats/base/jetstream/, else the HPA reports `<unknown>`. A
+  # subject with several behaviors has one durable and one trigger per behavior
   # (fan-out). Prod pins min=max=1 so these are inert there, but the base stays
   # complete for dev.
   triggers:
@@ -26,26 +27,24 @@ spec:
       consumer: "notify-concert"
       lagThreshold: "10"
       activationLagThreshold: "0"
-  # Cancellation notice (notify-fans-of-cancellation-and-refund).
+  # EVENT stream
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
-      stream: "CONCERT"
+      stream: "EVENT"
       consumer: "send-event-cancelled"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # Ending the lottery entries of a cancelled Event
-  # (end-lottery-entries-of-cancelled-events).
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
-      stream: "CONCERT"
+      stream: "EVENT"
       consumer: "end-lottery-entries-of-cancelled-event"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # ARTIST stream — ARTIST.created fans out to two behaviors.
+  # ARTIST stream
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
@@ -67,308 +66,7 @@ spec:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "ARTIST"
-      consumer: "track-artist-followed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ARTIST"
-      consumer: "search-first-followed-artist"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ARTIST"
-      consumer: "track-artist-unfollowed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # Product analytics (expand-product-analytics): hype changes.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ARTIST"
-      consumer: "track-artist-hype-changed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # USER stream — USER.created fans out to two behaviors; login is now a USER
-  # event.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "verify-user-email"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "track-user-created"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "track-user-logged-in"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # USER.passkey_added and USER.passkey_removed (OpenSpec change
-  # publish-events-through-outbox): the passkey change email of each announced
-  # Passkey.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "notify-passkey-added"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "USER"
-      consumer: "notify-passkey-removed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # NOTIFICATION stream
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "NOTIFICATION"
-      consumer: "track-notification-subscribed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "NOTIFICATION"
-      consumer: "track-notification-unsubscribed"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # ORDER stream: purchase confirmation and the ticket journey update
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "send-order-confirmation"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "mark-ticket-journey-paid"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "mark-ticket-journey-applied"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "send-resale-sold"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # Refund notice (notify-fans-of-cancellation-and-refund).
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "send-order-refunded"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # Product analytics (expand-product-analytics): order lifecycle events.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "track-order-paid"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "track-lottery-entry-drawn"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "start-lottery-entry-workflow"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "send-lottery-loss"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "start-resale-entry-workflow"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "send-resale-entry-ended"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "start-resale-refund"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "start-checkout-expiry"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "release-expired-checkout"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "release-released-checkout"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "track-checkout-expired"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORDER"
-      consumer: "track-ticket-admitted"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # TICKET_JOURNEY / TICKET_EMAIL streams
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "TICKET_JOURNEY"
-      consumer: "track-ticket-journey"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "TICKET_EMAIL"
-      consumer: "track-ticket-email"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # SALES_PHASE stream — the announcement of a discovered sale.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "SALES_PHASE"
-      consumer: "notify-sales-phase"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # POISON stream — dead-letter logging.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "POISON"
-      consumer: "log-poison"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # ORGANIZER stream — organizer lifecycle analytics (organizer.created,
-  # organizer.artist.associated). See backend messaging.behaviorTable.
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORGANIZER"
-      consumer: "analytics-organizer-created"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "ORGANIZER"
-      consumer: "analytics-organizer-artist-associated"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  # One stream per entity (OpenSpec change align-event-names-with-entities).
-  # These durables replace the ones above on SALES_PHASE, NOTIFICATION and the
-  # moved or renamed ones on CONCERT, ARTIST, USER, ORDER and ORGANIZER. Both
-  # sets stay until the backend binds the new durables; the old triggers are
-  # removed afterwards.
-  # EVENT stream
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "EVENT"
-      consumer: "send-event-cancelled"
-      lagThreshold: "1"
-      activationLagThreshold: "0"
-  - type: nats-jetstream
-    metadata:
-      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
-      account: "$G"
-      stream: "EVENT"
-      consumer: "end-lottery-entries-of-cancelled-event"
+      consumer: "track-artist-represented"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # FOLLOW stream
@@ -405,6 +103,22 @@ spec:
       lagThreshold: "1"
       activationLagThreshold: "0"
   # USER stream
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "verify-user-email"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "USER"
+      consumer: "track-user-created"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
@@ -456,7 +170,16 @@ spec:
       consumer: "notify-ticket-sale-discovered"
       lagThreshold: "1"
       activationLagThreshold: "0"
-  # ORGANIZER and ARTIST streams
+  # TICKET_JOURNEY stream
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "TICKET_JOURNEY"
+      consumer: "track-ticket-journey"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # ORGANIZER stream
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
@@ -465,12 +188,37 @@ spec:
       consumer: "track-organizer-activated"
       lagThreshold: "1"
       activationLagThreshold: "0"
+  # ORDER stream
   - type: nats-jetstream
     metadata:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
-      stream: "ARTIST"
-      consumer: "track-artist-represented"
+      stream: "ORDER"
+      consumer: "send-order-confirmation"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "mark-ticket-journey-paid"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "send-order-refunded"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "ORDER"
+      consumer: "track-order-paid"
       lagThreshold: "1"
       activationLagThreshold: "0"
   # RESALE_LISTING stream
@@ -580,5 +328,14 @@ spec:
       account: "$G"
       stream: "TICKET"
       consumer: "track-ticket-admitted"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  # POISON stream
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "POISON"
+      consumer: "log-poison"
       lagThreshold: "1"
       activationLagThreshold: "0"
