@@ -3,13 +3,13 @@ kind: Consumer
 metadata:
   name: notify-passkey-added
 spec:
-  streamName: USER
+  streamName: PASSKEY
   durableName: notify-passkey-added
   # PULL work-queue. The backend event consumer starts the passkey change
   # email of each Passkey that Passkey.Create announces (OpenSpec change
   # publish-events-through-outbox); the workflow worker sends it.
   deliverPolicy: new
-  filterSubject: USER.passkey_added
+  filterSubject: PASSKEY.added
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

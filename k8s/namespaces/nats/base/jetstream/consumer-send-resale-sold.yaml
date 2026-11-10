@@ -3,11 +3,11 @@ kind: Consumer
 metadata:
   name: send-resale-sold
 spec:
-  streamName: ORDER
+  streamName: RESALE_LISTING
   durableName: send-resale-sold
   # PULL work-queue (no deliverSubject/deliverGroup), like the other event-consumer durables.
   deliverPolicy: new
-  filterSubject: ORDER.resale_listing_refunded
+  filterSubject: RESALE_LISTING.refunded
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

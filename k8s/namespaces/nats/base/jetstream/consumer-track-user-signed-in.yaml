@@ -1,14 +1,14 @@
 apiVersion: jetstream.nats.io/v1beta2
 kind: Consumer
 metadata:
-  name: track-lottery-entry-drawn
+  name: track-user-signed-in
 spec:
-  streamName: ORDER
-  durableName: track-lottery-entry-drawn
+  streamName: USER
+  durableName: track-user-signed-in
   # PULL work-queue (no deliverSubject/deliverGroup) — declarative, replaces the
   # push consumer whose random _INBOX deliver subject cannot be declared (D5).
   deliverPolicy: new
-  filterSubject: ORDER.lottery_entry_drawn
+  filterSubject: USER.signed_in
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

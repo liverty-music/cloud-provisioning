@@ -3,13 +3,13 @@ kind: Consumer
 metadata:
   name: send-resale-entry-ended
 spec:
-  streamName: ORDER
+  streamName: RESALE_ENTRY
   durableName: send-resale-entry-ended
   # PULL work-queue, like the other event-consumer durables. Sends the email
   # and push of a Lapsed or Lost resale entry (OpenSpec change
   # resell-tickets-by-lottery, design D6).
   deliverPolicy: new
-  filterSubject: ORDER.resale_entry_changed
+  filterSubjects: [RESALE_ENTRY.lapsed, RESALE_ENTRY.lost]
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

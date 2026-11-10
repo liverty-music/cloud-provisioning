@@ -3,7 +3,7 @@ kind: Consumer
 metadata:
   name: end-lottery-entries-of-cancelled-event
 spec:
-  streamName: CONCERT
+  streamName: EVENT
   durableName: end-lottery-entries-of-cancelled-event
   # PULL work-queue, like the other event-consumer durables. Ends each Entered
   # lottery entry of a cancelled Event (OpenSpec change
@@ -11,7 +11,7 @@ spec:
   # send-event-cancelled, so a failure in one is retried without running the
   # other.
   deliverPolicy: new
-  filterSubject: CONCERT.cancelled
+  filterSubject: EVENT.cancelled
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000

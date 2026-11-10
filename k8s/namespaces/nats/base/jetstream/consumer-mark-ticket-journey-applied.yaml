@@ -3,11 +3,11 @@ kind: Consumer
 metadata:
   name: mark-ticket-journey-applied
 spec:
-  streamName: ORDER
+  streamName: LOTTERY_ENTRY
   durableName: mark-ticket-journey-applied
   # PULL work-queue (no deliverSubject/deliverGroup), like the other event-consumer durables.
   deliverPolicy: new
-  filterSubject: ORDER.lottery_entry_entered
+  filterSubject: LOTTERY_ENTRY.entered
   ackPolicy: explicit
   ackWait: 30s
   maxAckPending: 1000
