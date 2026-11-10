@@ -10,13 +10,9 @@ namespace: nats
 # the server: delete it by hand as docs/runbooks/retire-jetstream-durable.md says.
 resources:
 - stream-concert.yaml
-- stream-venue.yaml
 - stream-artist.yaml
 - stream-user.yaml
-- stream-notification.yaml
-- stream-sales-phase.yaml
 - stream-ticket-journey.yaml
-- stream-ticket-email.yaml
 - stream-organizer.yaml
 - stream-series-image.yaml
 - stream-order.yaml
@@ -45,7 +41,6 @@ resources:
 - consumer-track-push-subscription-subscribed.yaml
 - consumer-track-push-subscription-unsubscribed.yaml
 - consumer-track-ticket-journey.yaml
-- consumer-track-ticket-email.yaml
 - consumer-track-organizer-activated.yaml
 - consumer-track-artist-represented.yaml
 - consumer-notify-ticket-sale-discovered.yaml
