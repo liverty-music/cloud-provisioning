@@ -20,12 +20,13 @@ export const baseDomainMap: Record<Environment, string> = {
 }
 
 /**
- * Username and email of the password-based Playwright E2E test user per
- * environment (`E2eTestUserComponent`). The `e2e-test-password@` local-part
- * keeps the user recognizable in the console list; the domain follows the
- * environment's base domain.
+ * Username of the password-based Playwright E2E test user per environment
+ * (`E2eTestUserComponent`). It has the shape of an email address so Login V2's
+ * username field accepts it, and the `e2e-test-password@` local-part keeps the
+ * user recognizable in the console list. The tests sign in with it, so it stays
+ * on the environment's base domain even though no mail is sent there.
  */
-export const e2eTestUserEmailMap: Record<Environment, string> = {
+export const e2eTestUserNameMap: Record<Environment, string> = {
 	dev: `e2e-test-password@${baseDomainMap.dev}`,
 	prod: `e2e-test-password@${baseDomainMap.prod}`,
 }
@@ -40,14 +41,34 @@ export const e2eTestFanSlots = ['fan2', 'fan3'] as const
 
 export type E2eTestFanSlot = (typeof e2eTestFanSlots)[number]
 
-/** Email of the E2E test user of `slot` (the main user without one). */
-export function e2eTestUserEmail(
+/** Username of the E2E test user of `slot` (the main user without one). */
+export function e2eTestUserName(
 	env: Environment,
 	slot?: E2eTestFanSlot,
 ): string {
 	return slot
 		? `e2e-test-password-${slot}@${baseDomainMap[env]}`
-		: e2eTestUserEmailMap[env]
+		: e2eTestUserNameMap[env]
+}
+
+/**
+ * Postmark's black hole domain: Postmark accepts mail sent there, drops it and
+ * leaves it out of the bounce rate. The base domain has no MX record, so mail
+ * to the E2E users there bounced, and with almost no real traffic those bounces
+ * pushed the shared Postmark server far above its 10% bounce-rate limit, past
+ * which Postmark pauses all sending.
+ * https://postmarkapp.com/support/article/1213-best-practices-for-testing-your-emails-through-postmark
+ */
+const postmarkBlackHoleDomain = 'blackhole.postmarkapp.com'
+
+/** Email of the E2E test user of `slot` (the main user without one). */
+export function e2eTestUserEmail(
+	env: Environment,
+	slot?: E2eTestFanSlot,
+): string {
+	const envSuffix = env === 'prod' ? '' : `-${env}`
+	const slotSuffix = slot ? `-${slot}` : ''
+	return `e2e-test-password${slotSuffix}${envSuffix}@${postmarkBlackHoleDomain}`
 }
 
 /**

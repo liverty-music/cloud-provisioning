@@ -1,12 +1,16 @@
 import * as pulumi from '@pulumi/pulumi'
 import * as zitadel from '@pulumiverse/zitadel'
 import type { Environment } from '../../config.js'
-import { type E2eTestFanSlot, e2eTestUserEmail } from '../constants.js'
+import {
+	type E2eTestFanSlot,
+	e2eTestUserEmail,
+	e2eTestUserName,
+} from '../constants.js'
 import { ZitadelHumanUserPasswordPermanent } from '../dynamic/permanent-password.js'
 
 export interface E2eTestUserComponentArgs {
-	/** Pulumi stack environment; selects the user's email
-	 *  (`e2eTestUserEmailMap`). */
+	/** Pulumi stack environment; selects the user's username
+	 *  (`e2eTestUserName`) and email (`e2eTestUserEmail`). */
 	env: Environment
 	/** ID of the `liverty-music` product org. The E2E test user lives
 	 *  alongside end-user identities; the product org's `LoginPolicy`
@@ -142,6 +146,7 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 			provider,
 			slot,
 		} = args
+		const userName = e2eTestUserName(env, slot)
 		const email = e2eTestUserEmail(env, slot)
 		// The main user keeps its original resource names (and URNs).
 		const suffix = slot ? `-${slot}` : ''
@@ -155,10 +160,10 @@ export class E2eTestUserComponent extends pulumi.ComponentResource {
 			`e2e-test-password${suffix}`,
 			{
 				orgId,
-				// userName + email aligned so Login V2's username field accepts
-				// the email directly. The `e2e-test-password@` local-part makes
-				// the user immediately recognizable in the admin console list.
-				userName: email,
+				// The username has an email's shape so Login V2's username field
+				// accepts it; the email is on Postmark's black hole domain so
+				// the mail the backend sends this user does not bounce.
+				userName,
 				email,
 				firstName: 'E2E',
 				lastName: slot
