@@ -15,7 +15,7 @@ This repository carries no planning of its own. `openspec/config.yaml` declares 
 - **Record progress in the store, never commit there.** `/opsx:apply` checks off `tasks.md` and updates `design.md` in the `specification` checkout's working tree on `main`, uncommitted. Several changes share that working tree, so never run `git stash`, `git reset --hard`, `git checkout -- .` / `git restore .` or `git clean` there, never `git add -A` / `git add .`, and never switch its branch.
 - **Every PR must cite its change**: fill the `OpenSpec-Change` (or `OpenSpec-Spec`) field and the store commit SHA in the PR template's OpenSpec Traceability section.
 - **Close-out happens in `specification`**, after every implementing PR has merged and the release is confirmed in production: `/opsx:verify`, then archive in a `<change>-archive` worktree of `specification`, staging only that change's paths (README "Lifecycle of a change", step 5). Do not archive from this repository.
-- **Cloud threads run no repository hooks**: run `make check` before committing; CI is the gate.
+- **Checks before a commit**: in a local session the commit hook runs `make lint` and `make test`; do not run them yourself just before committing. Cloud threads run no repository hooks: there, run `make check` before committing. CI is the gate.
 
 ## Cross-repo workflow (poly-repo)
 
