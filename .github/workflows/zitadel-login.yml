@@ -63,7 +63,7 @@ jobs:
       # The Node.js major upstream CI builds the login app with.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: "22"
+          node-version: "26"
 
       - name: Build and test (no push)
         run: zitadel-login/build.sh "${IMAGE}:$(cat zitadel-login/UPSTREAM_TAG)-lm.$(git rev-parse HEAD:zitadel-login | cut -c1-12)"
@@ -114,7 +114,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: steps.exists.outputs.found == 'false'
         with:
-          node-version: "22"
+          node-version: "26"
 
       - name: Build and test
         if: steps.exists.outputs.found == 'false'
