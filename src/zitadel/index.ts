@@ -294,6 +294,8 @@ export class Zitadel {
 		// email fallback finds the identity), so the suffix only confuses them:
 		// `hideLoginNameSuffix` removes it.
 		//
+		// @spec-manual components/infrastructure/organizer/web/global/hosted-login "Sign-in screen asks for the email alone" -- open https://organizer.liverty-music.app/?org=<short name> signed out and check that nothing follows the login-name field; this policy is what hides the suffix
+		//
 		// Every other value is the instance's value at creation (Zitadel's
 		// stock palette, read from prod on 2026-10-16), kept unchanged so this
 		// resource only flips the suffix. `setActive` activates the policy
