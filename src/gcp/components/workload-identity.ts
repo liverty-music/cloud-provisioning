@@ -79,7 +79,30 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 		)
 
 		// 3. Create OIDC Provider for GitHub Actions
-		// This allows GitHub Actions to authenticate via OIDC
+		// Only these workflow files may authenticate, and only when they run
+		// from `main` or a release tag. Every other workflow in the
+		// liverty-music repositories that can mint an OIDC token (the Claude
+		// workflows read text anyone can post on the public repositories) or a
+		// workflow edited on a feature branch is refused here, before any
+		// service account binding is considered. `job_workflow_ref` names the
+		// workflow file and the ref it ran from, e.g.
+		// `liverty-music/frontend/.github/workflows/push-image.yaml@refs/tags/v1.2.3`.
+		// Workflows triggered by issue or pull request comments run with the
+		// default branch as their ref, which is why the file is part of the
+		// check and not only the ref.
+		const allowedGithubWorkflows = [
+			'liverty-music/backend/.github/workflows/deploy.yml',
+			'liverty-music/frontend/.github/workflows/push-image.yaml',
+			'liverty-music/cloud-provisioning/.github/workflows/bump-prod-pin.yml',
+			'liverty-music/cloud-provisioning/.github/workflows/zitadel-login.yml',
+			'liverty-music/cloud-provisioning/.github/workflows/incident-triage.yml',
+		]
+		const allowedWorkflowCondition = allowedGithubWorkflows
+			.map(
+				(workflow) =>
+					`attribute.job_workflow_ref == '${workflow}@refs/heads/main' || attribute.job_workflow_ref.startsWith('${workflow}@refs/tags/')`,
+			)
+			.join(' || ')
 		this.githubProvider = new gcp.iam.WorkloadIdentityPoolProvider(
 			`github-provider`,
 			{
@@ -93,8 +116,10 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 					'attribute.actor': 'assertion.actor',
 					'attribute.repository': 'assertion.repository',
 					'attribute.repository_owner': 'assertion.repository_owner',
+					// A condition may only read mapped attributes.
+					'attribute.job_workflow_ref': 'assertion.job_workflow_ref',
 				},
-				attributeCondition: `attribute.repository_owner == 'liverty-music'`,
+				attributeCondition: `attribute.repository_owner == 'liverty-music' && (${allowedWorkflowCondition})`,
 				oidc: {
 					issuerUri: 'https://token.actions.githubusercontent.com',
 				},
