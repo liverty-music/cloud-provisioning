@@ -79,7 +79,55 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 		)
 
 		// 3. Create OIDC Provider for GitHub Actions
-		// This allows GitHub Actions to authenticate via OIDC
+		// Only these workflow files may authenticate, each only from the refs
+		// it runs from: `main`, plus release tags for the two release
+		// workflows. Every other workflow in the liverty-music repositories
+		// that can mint an OIDC token (the Claude workflows read text anyone
+		// can post on the public repositories) or a workflow edited on a
+		// feature branch is refused here, before any service account binding
+		// is considered. `job_workflow_ref` names the workflow file and the ref
+		// it ran from, e.g.
+		// `liverty-music/frontend/.github/workflows/push-image.yaml@refs/tags/v1.2.3`.
+		// Workflows triggered by issue or pull request comments run with the
+		// default branch as their ref, which is why the file is part of the
+		// check and not only the ref. Tags are not protected by a ruleset, so
+		// a workflow that never runs from a tag must not be admitted from one:
+		// otherwise a tag on an edited commit would pass.
+		const allowedGithubWorkflows: { file: string; releaseTags: boolean }[] =
+			[
+				{
+					file: 'liverty-music/backend/.github/workflows/deploy.yml',
+					releaseTags: true,
+				},
+				{
+					file: 'liverty-music/frontend/.github/workflows/push-image.yaml',
+					releaseTags: true,
+				},
+				{
+					file: 'liverty-music/cloud-provisioning/.github/workflows/bump-prod-pin.yml',
+					releaseTags: false,
+				},
+				{
+					file: 'liverty-music/cloud-provisioning/.github/workflows/zitadel-login.yml',
+					releaseTags: false,
+				},
+				{
+					file: 'liverty-music/cloud-provisioning/.github/workflows/incident-triage.yml',
+					releaseTags: false,
+				},
+			]
+		const allowedWorkflowCondition = allowedGithubWorkflows
+			.map(({ file, releaseTags }) =>
+				[
+					`attribute.job_workflow_ref == '${file}@refs/heads/main'`,
+					...(releaseTags
+						? [
+								`attribute.job_workflow_ref.startsWith('${file}@refs/tags/')`,
+							]
+						: []),
+				].join(' || '),
+			)
+			.join(' || ')
 		this.githubProvider = new gcp.iam.WorkloadIdentityPoolProvider(
 			`github-provider`,
 			{
@@ -93,8 +141,10 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 					'attribute.actor': 'assertion.actor',
 					'attribute.repository': 'assertion.repository',
 					'attribute.repository_owner': 'assertion.repository_owner',
+					// A condition may only read mapped attributes.
+					'attribute.job_workflow_ref': 'assertion.job_workflow_ref',
 				},
-				attributeCondition: `attribute.repository_owner == 'liverty-music'`,
+				attributeCondition: `attribute.repository_owner == 'liverty-music' && (${allowedWorkflowCondition})`,
 				oidc: {
 					issuerUri: 'https://token.actions.githubusercontent.com',
 				},
