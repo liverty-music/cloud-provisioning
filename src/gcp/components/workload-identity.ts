@@ -60,6 +60,14 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 					'OIDC Provider for Pulumi Deployments authentication',
 				attributeMapping: {
 					'google.subject': 'assertion.sub',
+					// The stack of this project a Deployments token was issued
+					// for, from its subject
+					// `pulumi:deploy:org:<org>:project:<project>:stack:<stack>:operation:<op>:scope:write`.
+					// Only this provider sets it, so a binding on it admits
+					// Pulumi Deployments of this project and nothing else in the
+					// pool (the GitHub provider shares the pool). A token of
+					// another project leaves it empty.
+					'attribute.pulumi_stack': `assertion.sub.extract('pulumi:deploy:org:${this.PULUMI_ORG}:project:${pulumi.getProject()}:stack:{stack}:')`,
 				},
 				attributeCondition: `assertion.sub.startsWith('pulumi:deploy:org:${this.PULUMI_ORG}:')`,
 				oidc: {
@@ -104,10 +112,14 @@ export class WorkloadIdentityComponent extends pulumi.ComponentResource {
 			this,
 		)
 
-		// 4. Grant workloadIdentityUser to allow Pulumi Deployments to impersonate the SA
+		// 4. Grant workloadIdentityUser to Pulumi Deployments of this stack only.
+		// The pool also holds the GitHub provider, so a pool-wide `*` member
+		// would let any liverty-music GitHub Actions workflow impersonate this
+		// project Owner account. `attribute.pulumi_stack` is set only by the
+		// Pulumi provider (see above).
 		this.iamService.bindWifUser(
 			pulumiSAName,
-			`*`,
+			`attribute.pulumi_stack/${pulumi.getStack()}`,
 			pulumiSA,
 			this.pool,
 			this,
