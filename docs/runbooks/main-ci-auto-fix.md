@@ -98,18 +98,21 @@ $ gh api repos/liverty-music/backend/branches/main/protection --jq '{enforce_adm
 ```
 
 Re-run these after any change to branch protection. If `enforce_admins` is
-ever turned off, pause the routine first.
+ever turned off on a repository, pause both routines (`fix-main-ci-frontend` and
+`fix-main-ci-backend`), or at least the one for that repository.
 
 ## Operations
 
-- **Pause**: on claude.ai, open the routine and turn it off. The Issue
+- **Pause**: on claude.ai, open each routine and turn it off
+  (pausing one leaves the other repository running). The Issue
   lifecycle keeps working; failures still open and close Issues, only the
   analysis, pull request and Slack message stop.
 - **Change what it does**: edit `routines/fix-main-ci.md` by pull request. The
   routine reads the file from `main` of `liverty-music/.github` at each run.
 - **Recreate**: create them again with the table above, and check the Slack
   connector is still connected.
-- **A run did nothing**: open the routine's run on claude.ai. A run that ends
+- **A run did nothing**: open the run of the repository's routine (`fix-main-ci-frontend` or
+  `fix-main-ci-backend`) on claude.ai. A run that ends
   at once is expected for an Issue not opened by `github-actions[bot]`, a
   closed Issue, or a second delivery of the same Issue (it already has a
   `<!-- fix-main-ci -->` comment or a `claude/fix-main-ci-<issue>` branch).
