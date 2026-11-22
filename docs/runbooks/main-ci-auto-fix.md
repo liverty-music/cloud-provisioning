@@ -19,7 +19,7 @@ frontend ci.yaml / backend ci.yml   (schedule 17 19 * * * = 04:17 JST)
                    success, Issue open    → closes it (+ `flaky` label    │
                                             when that sha failed earlier) │
                                                                           ▼
-claude.ai routine (GitHub trigger: Issue opened, frontend + backend)
+claude.ai routines fix-main-ci-frontend / fix-main-ci-backend (GitHub trigger: Issue opened, author github-actions[bot])
   prompt: read routines/fix-main-ci.md in liverty-music/.github and follow it
   → acts only on the open Issue that github-actions[bot] opened
   → classifies: flaky test | real bug | infrastructure
@@ -53,17 +53,28 @@ by hand. The routine needs frontend, backend and `.github` in it.
 
 ## Routine settings
 
-Create it at https://claude.ai/code/routines → **New task** → **Set up manually**,
+Create them at https://claude.ai/code/routines → **New task** → **Set up manually**,
 signed in as the owner.
+
+Two routines with the same settings except the repository: a routine's GitHub
+trigger takes one repository, and the trigger list's **+** offers only Schedule
+and API (checked 2026-11-22).
 
 | Field | Value |
 |---|---|
-| Name | `fix-main-ci` |
+| Name | `fix-main-ci-frontend`, `fix-main-ci-backend` |
 | Prompt | `Read routines/fix-main-ci.md in liverty-music/.github and follow it for the Issue that triggered this run.` |
-| Advanced settings › General › Repository | `liverty-music/frontend`, `liverty-music/backend`, `liverty-music/.github` |
+| Advanced settings › General › Repository | the routine's own repository, plus `liverty-music/.github` |
 | Cloud environment | default (Limited network, Allow package managers) |
-| Trigger | **GitHub event**: Issue, action opened, repository `liverty-music/frontend`; a second one for `liverty-music/backend`. No filter (Issue events have none; the instructions' first step filters) |
+| Trigger | **GitHub event**: Event `Issue: Opened`, repository `liverty-music/frontend` (or `backend`) |
+| Trigger filter | Author, `is one of`, `github-actions[bot]` (the instructions' step 0 checks the author again) |
 | Advanced settings › Connectors | Slack only; remove the others |
+
+Checked 2026-11-22 with a failing test workflow on a `trial/` branch of each
+repository, which called `report-main-ci.yml`: the Issue the workflow opened
+started a run in both routines (the Author value `github-actions[bot]` matches),
+and each run commented on the Issue that the failure was not a scheduled run on
+`main`. An Issue with the same title opened by the owner got no comment.
 
 The Slack connector is connected at https://claude.ai/customize/connectors
 (Slack → connect → approve in Slack). The channel is named in the
@@ -96,7 +107,7 @@ ever turned off, pause the routine first.
   analysis, pull request and Slack message stop.
 - **Change what it does**: edit `routines/fix-main-ci.md` by pull request. The
   routine reads the file from `main` of `liverty-music/.github` at each run.
-- **Recreate**: create it again with the table above, and check the Slack
+- **Recreate**: create them again with the table above, and check the Slack
   connector is still connected.
 - **A run did nothing**: open the routine's run on claude.ai. A run that ends
   at once is expected for an Issue not opened by `github-actions[bot]`, a
