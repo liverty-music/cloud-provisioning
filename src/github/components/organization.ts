@@ -233,7 +233,8 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 		// to the installation and removes only that one on delete.
 		for (const name of Object.values(RepositoryName)) {
 			new github.AppInstallationRepository(
-				`claude-app-${name}`,
+				// `.github` → `dot-github`, as the repository resource is named.
+				`claude-app-${name.replace(/^\./, 'dot-')}`,
 				{
 					installationId: CLAUDE_APP_INSTALLATION_ID,
 					repository: this.repositories[name].name,
