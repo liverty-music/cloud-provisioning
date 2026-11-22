@@ -36,7 +36,7 @@ night, or the owner closing it).
 | Issue lifecycle | `liverty-music/.github` `.github/workflows/report-main-ci.yml` | pull request |
 | What the routine does | `liverty-music/.github` `routines/fix-main-ci.md` | pull request |
 | Callers, cron | frontend `.github/workflows/ci.yaml`, backend `.github/workflows/ci.yml` (`report-main-ci` job) | pull request |
-| Claude GitHub App on the repositories | `src/github/components/organization.ts` (`AppInstallationRepository`, installation `111730201`) | Pulumi (prod) |
+| Claude GitHub App on the repositories | Organization settings › GitHub Apps › claude (installation `111730201`): frontend, backend, `.github`, cloud-provisioning, specification | by hand (see below) |
 | The routine and its trigger | claude.ai | by hand, settings below |
 | Slack connector | claude.ai | by hand, once |
 | `main` protection (PR + `CI Success` required, `enforce_admins`) | `src/github/components/repository.ts` | Pulumi (prod) |
@@ -44,6 +44,12 @@ night, or the owner closing it).
 The routine and the Slack connector have no API Pulumi can call: routines are
 edited only on claude.ai or with `/schedule` in the CLI, and the connector is an
 OAuth consent in the owner's browser (design D5).
+
+The App's repository selection has an API, but it refuses the Pulumi GitHub
+token: the prod `pulumi up` of 2026-11-22 failed with `PUT
+/user/installations/111730201/repositories/<id>: 403 Resource not accessible by
+personal access token` (the token is a fine-grained PAT). The selection is kept
+by hand. The routine needs frontend, backend and `.github` in it.
 
 ## Routine settings
 
