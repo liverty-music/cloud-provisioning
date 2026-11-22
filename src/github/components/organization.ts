@@ -17,6 +17,14 @@ const REPOSITORY_VISIBILITY: Record<RepositoryName, 'public' | 'private'> = {
 	[RepositoryName.DOT_GITHUB]: 'public',
 }
 
+/**
+ * Installation of the Claude GitHub App (`claude`) on the organization
+ * (Organization settings > GitHub Apps > claude; the id is in the page URL).
+ * Not a secret: it only names the installation, and changing the repository
+ * selection needs the provider token.
+ */
+const CLAUDE_APP_INSTALLATION_ID = '111730201'
+
 export interface GitHubOrganizationComponentArgs {
 	brandId: string
 	displayName: string
@@ -215,6 +223,23 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			[RepositoryName.BACKEND]: backendRepo,
 			[RepositoryName.FRONTEND]: frontendRepo,
 			[RepositoryName.DOT_GITHUB]: dotGithubRepo,
+		}
+
+		// The Claude GitHub App (`claude`) reaches each repository: the CI
+		// review (`claude-code-action`), the Claude Code routine that triages
+		// nightly CI failures (docs/runbooks/main-ci-auto-fix.md) and cloud
+		// sessions clone and push through it. Every repository is listed so
+		// the whole selection is in code. Each resource adds one repository
+		// to the installation and removes only that one on delete.
+		for (const name of Object.values(RepositoryName)) {
+			new github.AppInstallationRepository(
+				`claude-app-${name}`,
+				{
+					installationId: CLAUDE_APP_INSTALLATION_ID,
+					repository: this.repositories[name].name,
+				},
+				{ provider: this.provider, parent: this },
+			)
 		}
 
 		// Create secrets
