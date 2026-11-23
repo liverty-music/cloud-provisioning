@@ -60,6 +60,15 @@ export interface GitHubRepositoryComponentArgs {
 	 * `autonomous-incident-response` D10.
 	 */
 	operatorOwnedVariables?: Record<string, pulumi.Input<string>>
+	/**
+	 * Let only repository admins create or move `v*` tags (prod stack only).
+	 * Set for the repositories whose release workflow the GCP Workload
+	 * Identity Federation GitHub provider admits from `refs/tags/*` (see
+	 * `src/gcp/components/workload-identity.ts`). A release-tag run uses the
+	 * workflow file at the tagged commit, so whoever can create a tag decides
+	 * what that run does with the prod credentials.
+	 */
+	protectReleaseTags?: boolean
 }
 
 export class GitHubRepositoryComponent extends pulumi.ComponentResource {
@@ -92,6 +101,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			botBypassAppId,
 			repositorySecrets,
 			operatorOwnedVariables,
+			protectReleaseTags,
 		} = args
 
 		// Use a new provider instance to ensure we can use it in any stack
@@ -259,6 +269,44 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			variables: this.variables,
 			secrets: this.secrets,
 		})
+
+		// Release-tag protection (prod only, like the branch protection below:
+		// a ruleset is per repository, so one stack must own it). Without it,
+		// any actor with write access, including a GitHub App such as the one
+		// Claude workflows act through, could tag a commit that edits the
+		// release workflow and run it with the prod credentials. Deleting a tag
+		// is left open: it cannot run anything, and recreating one is a
+		// creation. Repository admins bypass, so releases still work.
+		if (environment === 'prod' && protectReleaseTags) {
+			new github.RepositoryRuleset(
+				`${repositoryName}-release-tag-ruleset`,
+				{
+					name: `${repositoryName}-release-tags`,
+					repository: repositoryName,
+					target: 'tag',
+					enforcement: 'active',
+					conditions: {
+						refName: {
+							includes: ['refs/tags/v*'],
+							excludes: [],
+						},
+					},
+					bypassActors: [
+						{
+							// Base repository role `admin`.
+							actorId: 5,
+							actorType: 'RepositoryRole',
+							bypassMode: 'always',
+						},
+					],
+					rules: {
+						creation: true,
+						update: true,
+					},
+				},
+				{ provider, parent: this },
+			)
+		}
 
 		// Apply main-branch protection (Prod Only to avoid stack conflicts).
 		if (environment === 'prod') {

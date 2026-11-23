@@ -466,6 +466,8 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
+	// Release workflow admitted to GCP from `v*` tags (workload-identity.ts).
+	protectReleaseTags: true,
 	variables: sharedVariables,
 	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
@@ -487,6 +489,8 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
+	// Release workflow admitted to GCP from `v*` tags (workload-identity.ts).
+	protectReleaseTags: true,
 	variables: sharedVariables,
 	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
