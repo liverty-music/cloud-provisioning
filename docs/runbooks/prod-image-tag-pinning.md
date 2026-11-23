@@ -138,6 +138,88 @@ pending-1, never a third) — no eviction.
 > `component: frontend` path (OpenSpec change `batch-frontend-prod-pin-dispatch`
 > task 4.4). The only accepted components are now `backend` and `frontend`.
 
+## Check, then promote: the preview gate for `fan-web` and `fan-api`
+
+(OpenSpec change `add-prod-preview-release`.) A frontend release reaches fans only when the owner promotes it, and so does a backend release for the fan API. The other workloads (`admin-console-*`, `organizer-console-*`, `reception-*`, the consumers, the jobs) still roll out on the pin bump as before.
+
+The two workloads run as Argo Rollouts `blueGreen` Rollouts (`fan-web-app` in `frontend`, `fan-api` in `backend`). The Deployment of the same name only holds the Pod template and runs no Pods. After a pin bump the new Pods start and the Rollout waits:
+
+| | fans | owner's preview |
+|---|---|---|
+| web | `https://liverty-music.app` → `fan-web-svc` (old Pods) | `https://preview.liverty-music.app` → `fan-web-preview-svc` (new Pods) |
+| API | `https://api.liverty-music.app` → `fan-api-svc` (old Pods) | `https://api.preview.liverty-music.app` → `fan-api-preview-svc` (new Pods) |
+
+The preview web app calls the preview API (it chooses its API address from the page's host). Preview uses the production database and the production Zitadel.
+
+### 1. After every pin bump, look
+
+A release that waits is not an error, and nothing alerts on it. Look at the Rollouts first:
+
+```bash
+export CLOUDSDK_ACTIVE_CONFIG_NAME=liverty-music
+CTX=gke_liverty-music-prod_asia-northeast2_autopilot-cluster-osaka
+kubectl --context=$CTX -n frontend get rollout fan-web-app
+kubectl --context=$CTX -n backend get rollout fan-api
+```
+
+`STATUS Paused` means a release waits. The ArgoCD Application shows `Synced` and `Suspended` while it waits, so anything that waits for the Application to be Healthy waits until the promotion.
+
+### 2. Check the waiting release (read-only; an agent can run all of it)
+
+```bash
+# Which Pods each Service selects. The hashes differ while a release waits.
+kubectl --context=$CTX -n frontend get svc fan-web-svc fan-web-preview-svc -o jsonpath='{range .items[*]}{.metadata.name} {.spec.selector}{"\n"}{end}'
+kubectl --context=$CTX -n backend get svc fan-api-svc fan-api-preview-svc fan-api-webhook-svc -o jsonpath='{range .items[*]}{.metadata.name} {.spec.selector}{"\n"}{end}'
+kubectl --context=$CTX -n backend get pods -l app=fan-api -L role,app.kubernetes.io/version
+kubectl --context=$CTX -n backend get endpointslices -l kubernetes.io/service-name=fan-api-webhook-svc -o jsonpath='{.items[*].endpoints[*].addresses[*]}'   # only the Pod with role=active
+
+# Web: the existing smoke spec against preview (frontend repository)
+SMOKE_BASE_URL=https://preview.liverty-music.app npx playwright test --config=playwright.smoke.config.mjs
+
+# API: health and one public read RPC, compared with the fans' address
+for h in api.liverty-music.app api.preview.liverty-music.app; do
+  curl -s -o /dev/null -w "$h ListTop %{http_code}\n" -X POST -H 'content-type: application/json' -H 'connect-protocol-version: 1' \
+    -d '{"limit":1}' https://$h/liverty_music.rpc.artist.v1.ArtistService/ListTop
+done
+```
+
+`/stripe-webhook` and the Zitadel action paths are not routed on the preview address: a `POST` to `https://api.preview.liverty-music.app/stripe-webhook` is answered like any unknown path (`missing bearer token`), where the production address answers `invalid signature` from the webhook server.
+
+Opening a signed-in screen on preview is the owner's step. Use the owner's account only (nobody else signs in there: preview writes real data in production). A push subscription made on preview is a second, real subscription for that account: delete it when done.
+
+### 3. Promote or abort (the owner decides)
+
+`argocd` runs the Rollout's resource actions straight against the cluster (`--core`); it needs the current namespace of the kubeconfig to be `argocd`, so use a copy and leave your own kubeconfig alone:
+
+```bash
+cp ~/.kube/config /tmp/kubeconfig-argocd && export KUBECONFIG=/tmp/kubeconfig-argocd
+kubectl config set-context --current --namespace=argocd
+
+argocd app actions list frontend --kind Rollout --resource-name fan-web-app --namespace frontend --core
+
+# Run only the lines of a Rollout that has a waiting release. For a release that
+# changes both, the API goes first.
+argocd app actions run  backend  promote-full --kind Rollout --resource-name fan-api     --namespace backend  --core
+argocd app actions run  frontend promote-full --kind Rollout --resource-name fan-web-app --namespace frontend --core
+```
+
+- **Promote** is `promote-full` (verified on Argo CD v3.5.3; the other listed actions are `abort`, `pause`, `restart`, `resume`; `resume` has not been tried on a blueGreen pause). After it the active Service selects the new Pods and the old Pods stay for 5 minutes (`scaleDownDelaySeconds`).
+- **Abort** is the `abort` action, then put the values the pin bump moved back to the release fans have, in the overlay of the waiting workload, so the Deployment's Pod template equals the stable one again (the Rollout reads that template; a template that matches neither release starts a new revision that waits again):
+  - the `newTag:` line with its `# commit` trailer (frontend: the `fan-web` entry in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`; backend: the `backend/api` entry in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`);
+  - the `app.kubernetes.io/version` label in the same file (it is part of the Pod template, and `fan-api` reports it as its telemetry version);
+  - for the frontend, `releaseVersion` in `k8s/namespaces/frontend/overlays/prod/fan-web-configmap.yaml`.
+
+  Without that, the next sync starts the aborted release again. Do not `git revert` the whole bump commit: it also moved the pins of the workloads that are not behind a Rollout, which already rolled out. Two consequences: reverting the frontend values restarts the other frontend workloads once (the label is shared), and reverting `backend/api` rolls back `admin-console-api`, `organizer-console-api` and `reception-api` too, because one pin drives all four. That is safe only because migrations stay backward compatible (below).
+- A release that changes both: promote the API first, then the web (the order of the commands above), because a new web app must work against the API that already serves fans.
+
+### 4. Things to know
+
+- **Migrations stay backward compatible.** While a release waits, the old code runs against whatever schema the new release's migration made. Expand in one release and contract in a later one. Do not leave a release waiting for long.
+- **Config changes wait too.** Reloader patches the Pod template of the Deployment when a ConfigMap or Secret it watches changes (e.g. `fan-web-runtime-config`, `fan-api-backend-secrets`), so that becomes a new revision that waits for promotion. After a rotation of a webhook signing secret, promote right away: the active Pods keep the old value until then. The first pin bump after the Rollouts were introduced also showed one extra intermediate revision for the same reason (Reloader's ConfigMap hash in the template); it is scaled down by the Rollout.
+- **Connections.** While a `fan-api` release waits there are two `fan-api` Pods (and for 5 minutes after a promotion): see the connection budget in `k8s/namespaces/backend/overlays/prod/fan-api/configmap.env`.
+- **The promotion switch is not seamless yet.** On 2026-11-24 a request to `https://liverty-music.app` right after the `fan-web` promotion answered `503` once, and the next probe seconds later answered 200. For `fan-api`, a loop of one request about every second to `https://api.liverty-music.app` across the promotion answered `503` for about 25 seconds, then 200 for a few requests, then timeouts until the loop ended 80 seconds after the switch (it was healthy again at the next check, 25 seconds later). Argo CD does not report any of this. Plan a promotion for a quiet moment until it is fixed.
+- **The first sync that introduces a Rollout** may leave the Services without the ReplicaSet hash in their selectors for several minutes (Argo CD applies the Service after the Rollouts controller switched it); it settles by itself. During a pause and a promote the selectors were not reverted (checked on both workloads).
+
 ## Manual recovery: `workflow_dispatch` fallback
 
 If a dispatch is dropped (e.g. a transient GitHub outage between the release
