@@ -196,13 +196,16 @@ cp ~/.kube/config /tmp/kubeconfig-argocd && export KUBECONFIG=/tmp/kubeconfig-ar
 kubectl config set-context --current --namespace=argocd
 
 argocd app actions list frontend --kind Rollout --resource-name fan-web-app --namespace frontend --core
-argocd app actions run  frontend promote-full --kind Rollout --resource-name fan-web-app --namespace frontend --core
+
+# Run only the lines of a Rollout that has a waiting release. For a release that
+# changes both, the API goes first.
 argocd app actions run  backend  promote-full --kind Rollout --resource-name fan-api     --namespace backend  --core
+argocd app actions run  frontend promote-full --kind Rollout --resource-name fan-web-app --namespace frontend --core
 ```
 
 - **Promote** is `promote-full` (verified on Argo CD v3.5.3; the other listed actions are `abort`, `pause`, `restart`, `resume`; `resume` has not been tried on a blueGreen pause). After it the active Service selects the new Pods and the old Pods stay for 5 minutes (`scaleDownDelaySeconds`).
-- **Abort** is the `abort` action, then `git revert` the pin-bump commit on `main` so the manifest returns to the release fans have. Without the revert, the next sync starts the aborted release again.
-- A release that changes both: promote the API first, then the web, because a new web app must work against the API that already serves fans.
+- **Abort** is the `abort` action, then put the waiting workload's `newTag:` line (the `fan-web` bundle in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`, or `backend/api` in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`) back to the release fans have, with its `# commit` trailer. Without that, the next sync starts the aborted release again. Do not `git revert` the whole bump commit: it also moved the pins of the workloads that are not behind a Rollout (consoles, reception, consumers, jobs), which already rolled out, and reverting them can put old code against a schema the release migrated. The `app.kubernetes.io/version` label can stay.
+- A release that changes both: promote the API first, then the web (the order of the commands above), because a new web app must work against the API that already serves fans.
 
 ### 4. Things to know
 
