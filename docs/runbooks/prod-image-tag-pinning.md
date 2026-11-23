@@ -204,7 +204,12 @@ argocd app actions run  frontend promote-full --kind Rollout --resource-name fan
 ```
 
 - **Promote** is `promote-full` (verified on Argo CD v3.5.3; the other listed actions are `abort`, `pause`, `restart`, `resume`; `resume` has not been tried on a blueGreen pause). After it the active Service selects the new Pods and the old Pods stay for 5 minutes (`scaleDownDelaySeconds`).
-- **Abort** is the `abort` action, then put the waiting workload's `newTag:` line (the `fan-web` bundle in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`, or `backend/api` in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`) back to the release fans have, with its `# commit` trailer. Without that, the next sync starts the aborted release again. Do not `git revert` the whole bump commit: it also moved the pins of the workloads that are not behind a Rollout (consoles, reception, consumers, jobs), which already rolled out, and reverting them can put old code against a schema the release migrated. The `app.kubernetes.io/version` label can stay.
+- **Abort** is the `abort` action, then put the values the pin bump moved back to the release fans have, in the overlay of the waiting workload, so the Deployment's Pod template equals the stable one again (the Rollout reads that template; a template that matches neither release starts a new revision that waits again):
+  - the `newTag:` line with its `# commit` trailer (frontend: the `fan-web` entry in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`; backend: the `backend/api` entry in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`);
+  - the `app.kubernetes.io/version` label in the same file (it is part of the Pod template, and `fan-api` reports it as its telemetry version);
+  - for the frontend, `releaseVersion` in `k8s/namespaces/frontend/overlays/prod/fan-web-configmap.yaml`.
+
+  Without that, the next sync starts the aborted release again. Do not `git revert` the whole bump commit: it also moved the pins of the workloads that are not behind a Rollout, which already rolled out. Two consequences: reverting the frontend values restarts the other frontend workloads once (the label is shared), and reverting `backend/api` rolls back `admin-console-api`, `organizer-console-api` and `reception-api` too, because one pin drives all four. That is safe only because migrations stay backward compatible (below).
 - A release that changes both: promote the API first, then the web (the order of the commands above), because a new web app must work against the API that already serves fans.
 
 ### 4. Things to know
