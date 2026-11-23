@@ -20,6 +20,8 @@ kind: Kustomization
 # Fridays-only patch), because prod's concert ingestion should be regular.
 resources:
   - ../../base
+  # fan-api release gate: Rollout, preview Service and route (add-prod-preview-release).
+  - fan-api/rollout.yaml
   # NOTE: the prod `cloud-sql-proxy` Deployment was removed
   # (optimize-prod-gke-cost D5). It was a dev-only tool (dev-db-local-access)
   # copied to prod: no Service, bound to 127.0.0.1, zero connections in 30 days,
@@ -114,6 +116,10 @@ patches:
   # cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
   # places them on Spot, falls back to on-demand, and migrates them back
   # (optimize-prod-gke-cost D1).
+  # fan-api runs under the Rollout in fan-api/rollout.yaml (add-prod-preview-release
+  # D1): the Deployment only holds the Pod template, so it runs no Pods and the
+  # Rollout carries the replica count.
+  #
   # fan-api — pre-launch (optimize-prod-gke-cost D3): a single replica with no
   # topology spread and no PodDisruptionBudget. The hard hostname spread forced
   # the second replica onto an on-demand node, and a minAvailable: 1 PDB on one
@@ -132,7 +138,7 @@ patches:
       metadata:
         name: fan-api
       spec:
-        replicas: 1
+        replicas: 0
   - target:
       kind: Deployment
       name: fan-api
@@ -254,6 +260,16 @@ patches:
               env:
               - name: DATABASE_USER
                 value: "reception-api@liverty-music-prod.iam"
+  # The webhook Service follows the active fan-api Pods only (add-prod-preview-release
+  # D8): the Rollout labels the active side `role: active`, so a release that
+  # waits on the preview Service never receives a Stripe or Zitadel call.
+  - target:
+      kind: Service
+      name: fan-api-webhook-svc
+    patch: |-
+      - op: add
+        path: /spec/selector/role
+        value: active
   # Prod fan API HTTPRoute hostname (fan-api-route replaces server-route).
   - target:
       kind: HTTPRoute
