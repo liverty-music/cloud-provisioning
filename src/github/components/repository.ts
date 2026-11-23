@@ -61,12 +61,13 @@ export interface GitHubRepositoryComponentArgs {
 	 */
 	operatorOwnedVariables?: Record<string, pulumi.Input<string>>
 	/**
-	 * Let only repository admins create or move `v*` tags (prod stack only).
+	 * Let only repository admins create or move tags (prod stack only).
 	 * Set for the repositories whose release workflow the GCP Workload
 	 * Identity Federation GitHub provider admits from `refs/tags/*` (see
 	 * `src/gcp/components/workload-identity.ts`). A release-tag run uses the
 	 * workflow file at the tagged commit, so whoever can create a tag decides
-	 * what that run does with the prod credentials.
+	 * what that run does with the prod credentials. Every tag is covered,
+	 * not only `v*`, because the provider admits any name under `refs/tags/`.
 	 */
 	protectReleaseTags?: boolean
 }
@@ -287,7 +288,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 					enforcement: 'active',
 					conditions: {
 						refName: {
-							includes: ['refs/tags/v*'],
+							includes: ['~ALL'],
 							excludes: [],
 						},
 					},
