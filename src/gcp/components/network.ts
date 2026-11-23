@@ -282,7 +282,7 @@ export class NetworkComponent extends pulumi.ComponentResource {
 
 		// Provision each service's hostname (DnsAuth + Cert + CertMapEntry
 		// in GCP; A record + ACME CNAME in Cloudflare).
-		for (const svc of SERVICES) {
+		for (const svc of servicesFor(environment)) {
 			provisionManagedHostname(
 				this,
 				{
@@ -395,6 +395,25 @@ const SERVICES: ReadonlyArray<{
 	// own origin, away from the console's tokens. Same change.
 	{ name: 'reception-app', subdomain: 'reception' },
 ]
+
+/**
+ * Production-only hostnames that serve a release waiting for promotion, one
+ * pair for the fan app (OpenSpec change `add-prod-preview-release`, D2):
+ * `preview.liverty-music.app` for the web app and
+ * `api.preview.liverty-music.app` for the API, following the existing
+ * `api.<console>` order. Dev is stopped indefinitely and keeps no preview.
+ */
+const PREVIEW_SERVICES: typeof SERVICES = [
+	{ name: 'fan-preview-web', subdomain: 'preview' },
+	{ name: 'fan-preview-api', subdomain: 'api.preview' },
+]
+
+/** The services whose hostnames the stack provisions in an environment. */
+export function servicesFor(environment: Environment): typeof SERVICES {
+	return environment === 'prod'
+		? [...SERVICES, ...PREVIEW_SERVICES]
+		: SERVICES
+}
 
 /** The single Cloudflare-authoritative zone for all public DNS. */
 export const tld = 'liverty-music.app'
