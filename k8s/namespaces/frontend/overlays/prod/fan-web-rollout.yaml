@@ -1,0 +1,70 @@
+# fan-web release gate (OpenSpec change add-prod-preview-release, D1).
+#
+# The Rollout takes its Pod template from the base Deployment (workloadRef), so
+# a release is still a change to that Deployment's template (the image pin, the
+# version label). The Deployment is set to replicas: 0 in kustomization.yaml and
+# this Rollout owns the Pods. With autoPromotionEnabled: false a new release
+# stops once its Pods are ready: the preview Service selects them
+# (https://preview.liverty-music.app) while the active Service, which the fans'
+# route targets, keeps selecting the current Pods until the owner promotes.
+#
+# Argo Rollouts writes the ReplicaSet hash into the selector of the two
+# Services; the frontend Application ignores that field (argocd-apps/prod/
+# frontend.yaml, design D5).
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: fan-web-app
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: fan-web
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fan-web-app
+  strategy:
+    blueGreen:
+      activeService: fan-web-svc
+      previewService: fan-web-preview-svc
+      autoPromotionEnabled: false
+      previewReplicaCount: 1
+      # Keep the replaced Pods for 5 minutes after a promotion, so a page that
+      # was loading from them finishes and an abort right after a promotion
+      # has Pods to return to.
+      scaleDownDelaySeconds: 300
+---
+# Selected by the preview HTTPRoute only. Argo Rollouts adds the ReplicaSet hash
+# to the selector; the Service starts with the Deployment's labels.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fan-web-preview-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: fan-web
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+---
+# The preview address (design D2). It serves the release waiting for promotion,
+# or the same release as the production address while nothing waits.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fan-web-preview-route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  hostnames:
+  - preview.liverty-music.app
+  rules:
+  - backendRefs:
+    - name: fan-web-preview-svc
+      port: 80
