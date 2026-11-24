@@ -9,7 +9,7 @@
 # - the `app` label (`fan-api-candidate`), so fan-api-svc and above all
 #   fan-api-webhook-svc (selecting `app: fan-api`) never reach it: a release
 #   nobody has checked receives no Stripe webhook and no Zitadel action call;
-# - nothing in the image: it is pinned with the stable one (see below);
+# - nothing in the image: it follows the shared pin of the stable one (see below);
 # - a pool of one database connection (the shared database allows 25 in all and
 #   the other Pods already use 23; a preview check needs one);
 # - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
