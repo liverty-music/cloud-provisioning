@@ -55,9 +55,13 @@ spec:
       - name: fan-api
         # The same image reference as the stable Deployment after the base's own
         # rewrite, so the overlay's single `backend/api` pin (the one
-        # bump-prod-pin writes) moves both: the candidate cannot fall behind
-        # stable and run old code with the payment sweepers. A separate pin comes
-        # with task 8.6, together with the workflow change that bumps it.
+        # bump-prod-pin writes) moves both and the candidate cannot fall behind
+        # stable. It also means the candidate takes a new release at the pin
+        # bump, before the Rollout's automatic check ends, and keeps it after an
+        # abort until the pin is put back (runbook, "Abort"): the Rollout's own
+        # preview Pod already runs the new image with the sweepers during that
+        # check, so this adds no new exposure. A separate pin comes with task
+        # 8.6, together with the workflow change that bumps it.
         image: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:latest
         imagePullPolicy: Always
         ports:
