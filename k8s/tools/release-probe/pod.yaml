@@ -64,13 +64,20 @@ spec:
         total=0; bad=0; err=0
         end=$(( $(date +%s) + DURATION_SEC ))
         while [ "$(date +%s)" -lt "$end" ]; do
-          code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$@") || true
+          # The exit code matters as much as the status: a response cut off by a
+          # killed Pod or the timeout still prints a status of 200 with a
+          # non-zero exit code.
+          res=$(curl -s -o /dev/null -m 5 -w '%{http_code} %{exitcode}' "$@") || true
+          code=${res% *}; rc=${res#* }
           total=$((total+1))
-          case "$code" in
-            2??) ;;
-            000) err=$((err+1)); echo "$(stamp) $name client-error" ;;
-            *)   bad=$((bad+1)); echo "$(stamp) $name status=$code" ;;
-          esac
+          if [ "$rc" != 0 ]; then
+            err=$((err+1)); echo "$(stamp) $name client-error status=$code curl-exit=$rc"
+          else
+            case "$code" in
+              2??) ;;
+              *)   bad=$((bad+1)); echo "$(stamp) $name status=$code" ;;
+            esac
+          fi
           sleep 0.1
         done
         echo "SUMMARY $name total=$total non2xx=$bad client_errors=$err"
