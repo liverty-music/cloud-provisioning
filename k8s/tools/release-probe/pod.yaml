@@ -1,0 +1,107 @@
+# Release probe (OpenSpec change add-prod-preview-release, task 8.2).
+#
+# Measures what a fan would see while a release goes live: one request about
+# every 0.1 s from inside the cluster to a public hostname, and the same to an
+# untouched hostname as a control. It prints one line for every response that is
+# not 2xx (or every client error) and a SUMMARY line per loop at the end.
+#
+# Why inside the cluster: from a laptop, requests to an unrelated host timed
+# out on about a fifth of the tries, so client errors measured there say nothing
+# about the release. A response with a status of 500 or above is the signal;
+# a client error counts only when the control shows none.
+#
+# A bare Pod, not applied by ArgoCD (like db-proxy): nothing runs while nobody
+# measures, and a finished Pod is deleted by hand.
+#
+# Usage (from the repository root; the four values are substituted by envsubst):
+#   export MODE=api                           # api: POST ListTop, web: GET /
+#   export TARGET_URL=https://api.liverty-music.app
+#   export CONTROL_URL=https://admin.liverty-music.app
+#   export DURATION_SEC=600
+#   envsubst '${MODE} ${TARGET_URL} ${CONTROL_URL} ${DURATION_SEC}' \
+#     < k8s/tools/release-probe/pod.yaml | kubectl apply -f -
+#   (the variable list matters: without it envsubst blanks the shell variables
+#   of the script below)
+#   kubectl -n backend logs -f release-probe
+#   kubectl -n backend delete pod release-probe
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-probe
+  namespace: backend
+  labels:
+    app.kubernetes.io/name: release-probe
+spec:
+  restartPolicy: Never
+  # Ends a forgotten Pod after an hour (DURATION_SEC must stay below it).
+  activeDeadlineSeconds: 3600
+  nodeSelector:
+    cloud.google.com/gke-spot: "true"
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: probe
+    image: curlimages/curl:8.11.1
+    env:
+    - name: MODE
+      value: "${MODE}"
+    - name: TARGET_URL
+      value: "${TARGET_URL}"
+    - name: CONTROL_URL
+      value: "${CONTROL_URL}"
+    - name: DURATION_SEC
+      value: "${DURATION_SEC}"
+    command:
+    - sh
+    - -c
+    - |
+      stamp() { date -u +%H:%M:%S; }
+      probe() {
+        name=$1; shift
+        total=0; bad=0; err=0
+        end=$(( $(date +%s) + DURATION_SEC ))
+        while [ "$(date +%s)" -lt "$end" ]; do
+          # The exit code matters as much as the status: a response cut off by a
+          # killed Pod or the timeout still prints a status of 200 with a
+          # non-zero exit code.
+          res=$(curl -s -o /dev/null -m 5 -w '%{http_code} %{exitcode}' "$@") || true
+          code=${res% *}; rc=${res#* }
+          total=$((total+1))
+          if [ "$rc" != 0 ]; then
+            err=$((err+1)); echo "$(stamp) $name client-error status=$code curl-exit=$rc"
+          else
+            case "$code" in
+              2??) ;;
+              *)   bad=$((bad+1)); echo "$(stamp) $name status=$code" ;;
+            esac
+          fi
+          sleep 0.1
+        done
+        echo "SUMMARY $name total=$total non2xx=$bad client_errors=$err"
+      }
+      echo "start $(stamp) mode=$MODE target=$TARGET_URL control=$CONTROL_URL duration=${DURATION_SEC}s"
+      if [ "$MODE" = api ]; then
+        probe target -X POST -H 'content-type: application/json' -H 'connect-protocol-version: 1' \
+          -d '{"limit":1}' "$TARGET_URL/liverty_music.rpc.artist.v1.ArtistService/ListTop" &
+      else
+        probe target "$TARGET_URL/" &
+      fi
+      probe control "$CONTROL_URL/" &
+      wait
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+        ephemeral-storage: 20Mi
+      limits:
+        cpu: 200m
+        memory: 64Mi
+        ephemeral-storage: 20Mi
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
