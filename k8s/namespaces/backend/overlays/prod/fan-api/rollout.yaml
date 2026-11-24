@@ -1,10 +1,15 @@
 # fan-api release gate (OpenSpec change add-prod-preview-release, D1, D8).
 #
 # Same shape as fan-web (frontend overlay, fan-web-rollout.yaml): the Rollout
-# takes its Pod template from the base Deployment, which runs no Pods in prod,
-# and a new release stops with its Pods on fan-api-preview-svc
-# (https://api.preview.liverty-music.app) while fan-api-svc, the Rollout's
-# activeService and the target of the fans' route, keeps the current Pods.
+# takes its Pod template from the base Deployment, which runs no Pods in prod.
+# Every release is checked before it goes live: its Pod is first selected by
+# fan-api-preview-svc (https://api.preview.liverty-music.app), the pre-promotion
+# analysis below smoke-tests it through that Service, and only a pass switches
+# fan-api-svc, the Rollout's activeService and the target of the fans' route. A
+# failed check aborts the release and fans keep the current Pod. To also look at
+# a release by hand before it goes live, merge autoPromotionEnabled: false
+# before cutting it, and set it back afterwards
+# (docs/runbooks/prod-image-tag-pinning.md).
 #
 # `activeMetadata` / `previewMetadata` label the Pods of each side. The webhook
 # Service (Stripe, Zitadel actions) is not managed by the Rollout and selects
@@ -28,7 +33,11 @@ spec:
     blueGreen:
       activeService: fan-api-svc
       previewService: fan-api-preview-svc
-      autoPromotionEnabled: false
+      autoPromotionEnabled: true
+      # The new Pods must pass the preview smoke Job below before the switch.
+      prePromotionAnalysis:
+        templates:
+        - templateName: fan-api-preview-smoke
       previewReplicaCount: 1
       # Keep the replaced Pods for 5 minutes after a promotion: requests the
       # load balancer still sends to them finish, and an abort right after a
@@ -107,3 +116,58 @@ spec:
   - backendRefs:
     - name: fan-api-preview-svc
       port: 80
+---
+# Checks the new fan-api Pod through the preview Service before the Rollout
+# switches the active Service (prePromotionAnalysis): a public read RPC that
+# reaches the database. A failed Job aborts the release: fans keep the current
+# Pod.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: fan-api-preview-smoke
+spec:
+  metrics:
+  - name: preview-answers
+    count: 1
+    provider:
+      job:
+        spec:
+          backoffLimit: 2
+          # Hard stop: a Job that never starts (image pull, no capacity) must fail
+          # the analysis, not leave the release waiting.
+          activeDeadlineSeconds: 180
+          ttlSecondsAfterFinished: 600
+          template:
+            spec:
+              restartPolicy: Never
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 100
+                seccompProfile:
+                  type: RuntimeDefault
+              containers:
+              - name: smoke
+                image: curlimages/curl:8.11.1
+                command:
+                - sh
+                - -ec
+                - |
+                  curl -fsS --max-time 10 -X POST \
+                    -H 'content-type: application/json' -H 'connect-protocol-version: 1' \
+                    -d '{"limit":1}' \
+                    http://fan-api-preview-svc/liverty_music.rpc.artist.v1.ArtistService/ListTop \
+                    | grep -q '"artists"'
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop: [ALL]
+                resources:
+                  requests:
+                    cpu: 10m
+                    memory: 16Mi
+                    ephemeral-storage: 10Mi
+                  limits:
+                    cpu: 100m
+                    memory: 32Mi
+                    ephemeral-storage: 10Mi
