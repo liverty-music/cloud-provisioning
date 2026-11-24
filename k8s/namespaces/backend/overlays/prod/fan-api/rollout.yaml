@@ -2,6 +2,12 @@
 #
 # Same shape as fan-web (frontend overlay, fan-web-rollout.yaml): the Rollout
 # takes its Pod template from the base Deployment, which runs no Pods in prod.
+# While the candidate lane exists (candidate.yaml, OpenSpec task 8.3 to 8.6),
+# api.preview.liverty-music.app serves the candidate lane, not this Rollout's
+# preview Pods, so a manual hold (autoPromotionEnabled: false) cannot be looked
+# at on that hostname; the automatic check below still tests the new Pods through
+# fan-api-preview-svc.
+#
 # Every release is checked before it goes live: its Pod is first selected by
 # fan-api-preview-svc (https://api.preview.liverty-music.app), the pre-promotion
 # analysis below smoke-tests it through that Service, and only a pass switches

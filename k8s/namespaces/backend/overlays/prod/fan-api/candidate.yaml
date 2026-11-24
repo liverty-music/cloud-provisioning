@@ -9,7 +9,7 @@
 # - the `app` label (`fan-api-candidate`), so fan-api-svc and above all
 #   fan-api-webhook-svc (selecting `app: fan-api`) never reach it: a release
 #   nobody has checked receives no Stripe webhook and no Zitadel action call;
-# - the image placeholder `fan-api-candidate`, pinned apart in kustomization.yaml;
+# - nothing in the image: it is pinned with the stable one (see below);
 # - a pool of one database connection (the shared database allows 25 in all and
 #   the other Pods already use 23; a preview check needs one);
 # - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
@@ -19,8 +19,9 @@
 # (API_WORKLOAD=fan), so it also runs the lottery, issuance and settlement
 # sweepers with the production Stripe key, and the Service split above covers
 # inbound traffic only. Until OpenSpec task 8.4 adds a way to start the candidate
-# without the sweepers, keep its tag equal to the stable one (the measurement of
-# task 8.3 runs the same code twice, as every rolling update already does).
+# without the sweepers, its image is the stable one by construction (the
+# measurement of task 8.3 runs the same code twice, as every rolling update
+# already does).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -52,7 +53,12 @@ spec:
           name: fan-api-zkp-verification-key
       containers:
       - name: fan-api
-        image: fan-api-candidate
+        # The same image reference as the stable Deployment after the base's own
+        # rewrite, so the overlay's single `backend/api` pin (the one
+        # bump-prod-pin writes) moves both: the candidate cannot fall behind
+        # stable and run old code with the payment sweepers. A separate pin comes
+        # with task 8.6, together with the workflow change that bumps it.
+        image: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

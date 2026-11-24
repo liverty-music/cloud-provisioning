@@ -150,6 +150,8 @@ After any pin bump, confirm both Rollouts are `Healthy` (`kubectl get rollout`, 
 
 The other workloads (`admin-console-*`, `organizer-console-*`, `reception-*`, the consumers, the jobs) roll out on the pin bump as before.
 
+> **Transition (OpenSpec change `add-prod-preview-release`, tasks 8.3 to 8.6):** while the `fan-api` candidate lane exists, `https://api.preview.liverty-music.app` serves the candidate lane (the stable image), not the Rollout's preview Pods, so the manual hold below cannot be looked at for `fan-api` on that hostname. The automatic check still tests the new Pods. Until task 8.6 replaces the mechanism, do not hold a `fan-api` release.
+
 ### Hold a release for a manual preview check (rare)
 
 The automatic check cannot judge a layout or a flow. When a release is risky or the owner asks to look at it first, hold it **before** cutting the release:

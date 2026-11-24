@@ -33,10 +33,16 @@ spec:
   # address owner has, and DeleteIdentity for a fan deleting their own account,
   # after the fan API checks that fan's fresh sign-in (OpenSpec change
   # delete-fan-accounts, design D3).
+  # The prod fan-api candidate lane serves the preview hostname with the same
+  # handlers (OpenSpec change add-prod-preview-release), so it calls identity too.
   - from:
     - podSelector:
-        matchLabels:
-          app: fan-api
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - fan-api
+          - fan-api-candidate
     ports:
     - protocol: TCP
       port: 9102

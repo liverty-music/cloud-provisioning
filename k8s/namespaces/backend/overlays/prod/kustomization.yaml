@@ -477,11 +477,6 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
     newTag: v1.140.3 # commit 2b9b2e078cf6dd0c1d879100a6ab87fb4c9ef74e
-  # The candidate lane's own pin of the same image (fan-api/candidate.yaml): the
-  # release the preview hostname serves.
-  - name: fan-api-candidate
-    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.140.3 # commit 2b9b2e078cf6dd0c1d879100a6ab87fb4c9ef74e
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
