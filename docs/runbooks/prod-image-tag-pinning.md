@@ -146,9 +146,11 @@ pending-1, never a third) — no eviction.
 2. A pre-promotion analysis (`prePromotionAnalysis`, a short Job named `fan-web-preview-smoke` or `fan-api-preview-smoke`) calls the new Pods through the preview Service: the page and `/config.json` for the web, a public read RPC for the API.
 3. If the Job passes, the Rollout switches the active Service and fans get the release. If it fails, the Rollout aborts: fans keep the current Pods and the Rollout shows `Degraded`.
 
-After any pin bump, confirm both Rollouts are `Healthy` (`kubectl get rollout`, step 1 below). A `Degraded` Rollout is an aborted release: read the failed run (`kubectl -n <ns> get analysisrun`, `kubectl -n <ns> logs job/<analysisrun job>`), then fix forward or put the pin back (step 3, "Abort").
+After any pin bump, confirm both Rollouts are `Healthy` (`kubectl get rollout`, step 1 below). A `Degraded` Rollout is an aborted release (for `fan-api`, while its candidate lane exists, the candidate keeps running the aborted image and its payment sweepers until the pin is put back, so put it back at once and do not fix forward first): read the failed run (`kubectl -n <ns> get analysisrun`, `kubectl -n <ns> logs job/<analysisrun job>`), then fix forward or put the pin back (step 3, "Abort").
 
 The other workloads (`admin-console-*`, `organizer-console-*`, `reception-*`, the consumers, the jobs) roll out on the pin bump as before.
+
+> **Transition (OpenSpec change `add-prod-preview-release`, tasks 8.3 to 8.6):** while the `fan-api` candidate lane exists, `https://api.preview.liverty-music.app` serves the candidate lane, not the Rollout's preview Pods (the candidate follows the shared `backend/api` pin: the stable image except between a pin bump and the promotion or the revert of an aborted release), so the manual hold below cannot be looked at for `fan-api` on that hostname. The automatic check still tests the new Pods. Until task 8.6 replaces the mechanism, do not hold a `fan-api` release.
 
 ### Hold a release for a manual preview check (rare)
 
@@ -221,7 +223,7 @@ argocd app actions run  frontend promote-full --kind Rollout --resource-name fan
 ```
 
 - **Promote** is `promote-full` (verified on Argo CD v3.5.3; the other listed actions are `abort`, `pause`, `restart`, `resume`; `resume` has not been tried on a blueGreen pause). After it the active Service selects the new Pods and the old Pods stay for 5 minutes (`scaleDownDelaySeconds`).
-- **Abort** is the `abort` action (the Rollout then shows `Degraded` / `RolloutAborted` and the Application `Degraded`; fans stay on the stable Pods and the aborted release's Pods are scaled down). Then put back what the pin bump moved, so the Deployment's Pod template equals the stable one again; otherwise the next sync starts the aborted release again, and a template that matches neither release starts a new revision that waits:
+- **Abort** is the `abort` action (the Rollout then shows `Degraded` / `RolloutAborted` and the Application `Degraded`; fans stay on the stable Pods and the Rollout's Pods of the aborted release are scaled down; for `fan-api` the candidate lane keeps the aborted image until the pin is put back). Then put back what the pin bump moved, so the Deployment's Pod template equals the stable one again; otherwise the next sync starts the aborted release again, and a template that matches neither release starts a new revision that waits:
   - every `newTag:` line of that component with its `# commit` trailer (frontend: the four bundles in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`; backend: the `backend/*` entries in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`);
   - the `app.kubernetes.io/version` label in the same file. It is one value for the whole overlay and part of every Pod template, and `fan-api` reports it as its telemetry version, so a bundle left on the aborted tag would carry a wrong label (a first attempt that reverted only `fan-web` was rejected in review for that reason);
   - for the frontend, `releaseVersion` in `k8s/namespaces/frontend/overlays/prod/fan-web-configmap.yaml`.

@@ -1,0 +1,181 @@
+# fan-api candidate lane (OpenSpec change add-prod-preview-release, D1 candidate B).
+#
+# A second, always-warm instance of fan-api that serves the preview hostname
+# (https://api.preview.liverty-music.app) with the candidate release, apart from
+# the Pods fans use. Promotion would be a normal rolling update of the stable
+# Deployment, so a switch for fans never moves a Service selector or a route.
+#
+# It differs from the stable Pod template in four places only:
+# - the `app` label (`fan-api-candidate`), so fan-api-svc and above all
+#   fan-api-webhook-svc (selecting `app: fan-api`) never reach it: a release
+#   nobody has checked receives no Stripe webhook and no Zitadel action call;
+# - nothing in the image: it follows the shared pin of the stable one (see below);
+# - a pool of one database connection (the shared database allows 25 in all and
+#   the other Pods already use 23; a preview check needs one);
+# - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
+# Everything else (ServiceAccount, ConfigMap, Secrets, probes, drain) is the same.
+#
+# NOT yet safe to pin ahead of the stable release. This Pod runs the fan workload
+# (API_WORKLOAD=fan), so it also runs the lottery, issuance and settlement
+# sweepers with the production Stripe key, and the Service split above covers
+# inbound traffic only. Until OpenSpec task 8.4 adds a way to start the candidate
+# without the sweepers, its image follows the shared pin, so it is the stable
+# image except between a pin bump and the revert of an aborted release (the
+# measurement of task 8.3 runs the same code twice, as every rolling update
+# already does).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fan-api-candidate
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: fan-api-candidate
+  template:
+    metadata:
+      labels:
+        app: fan-api-candidate
+    spec:
+      # Drain, as in base/fan-api/deployment.yaml: 190 = 120 preStop + 60
+      # SHUTDOWN_TIMEOUT + 10 buffer.
+      terminationGracePeriodSeconds: 190
+      serviceAccountName: fan-api
+      volumes:
+      - name: zkp-verification-key
+        configMap:
+          name: fan-api-zkp-verification-key
+      containers:
+      - name: fan-api
+        # The same image reference as the stable Deployment after the base's own
+        # rewrite, so the overlay's single `backend/api` pin (the one
+        # bump-prod-pin writes) moves both and the candidate cannot fall behind
+        # stable. It also takes a new release at the pin bump, before the
+        # Rollout's automatic check ends. During that check the Rollout's own
+        # preview Pod runs the same image with the sweepers, so the exposure is
+        # the same; AFTER an abort the candidate is the only Pod still running the
+        # aborted image (and its sweepers) until the pin is put back, so put the
+        # pin back at once (runbook, "Abort"). A separate pin comes with task
+        # 8.6, together with the workflow change that bumps it.
+        image: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: webhook
+        env:
+        - name: API_WORKLOAD
+          value: fan
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity:9102
+        # Overrides fan-api-config for this Pod only (an env entry wins over
+        # envFrom).
+        - name: DATABASE_MAX_OPEN_CONNS
+          value: "1"
+        - name: DATABASE_MAX_IDLE_CONNS
+          value: "1"
+        envFrom:
+        - configMapRef:
+            name: fan-api-config
+        - secretRef:
+            name: fan-api-backend-secrets
+        - secretRef:
+            name: api-stripe-secrets
+        volumeMounts:
+        - name: zkp-verification-key
+          mountPath: /configs/zkp/zkp-verification-key.json
+          subPath: zkp-verification-key.json
+          readOnly: true
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 120
+        readinessProbe:
+          grpc:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          grpc:
+            port: 8080
+            service: liveness
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 36
+        livenessProbe:
+          grpc:
+            port: 8080
+            service: liveness
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 60Mi
+            ephemeral-storage: 100Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+            ephemeral-storage: 100Mi
+---
+# The candidate's own Service. The preview route targets it; the Rollout's
+# fan-api-preview-svc stays for the automatic check of the first implementation.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fan-api-candidate-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: fan-api-candidate
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+    appProtocol: kubernetes.io/h2c # HTTP/2 Cleartext
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: fan-api-candidate-policy
+spec:
+  default:
+    timeoutSec: 60
+    connectionDraining:
+      drainingTimeoutSec: 60
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-api-candidate-svc
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: fan-api-candidate-policy
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: GRPC
+      grpcHealthCheck:
+        port: 8080
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-api-candidate-svc
