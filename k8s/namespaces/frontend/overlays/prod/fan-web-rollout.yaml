@@ -95,6 +95,9 @@ spec:
       job:
         spec:
           backoffLimit: 2
+          # Hard stop: a Job that never starts (image pull, no capacity) must fail
+          # the analysis, not leave the release waiting.
+          activeDeadlineSeconds: 180
           ttlSecondsAfterFinished: 600
           template:
             spec:
