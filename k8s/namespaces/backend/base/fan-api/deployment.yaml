@@ -36,8 +36,10 @@ spec:
           name: webhook
         env:
         # The API deployment this process runs as (backend API_WORKLOAD). Every
-        # API deployment runs the same binary; fan is the one that runs the
-        # lottery draw, issuance and settlement sweepers.
+        # API deployment runs the same binary; this decides the work only one
+        # deployment does (Organization provisioning runs on admin). No API
+        # deployment runs a periodic job: those are schedules of the workflow
+        # worker (OpenSpec change add-prod-preview-release, design D10).
         - name: API_WORKLOAD
           value: fan
         # Identity service listener for this workload: confirming an email
