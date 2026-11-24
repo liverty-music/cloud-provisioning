@@ -31,6 +31,16 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
+  # Keeps the old Pod until the new one has been Ready for this long. The NEG
+  # readiness gate does not wait for the load balancer here: on every run the
+  # Pod events say "NEG is not attached to any Backend Service with health
+  # checking. Marking condition load-balancer-neg-ready to True" about 5 s after
+  # the Pod starts, the old Pod is stopped about 6 s later, and the new endpoint
+  # needs about 19 s after its attach to pass the load balancer's health check
+  # (5 s interval, 2 successes, plus propagation). Without this, requests got
+  # 503 for 5 to 10 s in 4 of 5 rolling updates (OpenSpec task 8.3, 2026-11-24).
+  # 45 s covers the 19 s with room to spare.
+  minReadySeconds: 45
   strategy:
     type: RollingUpdate
     rollingUpdate:
