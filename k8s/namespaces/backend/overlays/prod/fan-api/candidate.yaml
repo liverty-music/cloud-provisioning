@@ -19,7 +19,8 @@
 # (API_WORKLOAD=fan), so it also runs the lottery, issuance and settlement
 # sweepers with the production Stripe key, and the Service split above covers
 # inbound traffic only. Until OpenSpec task 8.4 adds a way to start the candidate
-# without the sweepers, its image is the stable one by construction (the
+# without the sweepers, its image follows the shared pin, so it is the stable
+# image except between a pin bump and the revert of an aborted release (the
 # measurement of task 8.3 runs the same code twice, as every rolling update
 # already does).
 apiVersion: apps/v1
@@ -56,11 +57,12 @@ spec:
         # The same image reference as the stable Deployment after the base's own
         # rewrite, so the overlay's single `backend/api` pin (the one
         # bump-prod-pin writes) moves both and the candidate cannot fall behind
-        # stable. It also means the candidate takes a new release at the pin
-        # bump, before the Rollout's automatic check ends, and keeps it after an
-        # abort until the pin is put back (runbook, "Abort"): the Rollout's own
-        # preview Pod already runs the new image with the sweepers during that
-        # check, so this adds no new exposure. A separate pin comes with task
+        # stable. It also takes a new release at the pin bump, before the
+        # Rollout's automatic check ends. During that check the Rollout's own
+        # preview Pod runs the same image with the sweepers, so the exposure is
+        # the same; AFTER an abort the candidate is the only Pod still running the
+        # aborted image (and its sweepers) until the pin is put back, so put the
+        # pin back at once (runbook, "Abort"). A separate pin comes with task
         # 8.6, together with the workflow change that bumps it.
         image: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:latest
         imagePullPolicy: Always

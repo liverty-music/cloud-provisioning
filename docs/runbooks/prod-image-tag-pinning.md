@@ -146,7 +146,7 @@ pending-1, never a third) — no eviction.
 2. A pre-promotion analysis (`prePromotionAnalysis`, a short Job named `fan-web-preview-smoke` or `fan-api-preview-smoke`) calls the new Pods through the preview Service: the page and `/config.json` for the web, a public read RPC for the API.
 3. If the Job passes, the Rollout switches the active Service and fans get the release. If it fails, the Rollout aborts: fans keep the current Pods and the Rollout shows `Degraded`.
 
-After any pin bump, confirm both Rollouts are `Healthy` (`kubectl get rollout`, step 1 below). A `Degraded` Rollout is an aborted release: read the failed run (`kubectl -n <ns> get analysisrun`, `kubectl -n <ns> logs job/<analysisrun job>`), then fix forward or put the pin back (step 3, "Abort").
+After any pin bump, confirm both Rollouts are `Healthy` (`kubectl get rollout`, step 1 below). A `Degraded` Rollout is an aborted release (for `fan-api`, while its candidate lane exists, the candidate keeps running the aborted image and its payment sweepers until the pin is put back, so put it back at once and do not fix forward first): read the failed run (`kubectl -n <ns> get analysisrun`, `kubectl -n <ns> logs job/<analysisrun job>`), then fix forward or put the pin back (step 3, "Abort").
 
 The other workloads (`admin-console-*`, `organizer-console-*`, `reception-*`, the consumers, the jobs) roll out on the pin bump as before.
 
