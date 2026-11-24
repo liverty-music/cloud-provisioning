@@ -4,6 +4,12 @@ metadata:
   name: fan-api-policy
 spec:
   default:
+    # Explicit, so a new Pod joins the backend as early as GKE allows: with a
+    # policy and no value GKE uses 5 s and 2, and 15 s with no policy at all.
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 2
     config:
       type: GRPC
       grpcHealthCheck:

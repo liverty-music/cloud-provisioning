@@ -13,6 +13,11 @@ spec:
     metadata:
       # Labels handled by kustomize labels transformer
     spec:
+      # Drain, per the GKE guidance (OpenSpec change add-prod-preview-release,
+      # D9): preStop >= drainingTimeoutSec (30 s, GCPBackendPolicy) + drain
+      # latency (GKE estimates one minute); terminationGracePeriod >= preStop +
+      # shutdown time. 120 = 90 + 30.
+      terminationGracePeriodSeconds: 120
       containers:
       - name: caddy
         image: fan-web
@@ -45,6 +50,11 @@ spec:
             cpu: 200m
             memory: 128Mi
             ephemeral-storage: 100Mi
+        lifecycle:
+          # Keeps serving while the load balancer drops this Pod's endpoint.
+          preStop:
+            sleep:
+              seconds: 90
         volumeMounts:
         - name: runtime-config
           mountPath: /srv/config.json

@@ -13,7 +13,13 @@ spec:
     metadata:
       # Labels handled by commonLabels
     spec:
-      terminationGracePeriodSeconds: 75
+      # Drain, per the GKE guidance (OpenSpec change add-prod-preview-release, D9):
+      # terminationGracePeriod >= preStop + shutdown time, and preStop >=
+      # connectionDraining.drainingTimeoutSec (fan-api-policy, 60 s) + drain
+      # latency (GKE estimates one minute). The app gets SIGTERM only after the
+      # preStop, and SHUTDOWN_TIMEOUT (configmap.env, 60 s) must fit after it:
+      # 190 = 120 + 60 + 10 buffer.
+      terminationGracePeriodSeconds: 190
       serviceAccountName: fan-api
       volumes:
       - name: zkp-verification-key
@@ -55,9 +61,13 @@ spec:
           subPath: zkp-verification-key.json
           readOnly: true
         lifecycle:
+          # Keeps serving while the load balancer drops this Pod's endpoint:
+          # 60 s drain + 60 s estimated drain latency. A shorter sleep let the
+          # load balancer keep sending to a Pod that had already stopped (GKE
+          # docs, "Troubleshoot load balancing", 500 series errors with NEGs).
           preStop:
-            exec:
-              command: ["sleep", "5"]
+            sleep:
+              seconds: 120
         readinessProbe:
           grpc:
             port: 8080

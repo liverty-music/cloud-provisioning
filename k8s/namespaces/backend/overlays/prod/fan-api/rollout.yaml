@@ -89,6 +89,10 @@ metadata:
   name: fan-api-preview-policy
 spec:
   default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 2
     config:
       type: GRPC
       grpcHealthCheck:
