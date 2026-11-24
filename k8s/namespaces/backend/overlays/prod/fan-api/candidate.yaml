@@ -10,8 +10,8 @@
 #   fan-api-webhook-svc (selecting `app: fan-api`) never reach it: a release
 #   nobody has checked receives no Stripe webhook and no Zitadel action call;
 # - nothing in the image: it follows the shared pin of the stable one (see below);
-# - a pool of one database connection (the shared database allows 25 in all and
-#   the other Pods already use 23; a preview check needs one);
+# - a pool of two database connections (the shared database allows 25 in all and
+#   the other Pods already use most of them; see the comment on the variable);
 # - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
 # Everything else (ServiceAccount, ConfigMap, Secrets, probes, drain) is the same.
 #
@@ -77,11 +77,17 @@ spec:
         - name: IDENTITY_SERVICE_URL
           value: http://identity:9102
         # Overrides fan-api-config for this Pod only (an env entry wins over
-        # envFrom).
+        # envFrom). Two, not one: DBOS (the durable workflow client) shares this
+        # pool and holds one connection for its LISTEN loop for good, so with a
+        # pool of one the readiness ping never gets a connection ("database ping
+        # failed: context deadline exceeded") and the Pod never becomes Ready.
+        # Measured on 2026-11-24: the database had 19 of its 25 connections in
+        # use (3 reserved for superusers), so a pool of three would leave little
+        # room for the Pod a rolling update adds.
         - name: DATABASE_MAX_OPEN_CONNS
-          value: "1"
+          value: "2"
         - name: DATABASE_MAX_IDLE_CONNS
-          value: "1"
+          value: "2"
         envFrom:
         - configMapRef:
             name: fan-api-config
