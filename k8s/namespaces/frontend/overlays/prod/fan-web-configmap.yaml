@@ -41,5 +41,6 @@ data:
         "緑黄色社会"
       ],
       "logLevel": "info",
+      "internalTrafficUserIds": ["019eed8a-43ce-784a-8754-11ad63adb20a"],
       "releaseVersion": "v1.173.3"
     }
