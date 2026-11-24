@@ -14,6 +14,13 @@
 #   the other Pods already use 23; a preview check needs one);
 # - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
 # Everything else (ServiceAccount, ConfigMap, Secrets, probes, drain) is the same.
+#
+# NOT yet safe to pin ahead of the stable release. This Pod runs the fan workload
+# (API_WORKLOAD=fan), so it also runs the lottery, issuance and settlement
+# sweepers with the production Stripe key, and the Service split above covers
+# inbound traffic only. Until OpenSpec task 8.4 adds a way to start the candidate
+# without the sweepers, keep its tag equal to the stable one (the measurement of
+# task 8.3 runs the same code twice, as every rolling update already does).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
