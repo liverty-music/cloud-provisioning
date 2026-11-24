@@ -1,0 +1,17 @@
+# Connection draining for the fan web Service (OpenSpec change
+# add-prod-preview-release, D9). Without a policy GKE drains for 0 seconds, so a
+# request in flight when a Pod's endpoint is removed gets a 502. Static files
+# are short requests; 30 s is well above 1.5 to 2 times one (GKE docs,
+# "Troubleshoot load balancing").
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: policy
+spec:
+  default:
+    connectionDraining:
+      drainingTimeoutSec: 30
+  targetRef:
+    group: ""
+    kind: Service
+    name: svc # Referenced via kustomizeconfig.yaml 'nameReference'

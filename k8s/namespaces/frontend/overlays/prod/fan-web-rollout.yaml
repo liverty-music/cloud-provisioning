@@ -131,3 +131,38 @@ spec:
                     cpu: 100m
                     memory: 32Mi
                     ephemeral-storage: 10Mi
+---
+# The preview Service needs the same backend and health-check settings as
+# fan-web-svc (base/fan-web/backend-policy.yaml, health-check-policy.yaml).
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: fan-web-preview-policy
+spec:
+  default:
+    connectionDraining:
+      drainingTimeoutSec: 30
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-web-preview-svc
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: fan-web-preview-policy
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 80
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-web-preview-svc
