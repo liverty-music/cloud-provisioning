@@ -15,14 +15,12 @@
 # - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
 # Everything else (ServiceAccount, ConfigMap, Secrets, probes, drain) is the same.
 #
-# NOT yet safe to pin ahead of the stable release. This Pod runs the fan workload
-# (API_WORKLOAD=fan), so it also runs the lottery, issuance and settlement
-# sweepers with the production Stripe key, and the Service split above covers
-# inbound traffic only. Until OpenSpec task 8.4 adds a way to start the candidate
-# without the sweepers, its image follows the shared pin, so it is the stable
-# image except between a pin bump and the revert of an aborted release (the
-# measurement of task 8.3 runs the same code twice, as every rolling update
-# already does).
+# The settlement payout sweeper that used to run in every fan API process now
+# runs only as a schedule of the workflow worker (OpenSpec change
+# add-prod-preview-release, design D10), so this Pod carries no payout job. It
+# still uses the production database and Stripe keys like the stable Pod, so what
+# the owner does on the preview hostname is real. Its image follows the shared pin
+# (see the image below) until task 8.6 gives it a pin of its own.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,12 +66,10 @@ spec:
         # rewrite, so the overlay's single `backend/api` pin (the one
         # bump-prod-pin writes) moves both and the candidate cannot fall behind
         # stable. It also takes a new release at the pin bump, before the
-        # Rollout's automatic check ends. During that check the Rollout's own
-        # preview Pod runs the same image with the sweepers, so the exposure is
-        # the same; AFTER an abort the candidate is the only Pod still running the
-        # aborted image (and its sweepers) until the pin is put back, so put the
-        # pin back at once (runbook, "Abort"). A separate pin comes with task
-        # 8.6, together with the workflow change that bumps it.
+        # Rollout's automatic check ends, and after an abort it keeps the aborted
+        # image until the pin is put back, so put the pin back at once (runbook,
+        # "Abort"). A separate pin comes with task 8.6, together with the workflow
+        # change that bumps it.
         image: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:latest
         imagePullPolicy: Always
         ports:

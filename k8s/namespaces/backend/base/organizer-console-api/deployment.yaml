@@ -39,7 +39,7 @@ spec:
           name: http-organizer
         env:
         # The API deployment this process runs as (backend API_WORKLOAD).
-        # organizer neither runs the payment sweepers nor provisions tenants.
+        # organizer does not provision tenants.
         - name: API_WORKLOAD
           value: organizer
         # Env-specific organizer-console Zitadel project id. The organizer server's
