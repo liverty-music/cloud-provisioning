@@ -22,6 +22,8 @@ resources:
   - ../../base
   # fan-api release gate: Rollout, preview Service and route (add-prod-preview-release).
   - fan-api/rollout.yaml
+  # fan-api candidate lane on the preview hostname (add-prod-preview-release, task 8.3).
+  - fan-api/candidate.yaml
   # NOTE: the prod `cloud-sql-proxy` Deployment was removed
   # (optimize-prod-gke-cost D5). It was a dev-only tool (dev-db-local-access)
   # copied to prod: no Service, bound to 127.0.0.1, zero connections in 30 days,
@@ -473,6 +475,11 @@ images:
   # backend/api, so this single pin drives both (no version drift). Bumped by the
   # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
+    newTag: v1.140.3 # commit 2b9b2e078cf6dd0c1d879100a6ab87fb4c9ef74e
+  # The candidate lane's own pin of the same image (fan-api/candidate.yaml): the
+  # release the preview hostname serves.
+  - name: fan-api-candidate
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
     newTag: v1.140.3 # commit 2b9b2e078cf6dd0c1d879100a6ab87fb4c9ef74e
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
