@@ -204,12 +204,12 @@ argocd app actions run  frontend promote-full --kind Rollout --resource-name fan
 ```
 
 - **Promote** is `promote-full` (verified on Argo CD v3.5.3; the other listed actions are `abort`, `pause`, `restart`, `resume`; `resume` has not been tried on a blueGreen pause). After it the active Service selects the new Pods and the old Pods stay for 5 minutes (`scaleDownDelaySeconds`).
-- **Abort** is the `abort` action, then put the values the pin bump moved back to the release fans have, in the overlay of the waiting workload, so the Deployment's Pod template equals the stable one again (the Rollout reads that template; a template that matches neither release starts a new revision that waits again):
-  - the `newTag:` line with its `# commit` trailer (frontend: the `fan-web` entry in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`; backend: the `backend/api` entry in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`);
-  - the `app.kubernetes.io/version` label in the same file (it is part of the Pod template, and `fan-api` reports it as its telemetry version);
+- **Abort** is the `abort` action (the Rollout then shows `Degraded` / `RolloutAborted` and the Application `Degraded`; fans stay on the stable Pods and the aborted release's Pods are scaled down). Then put back what the pin bump moved, so the Deployment's Pod template equals the stable one again; otherwise the next sync starts the aborted release again, and a template that matches neither release starts a new revision that waits:
+  - every `newTag:` line of that component with its `# commit` trailer (frontend: the four bundles in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`; backend: the `backend/*` entries in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`);
+  - the `app.kubernetes.io/version` label in the same file. It is one value for the whole overlay and part of every Pod template, and `fan-api` reports it as its telemetry version, so a bundle left on the aborted tag would carry a wrong label (a first attempt that reverted only `fan-web` was rejected in review for that reason);
   - for the frontend, `releaseVersion` in `k8s/namespaces/frontend/overlays/prod/fan-web-configmap.yaml`.
 
-  Without that, the next sync starts the aborted release again. Do not `git revert` the whole bump commit: it also moved the pins of the workloads that are not behind a Rollout, which already rolled out. Two consequences: reverting the frontend values restarts the other frontend workloads once (the label is shared), and reverting `backend/api` rolls back `admin-console-api`, `organizer-console-api` and `reception-api` too, because one pin drives all four. That is safe only because migrations stay backward compatible (below).
+  This is what `git revert` of that component's latest bump commit does. It also rolls back the other workloads of the component that already rolled out (frontend consoles and reception; backend `admin-console-api`, `organizer-console-api`, `reception-api`, the consumers and the jobs), and a rolled-back workload restarts once. That is safe only because migrations stay backward compatible (below).
 - A release that changes both: promote the API first, then the web (the order of the commands above), because a new web app must work against the API that already serves fans.
 
 ### 4. Things to know
