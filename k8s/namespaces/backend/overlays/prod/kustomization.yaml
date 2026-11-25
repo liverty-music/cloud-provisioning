@@ -280,6 +280,23 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["api.liverty-music.app"]
+      # Migration step 2 of OpenSpec change add-prod-preview-release (task 8.6):
+      # fans are served by the candidate lane (the same image) while the Rollout
+      # is replaced by a plain Deployment. Only the catch-all rule (index 1) moves;
+      # the exact /stripe-webhook rule keeps fan-api-webhook-svc. The stable Service
+      # stays listed with weight 0, so its backend stays programmed and
+      # health-checked. A weight change moves traffic between backends that are
+      # already warm; no endpoint has to pass the load balancer's health check
+      # first. Step 4 swaps the weights back.
+      - op: replace
+        path: /spec/rules/1/backendRefs
+        value:
+        - name: fan-api-svc
+          port: 80
+          weight: 0
+        - name: fan-api-candidate-svc
+          port: 80
+          weight: 100
   # Prod admin API HTTPRoute hostname (admin-console-api-route, was server-admin-route).
   - target:
       kind: HTTPRoute
