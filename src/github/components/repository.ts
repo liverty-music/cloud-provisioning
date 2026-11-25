@@ -1,7 +1,11 @@
 import * as github from '@pulumi/github'
 import * as pulumi from '@pulumi/pulumi'
 import type { Environment } from '../../config.js'
-import type { GitHubConfig, RepositoryName } from '../config.js'
+import {
+	type GitHubConfig,
+	githubAppAuth,
+	type RepositoryName,
+} from '../config.js'
 
 export interface GitHubRepositoryComponentArgs {
 	brandId: string
@@ -110,7 +114,7 @@ export class GitHubRepositoryComponent extends pulumi.ComponentResource {
 			`github-provider-${repositoryName}-${environment}`,
 			{
 				owner: brandId,
-				token: githubConfig.token,
+				...githubAppAuth(githubConfig),
 			},
 			{ parent: this },
 		)

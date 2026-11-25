@@ -1,6 +1,11 @@
 import * as github from '@pulumi/github'
 import * as pulumi from '@pulumi/pulumi'
-import { type BufConfig, type GitHubConfig, RepositoryName } from '../config.js'
+import {
+	type BufConfig,
+	type GitHubConfig,
+	githubAppAuth,
+	RepositoryName,
+} from '../config.js'
 
 /**
  * Visibility of each repository. `backend` and `frontend` stay public
@@ -44,7 +49,7 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 		// Create GitHub provider
 		this.provider = new github.Provider('github-provider', {
 			owner: brandId,
-			token: githubConfig.token,
+			...githubAppAuth(githubConfig),
 		})
 
 		// Create organization settings
