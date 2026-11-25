@@ -82,6 +82,14 @@ on:
 # backend + one frontend release = running-1 + pending-1, never a third. If a
 # third independently-releasing writer is ever added to this group, add
 # `queue: max` (up to 100 FIFO pending) then.
+#
+# A promote or abort (always started by a person) is a third writer in this
+# group, a rare one: it starts minutes after a release, not within seconds of
+# it. A pre-release is a repository_dispatch like a release. When a third run
+# queues, the cancelled one is the superseded PENDING run, whichever it is: the
+# promote or abort itself, or an automated release dispatch that was waiting.
+# After a promote or abort, look at the run list of this workflow; run again any
+# run that shows as cancelled.
 concurrency:
   group: bump-prod-pin
   cancel-in-progress: false
@@ -446,16 +454,28 @@ jobs:
           OVERLAY: ${{ steps.payload.outputs.overlay }}
           IMAGES: ${{ steps.resolve.outputs.stable_images }}
           CAND: ${{ steps.payload.outputs.cand }}
+          MODE: ${{ steps.payload.outputs.mode }}
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
           file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
-          # Distinct newTag set across ONLY the entries this run writes: the
-          # candidate pin, and (for a release or a promote) this component's
-          # stable image entries (matched by the `/<image>` name suffix), so a
-          # backend bump is idempotent against its own entries alone, not the
-          # whole overlay.
-          current="$({ CAND="${CAND}" yq '(.images[] | select(.name == strenv(CAND))).newTag' "$file"; for img in ${IMAGES}; do IMG="$img" yq '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag' "$file"; done; } | sort -u)"
+          # Distinct newTag set across the entries whose value decides whether
+          # this run changes anything, matched by name:
+          # - release: the stable image entries only. A redelivered or re-run
+          #   release of a tag that stable already has must not reset a held
+          #   candidate (a candidate ahead of stable is a waiting pre-release);
+          # - promote: the stable entries and the candidate (already promoted
+          #   when both equal the tag);
+          # - prerelease and abort: the candidate only.
+          # Stable entries are matched by the `/<image>` name suffix, so a
+          # backend bump is idempotent against its own entries alone.
+          stable_tags() { for img in ${IMAGES}; do IMG="$img" yq '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag' "$file"; done; }
+          cand_tag() { CAND="${CAND}" yq '(.images[] | select(.name == strenv(CAND))).newTag' "$file"; }
+          case "${MODE}" in
+            release) current="$(stable_tags | sort -u)" ;;
+            promote) current="$({ stable_tags; cand_tag; } | sort -u)" ;;
+            *)       current="$(cand_tag)" ;;
+          esac
           if [ "${current}" = "${TAG}" ]; then
             echo "All target newTag values already equal ${TAG}; nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
