@@ -111,6 +111,13 @@ patches:
       # change moves traffic between backends that are already warm; no endpoint
       # has to pass the load balancer's health check first. Step 4 swaps the
       # weights back.
+      #
+      # TEMPORARY, minutes to a few tens of minutes: while fans are on the
+      # candidate lane, the Rollout's automatic check gates only fan-web-svc, which
+      # carries no fan traffic, so a frontend release cut in this window reaches
+      # fans without that check (the candidate takes it once it has been Ready for
+      # minReadySeconds). Cut no frontend release until step 4 is merged; to undo
+      # a release that slipped in, put the pin back.
       - op: replace
         path: /spec/rules/0/backendRefs
         value:
