@@ -135,3 +135,21 @@ spec:
     group: ""
     kind: Service
     name: fan-web-candidate-svc
+---
+# The preview address (design D2). It serves the candidate lane, which follows
+# the shared pin: the production release, except between a pin bump and the
+# revert of an aborted one.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fan-web-preview-route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  hostnames:
+  - preview.liverty-music.app
+  rules:
+  - backendRefs:
+    - name: fan-web-candidate-svc
+      port: 80

@@ -24,7 +24,6 @@ resources:
   # via reception-web-route.
   - ../../base/reception-web
   - fan-web-configmap.yaml
-  - fan-web-rollout.yaml
   # fan-web candidate lane on the preview hostname (add-prod-preview-release, task 8.6).
   - fan-web-candidate.yaml
   - admin-console-web-configmap.yaml
@@ -72,9 +71,11 @@ patches:
                 limits:
                   cpu: 100m
                   memory: 128Mi
-  # fan-web runs under the Rollout in fan-web-rollout.yaml (add-prod-preview-release
-  # D1): the Deployment only holds the Pod template, so it runs no Pods and the
-  # Rollout carries the replica count.
+  # fan-web is a plain Deployment again (OpenSpec change add-prod-preview-release,
+  # task 8.6): a rolling update that keeps the old Pod until the new one has been
+  # Ready for minReadySeconds, because the NEG readiness gate does not wait for
+  # the load balancer (measured in task 8.3). The preview hostname is served by
+  # the candidate lane (fan-web-candidate.yaml).
   #
   # Pre-launch (optimize-prod-gke-cost D3): a single fan-web replica with no
   # topology spread and no PodDisruptionBudget. The hard hostname spread forced
@@ -94,7 +95,13 @@ patches:
       metadata:
         name: fan-web-app
       spec:
-        replicas: 0
+        replicas: 1
+        minReadySeconds: 45
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxUnavailable: 0
+            maxSurge: 1
   # Prod consumer-site HTTPRoute hostname (apex). fan-web-route replaces the
   # deleted web-route and owns liverty-music.app -> fan-web-svc.
   - target:
