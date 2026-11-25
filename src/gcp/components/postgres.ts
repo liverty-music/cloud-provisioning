@@ -202,8 +202,8 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		// Connection budget (prod, one replica per workload). The default
 		// `max_connections` of `db-f1-micro` is 25 (Cloud SQL sets it from the
 		// memory: about 0.5 GB gives 25, 1.7 GB gives 50). A release exhausted the
-		// 22 slots left after the superuser reserve, so `max_connections` is set to
-		// 40 by flag below. PostgreSQL reserves 3 for superusers by default
+		// 22 slots left after the superuser reserve, so prod sets `max_connections`
+		// to 40 by flag below (dev keeps the default). PostgreSQL reserves 3 for superusers by default
 		// (`superuser_reserved_connections`; Cloud SQL's own value was not
 		// verified), which leaves 37 for the workloads below. Each number is the
 		// pool ceiling set in that workload's manifest, and pools open connections
@@ -329,12 +329,12 @@ export class PostgresComponent extends pulumi.ComponentResource {
 						recordClientAddress: false,
 					},
 					databaseFlags: [
-						// Only while the instance runs: a STOPPED instance (dev)
-						// rejects a settings change, so the flag is added when
-						// `workloadEnabled` is true and applies in the update that
-						// starts it. Changing it restarts the database. The tier's
-						// default is 25; see the connection budget above.
-						...(workloadEnabled
+						// Prod only. Dev keeps the tier default of 25: it is stopped,
+						// and a stopped instance rejects a settings change, so a flag
+						// tied to `workloadEnabled` would be proposed for removal
+						// each time dev is stopped again. Changing it restarts the
+						// database. See the connection budget above.
+						...(environment === 'prod'
 							? [{ name: 'max_connections', value: '40' }]
 							: []),
 						{ name: 'cloudsql.iam_authentication', value: 'on' },

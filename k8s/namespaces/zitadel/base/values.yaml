@@ -127,8 +127,8 @@ zitadel:
           # Username set in overlay (same value as User.Username).
           SSL:
             Mode: disable
-        # Cloud SQL is db-f1-micro tier (`max_connections` 40 by flag, 3 reserved
-        # for superusers). Zitadel's share is 4 of the 21 budgeted for all workloads (see
+        # Cloud SQL is db-f1-micro tier (`max_connections` 40 by flag in prod, 25 in
+        # dev, 3 reserved for superusers). Zitadel's share is 4 of the 21 budgeted for all workloads (see
         # src/gcp/components/postgres.ts): it held 2 to 6 connections in the week
         # to 2026-11-25 (hourly mean 4.1), and the projection workers below take
         # 2 of the 4.

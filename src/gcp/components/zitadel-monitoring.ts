@@ -317,9 +317,10 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 		//
 		// The Cloud SQL panel does carry a *visual* threshold line at 32
 		// (= 80% of `max_connections=40`, the value `postgres.ts` sets by flag
-		// on `postgres-osaka`; the `db-f1-micro` default is 25). If that flag
-		// or the tier ever changes, the panel value must be re-derived. The
-		// line is observational guidance, not an alert threshold.
+		// on the prod `postgres-osaka`; the `db-f1-micro` default, which dev
+		// keeps while it is stopped, is 25). If that flag or the tier ever
+		// changes, the panel value must be re-derived. The line is
+		// observational guidance, not an alert threshold.
 		// Zero-valued tile positions (`xPos`/`yPos` of 0) are left out on
 		// purpose: the Monitoring API omits zero values when it returns the
 		// dashboard, so writing them made every `pulumi up` report a diff.
@@ -357,7 +358,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
               }
             ],
             "thresholds": [
-              { "value": 32, "label": "80% of max_connections (db-f1-micro, 40 by flag)" }
+              { "value": 32, "label": "80% of max_connections (prod: db-f1-micro, 40 by flag)" }
             ],
             "yAxis": {
               "label": "active backends",
