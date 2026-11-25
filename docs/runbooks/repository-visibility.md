@@ -34,7 +34,7 @@ Visibility is set per repository in `REPOSITORY_VISIBILITY`
 | `cloud-provisioning` | ArgoCD (every Application and both root apps) | ArgoCD repository credential (below) |
 | `backend` | ArgoCD (`backend-migrations`), `specification` CI | ArgoCD repository credential; CI clone token (below) |
 | `frontend` | `specification` CI | CI clone token (below) |
-| `specification` | Cloud threads (each `AGENTS.md` clones it over plain HTTPS when no sibling checkout exists) | See "Cloud threads" below |
+| `specification` | Cloud threads (each `AGENTS.md` clones it over plain HTTPS when no sibling checkout exists); the public spec site (GitHub Pages, `docs/`) | See "Cloud threads" below. The Pages site needs no step: it is declared only while the repository is public, so the same `pulumi up` removes it |
 | `.github` | Every repository calls its reusable `claude-review.yml` | Settings → Actions → General → Access: "Accessible from repositories in the liverty-music organization" |
 
 ### ArgoCD repository credential
