@@ -473,7 +473,7 @@ images:
     newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   # fan-api-candidate: the image of the candidate lane (fan-api/candidate.yaml),
   # pinned apart from backend/api (OpenSpec change add-prod-preview-release,
-  # D5). A release bumps both pins; a GitHub pre-release bumps only this one.
+  # D1). A release bumps both pins; a GitHub pre-release bumps only this one.
   - name: fan-api-candidate
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
     newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9

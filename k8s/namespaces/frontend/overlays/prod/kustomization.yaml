@@ -179,7 +179,7 @@ images:
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
     newTag: v1.174.0 # commit 1451eab047161db39fa52990ff40f88b5cc7b096
   # fan-web-candidate: the image of the candidate lane (fan-web-candidate.yaml),
-  # pinned apart from fan-web (OpenSpec change add-prod-preview-release, D5). A
+  # pinned apart from fan-web (OpenSpec change add-prod-preview-release, D1). A
   # release bumps both pins; a GitHub pre-release bumps only this one.
   - name: fan-web-candidate
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web

@@ -13,7 +13,7 @@ name: Bump Prod Pin
 # ArgoCD's existing auto-sync rolls it out. No PR.
 #
 # Two pins per previewed workload (OpenSpec change add-prod-preview-release,
-# D5): the stable pin (what fans get: `backend/api`, `fan-web`) and the
+# D1): the stable pin (what fans get: `backend/api`, `fan-web`) and the
 # candidate pin (`fan-api-candidate`, `fan-web-candidate`), served on the preview
 # hostname. A Release bumps both, so the pin bump is still the deploy. A GitHub
 # pre-release bumps only the candidate pin, so the owner can look at it on the
