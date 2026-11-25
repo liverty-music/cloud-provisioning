@@ -1,0 +1,15 @@
+# Connection draining for the organizer-console-api Service (OpenSpec change
+# add-prod-preview-release, D9). Without a policy GKE drains for 0 seconds, so a
+# request in flight when a Pod's endpoint is removed gets a 502.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: organizer-console-api-backend-policy
+spec:
+  default:
+    connectionDraining:
+      drainingTimeoutSec: 60
+  targetRef:
+    group: ""
+    kind: Service
+    name: organizer-console-api-svc # Referenced via kustomizeconfig.yaml 'nameReference'

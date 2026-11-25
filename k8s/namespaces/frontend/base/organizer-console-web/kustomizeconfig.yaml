@@ -4,3 +4,7 @@ nameReference:
   fieldSpecs:
   - path: spec/rules/backendRefs/name
     kind: HTTPRoute
+  - path: spec/targetRef/name
+    kind: GCPBackendPolicy
+  - path: spec/targetRef/name
+    kind: HealthCheckPolicy
