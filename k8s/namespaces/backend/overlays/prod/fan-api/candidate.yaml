@@ -11,8 +11,8 @@
 #   nobody has checked receives no Stripe webhook and no Zitadel action call;
 # - the image pin: its own (`fan-api-candidate`), so it can run a pre-release
 #   while stable keeps the current release;
-# - a pool of two database connections (the shared database allows 25 in all and
-#   the other Pods already use most of them; see the comment on the variable);
+# - a pool of two database connections (the shared database allows 40 in all and
+#   the other Pods already use much of them; see the comment on the variable);
 # - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
 # Everything else (ServiceAccount, ConfigMap, Secrets, probes, drain) is the same.
 #

@@ -97,8 +97,9 @@ has a second worker to run it.
 
 If Shape B recurs with ≥2 workers, the next lever is raising
 `MaxParallelTriggers` (and `MaxOpenConns` to keep it above). Cloud SQL is
-db-f1-micro with a 25-connection cap shared with the other workloads; see
-the budget comment next to `MaxOpenConns`.
+db-f1-micro with `max_connections` 40 (about 37 usable after the superuser
+reserve) shared with the other workloads; see the budget table in
+`src/gcp/components/postgres.ts` and the comment next to `MaxOpenConns`.
 
 #### Diagnosing Shape B in the database
 
