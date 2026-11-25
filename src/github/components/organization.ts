@@ -137,6 +137,22 @@ export class GitHubOrganizationComponent extends pulumi.ComponentResource {
 			{ provider: this.provider, parent: this },
 		)
 
+		// Human-readable spec site: static HTML written by hand in the
+		// repository's `docs/` and served as it is, at
+		// https://liverty-music.github.io/specification/. `legacy` + `/docs`
+		// publishes the folder from `main` with no build workflow;
+		// `docs/.nojekyll` keeps GitHub from running Jekyll over it. The site is
+		// public because the repository is public.
+		new github.RepositoryPages(
+			'specification-pages',
+			{
+				repository: specificationRepo.name,
+				buildType: 'legacy',
+				source: { branch: 'main', path: '/docs' },
+			},
+			{ provider: this.provider, parent: this },
+		)
+
 		const backendRepo = new github.Repository(
 			RepositoryName.BACKEND,
 			{
