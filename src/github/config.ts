@@ -1,4 +1,5 @@
 import type * as github from '@pulumi/github'
+import * as pulumi from '@pulumi/pulumi'
 
 export interface GitHubConfig {
 	owner: string
@@ -32,16 +33,21 @@ export interface GitHubConfig {
 
 /**
  * Provider arguments that authenticate as the `liverty-music-pulumi` GitHub App.
+ *
+ * `appAuth` is wrapped in `pulumi.secret` as a whole. The generated `Provider`
+ * marks only its top-level `token` argument as secret and serialises `appAuth`
+ * as it is, so without the wrapper the private key would be written to the
+ * stack state as plain text (and printed in previews).
  */
 export function githubAppAuth(
 	githubConfig: GitHubConfig,
 ): Pick<github.ProviderArgs, 'appAuth'> {
 	return {
-		appAuth: {
+		appAuth: pulumi.secret({
 			id: githubConfig.pulumiAppId,
 			installationId: githubConfig.pulumiAppInstallationId,
 			pemFile: githubConfig.pulumiAppPrivateKey,
-		},
+		}),
 	}
 }
 
