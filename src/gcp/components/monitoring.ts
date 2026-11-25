@@ -1281,10 +1281,13 @@ jsonPayload.msg="notification delivery failed"`,
 		//
 		// Log-based metric on the existing backend lines (WARNING for the two
 		// rejections, ERROR for the dispatch error): no backend change is needed.
-		// Rejections need two in an hour, so one stray bad request from the
-		// internet does not page while a real delivery that Stripe retries (or a
-		// second event) does. A dispatch error means a valid event failed to
-		// apply, so one in 5 minutes pages.
+		// The endpoint is publicly routed and unauthenticated, so a scanner can
+		// produce a few `signature verification failed` lines; three in an hour
+		// are needed to page (a rotated secret rejects every retry of every
+		// event, and the three real failures seen in prod on 2026-11-23 arrived
+		// within 11 minutes). `signing secret not configured` only happens on a
+		// real fault, so one occurrence pages. A dispatch error means a valid
+		// event failed to apply, so one in 5 minutes pages.
 		const stripeWebhookRejectionMetric = new gcp.logging.Metric(
 			'log-metric-stripe-webhook-rejections',
 			{
@@ -1328,9 +1331,9 @@ resource.labels.namespace_name="backend"
 					conditions: [
 						{
 							displayName:
-								'Stripe webhook rejections >= 2 per hour',
+								'Stripe webhook signature failures >= 3 per hour',
 							conditionThreshold: {
-								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg!="stripe webhook: dispatch error"`,
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg="stripe webhook: signature verification failed"`,
 								aggregations: [
 									{
 										alignmentPeriod: '3600s', // 1 hour
@@ -1339,7 +1342,25 @@ resource.labels.namespace_name="backend"
 									},
 								],
 								comparison: 'COMPARISON_GT',
-								thresholdValue: 1,
+								thresholdValue: 2,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+						{
+							displayName:
+								'Stripe webhook signing secret not configured',
+							conditionThreshold: {
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg="stripe webhook: signing secret not configured; rejecting request"`,
+								aggregations: [
+									{
+										alignmentPeriod: '600s', // 10 min
+										perSeriesAligner: 'ALIGN_DELTA',
+										crossSeriesReducer: 'REDUCE_SUM',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 0,
 								duration: '0s',
 								trigger: { count: 1 },
 							},
@@ -1373,7 +1394,7 @@ resource.labels.namespace_name="backend"
 						content: [
 							'## Stripe Webhook Failures Alert',
 							'',
-							'fan-api failed Stripe webhook deliveries: two or more rejections (signing secret missing or signature invalid) within an hour, or one dispatch error (a valid event that could not be applied) within 5 minutes. A completed charge is fulfilled and a lottery authorization is entered or released only through these events. Stripe retries a failed delivery for up to 3 days (live mode) and then gives up, so act before that.',
+							'fan-api failed Stripe webhook deliveries: three or more signature failures within an hour, a missing signing secret, or one dispatch error (a valid event that could not be applied) within 5 minutes. A completed charge is fulfilled and a lottery authorization is entered or released only through these events. Stripe retries a failed delivery for up to 3 days (live mode) and then gives up, so act before that.',
 							'',
 							'### Triage Steps',
 							'1. Read the lines: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="backend" AND severity>=WARNING AND jsonPayload.msg:"stripe webhook"\' --limit=20`, and open the endpoint\'s event deliveries in the Stripe Dashboard to see which events failed.',
