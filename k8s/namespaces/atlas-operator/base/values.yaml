@@ -18,8 +18,8 @@ watchNamespaces:
 
 resources:
   limits:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 500m
+    memory: 512Mi
     ephemeral-storage: 100Mi
   requests:
     cpu: 50m
