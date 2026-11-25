@@ -199,6 +199,43 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		//   3. `pulumi destroy --target <urn>`     (now safe)
 		// Reversing 1↔2 leaves Pulumi willing to call delete but the API
 		// rejects with HTTP 400 because the instance is still locked.
+		// Connection budget (prod, one replica per workload). `db-f1-micro` allows 25 connections and
+		// reserves 3 for superusers (Cloud SQL's own agent, Atlas, a person with
+		// psql), which leaves 22 for the workloads below. Each number is the pool
+		// ceiling set in that workload's manifest, and pools open connections
+		// lazily. Update the table in the same change that edits a pool.
+		//
+		//   workload                ceiling  why this many
+		//   Zitadel                    4     2 projection workers + 2 for requests
+		//   workflow-worker            5     one pool shared by the workflows and DBOS (DBOS's minimum)
+		//   fan-api                    3     the fan API; its DBOS client keeps 1 for LISTEN
+		//   fan-api-candidate          2     the preview lane; it keeps 1 for LISTEN
+		//   event-consumer             2     the NATS consumer
+		//   admin-console-api          2     the DBOS client keeps 1 for LISTEN
+		//   organizer-console-api      1
+		//   reception-api              1
+		//   series-image-consumer      1
+		//   always on                 21
+		//   CronJobs: sales-reminders (2) every 15 minutes, plus one daily job (1 or 2)
+		//
+		// What actually exhausts the slots is a release, not the steady state:
+		// 7 days to 2026-11-25 averaged 12 connections for the application
+		// database and 4 for Zitadel, but a backend release rolls every workload
+		// at once and a surge Pod opens its own pool beside the old one. That is
+		// why admin-console-api, organizer-console-api and reception-api replace
+		// their Pod in place (`maxSurge: 0`). fan-api (+3) and fan-api-candidate
+		// (+2) keep a surge Pod so that fans, and the owner's preview, see no gap.
+		// At the ceilings a release therefore still peaks at 26 of 22: it holds
+		// only because pools open lazily and the surge Pods are nearly idle. If
+		// releases fail again, set `maxSurge: 0` on the candidate lane first (its
+		// gap is seen by the owner only), then raise the tier.
+		//
+		// Restoring HA at launch (`replicas: 2`, overlays/prod/kustomization.yaml)
+		// doubles every pool above, so it needs the larger tier below.
+		//
+		// If this budget is outgrown, the next step is a larger tier
+		// (`db-g1-small`), not another pool trimmed; check its `max_connections`
+		// and price before choosing.
 		const postgresDbName = `postgres-${regionName}`
 		const instance = new gcp.sql.DatabaseInstance(
 			postgresDbName,
