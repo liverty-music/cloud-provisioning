@@ -7,21 +7,6 @@ metadata:
   - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  # fan-web runs under an Argo Rollouts blueGreen Rollout (OpenSpec change
-  # add-prod-preview-release, D1). The controller writes the ReplicaSet hash into
-  # the selector of the active and the preview Service; without this ignore,
-  # selfHeal reverts the selector and the active Service would select the
-  # waiting release too (design D5). RespectIgnoreDifferences makes the sync
-  # skip the ignored field as well as the diff.
-  ignoreDifferences:
-  - kind: Service
-    name: fan-web-svc
-    jsonPointers:
-    - /spec/selector
-  - kind: Service
-    name: fan-web-preview-svc
-    jsonPointers:
-    - /spec/selector
   source:
     repoURL: https://github.com/liverty-music/cloud-provisioning.git
     targetRevision: main
@@ -41,4 +26,3 @@ spec:
     # Git change that only deletes a field stays "Synced" and never applies
     # (argoproj/argo-cd#23845).
     - ServerSideApply=true
-    - RespectIgnoreDifferences=true
