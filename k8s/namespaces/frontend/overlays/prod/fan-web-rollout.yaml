@@ -5,6 +5,12 @@
 # version label). The Deployment is set to replicas: 0 in kustomization.yaml and
 # this Rollout owns the Pods.
 #
+# While the candidate lane exists (fan-web-candidate.yaml, OpenSpec task 8.6),
+# preview.liverty-music.app serves the candidate lane, not this Rollout's
+# preview Pods, so a manual hold (autoPromotionEnabled: false) cannot be looked
+# at on that hostname; the automatic check below still tests the new Pods
+# through fan-web-preview-svc.
+#
 # Every release is checked before it goes live: its Pods are first selected by
 # the preview Service (https://preview.liverty-music.app), the pre-promotion
 # analysis below smoke-tests them through that Service, and only a pass switches
@@ -61,8 +67,9 @@ spec:
     targetPort: http
     protocol: TCP
 ---
-# The preview address (design D2). It serves the release waiting for promotion,
-# or the same release as the production address while nothing waits.
+# The preview address (design D2). It serves the candidate lane
+# (fan-web-candidate.yaml), which follows the shared pin: the production release,
+# except between a pin bump and the promotion or the revert of an aborted one.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
