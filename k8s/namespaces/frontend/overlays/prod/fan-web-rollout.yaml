@@ -90,8 +90,10 @@ spec:
 # Checks the new fan-web Pods through the preview Service before the Rollout
 # switches the active Service (prePromotionAnalysis). A failed Job aborts the
 # release: fans keep the current Pods. The page must answer and /config.json
-# must say this is prod; the full smoke spec (e2e/smoke/post-deploy.spec.ts)
-# stays a manual check on https://preview.liverty-music.app.
+# must say this is prod. Until task 8.6 this Job is the only check on the new
+# Pods: the full smoke spec (e2e/smoke/post-deploy.spec.ts) cannot be pointed at
+# them through a hostname, because preview.liverty-music.app serves the candidate
+# lane (see the header).
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:

@@ -192,7 +192,9 @@ kubectl --context=$CTX -n backend get svc fan-api-svc fan-api-preview-svc fan-ap
 kubectl --context=$CTX -n backend get pods -l app=fan-api -L role,app.kubernetes.io/version
 kubectl --context=$CTX -n backend get endpointslices -l kubernetes.io/service-name=fan-api-webhook-svc -o jsonpath='{.items[*].endpoints[*].addresses[*]}'   # only the Pod with role=active
 
-# Web: the existing smoke spec against preview (frontend repository)
+# Web: the existing smoke spec against preview (frontend repository). While a
+# candidate lane exists it runs against the candidate lane, which is not the held
+# release (see the Transition note); use it to check the candidate lane itself.
 SMOKE_BASE_URL=https://preview.liverty-music.app npx playwright test --config=playwright.smoke.config.mjs
 
 # API: health and one public read RPC, compared with the fans' address
