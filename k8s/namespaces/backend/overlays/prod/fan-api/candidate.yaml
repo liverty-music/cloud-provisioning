@@ -164,6 +164,10 @@ spec:
     timeoutSec: 60
     connectionDraining:
       drainingTimeoutSec: 60
+    # Same as fan-api-policy: no `logging` section means no access log.
+    logging:
+      enabled: true
+      sampleRate: 1000000
   targetRef:
     group: ""
     kind: Service
