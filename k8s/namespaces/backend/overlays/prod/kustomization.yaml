@@ -20,9 +20,7 @@ kind: Kustomization
 # Fridays-only patch), because prod's concert ingestion should be regular.
 resources:
   - ../../base
-  # fan-api release gate: Rollout, preview Service and route (add-prod-preview-release).
-  - fan-api/rollout.yaml
-  # fan-api candidate lane on the preview hostname (add-prod-preview-release, task 8.3).
+  # fan-api candidate lane on the preview hostname (add-prod-preview-release, D1).
   - fan-api/candidate.yaml
   # NOTE: the prod `cloud-sql-proxy` Deployment was removed
   # (optimize-prod-gke-cost D5). It was a dev-only tool (dev-db-local-access)
@@ -53,7 +51,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.142.0"
+      app.kubernetes.io/version: "1.143.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -118,10 +116,6 @@ patches:
   # cluster default class (k8s/cluster/overlays/prod/compute-class-default.yaml)
   # places them on Spot, falls back to on-demand, and migrates them back
   # (optimize-prod-gke-cost D1).
-  # fan-api runs under the Rollout in fan-api/rollout.yaml (add-prod-preview-release
-  # D1): the Deployment only holds the Pod template, so it runs no Pods and the
-  # Rollout carries the replica count.
-  #
   # fan-api — pre-launch (optimize-prod-gke-cost D3): a single replica with no
   # topology spread and no PodDisruptionBudget. The hard hostname spread forced
   # the second replica onto an on-demand node, and a minAvailable: 1 PDB on one
@@ -140,7 +134,17 @@ patches:
       metadata:
         name: fan-api
       spec:
-        replicas: 0
+        replicas: 1
+        # Rolling update without a gap (add-prod-preview-release, D1): the old Pod
+        # stays until the new one has been Ready for 45 s, because the NEG
+        # readiness gate does not wait for the load balancer in this cluster
+        # (measured: the new endpoint needs about 19 s to pass its health check).
+        minReadySeconds: 45
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxUnavailable: 0
+            maxSurge: 1
   - target:
       kind: Deployment
       name: fan-api
@@ -262,16 +266,6 @@ patches:
               env:
               - name: DATABASE_USER
                 value: "reception-api@liverty-music-prod.iam"
-  # The webhook Service follows the active fan-api Pods only (add-prod-preview-release
-  # D8): the Rollout labels the active side `role: active`, so a release that
-  # waits on the preview Service never receives a Stripe or Zitadel call.
-  - target:
-      kind: Service
-      name: fan-api-webhook-svc
-    patch: |-
-      - op: add
-        path: /spec/selector/role
-        value: active
   # Prod fan API HTTPRoute hostname (fan-api-route replaces server-route).
   - target:
       kind: HTTPRoute
@@ -280,23 +274,6 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["api.liverty-music.app"]
-      # Migration step 2 of OpenSpec change add-prod-preview-release (task 8.6):
-      # fans are served by the candidate lane (the same image) while the Rollout
-      # is replaced by a plain Deployment. Only the catch-all rule (index 1) moves;
-      # the exact /stripe-webhook rule keeps fan-api-webhook-svc. The stable Service
-      # stays listed with weight 0, so its backend stays programmed and
-      # health-checked. A weight change moves traffic between backends that are
-      # already warm; no endpoint has to pass the load balancer's health check
-      # first. Step 4 swaps the weights back.
-      - op: replace
-        path: /spec/rules/1/backendRefs
-        value:
-        - name: fan-api-svc
-          port: 80
-          weight: 0
-        - name: fan-api-candidate-svc
-          port: 80
-          weight: 100
   # Prod admin API HTTPRoute hostname (admin-console-api-route, was server-admin-route).
   - target:
       kind: HTTPRoute
@@ -493,44 +470,44 @@ images:
   # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   # identity: the identity service, the only workload holding the
   # identity-provider keys (OpenSpec change identity-service). Bumped with the
   # other backend images by bump-prod-pin.yml.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/identity
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/identity
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   # worker: the workflow worker (OpenSpec change introduce-durable-workflows).
   # Bumped with the other backend images by bump-prod-pin.yml.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/worker
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/worker
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/official-site-refresh
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/official-site-refresh
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-refresh
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-refresh
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9
   # series-image-consumer: shipped from the shared backend AR repo
   # (backend/series-image-consumer). Pinned to the prod AR + semver tag; the
   # bump-prod-pin workflow keeps this in lock-step with the other backend images.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/series-image-consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/series-image-consumer
-    newTag: v1.142.0 # commit f337f2760cd1eeee94f8d5bf244bcdacc561c783
+    newTag: v1.143.0 # commit c884810f4510a572a61c2a944148ffa801d76fb9

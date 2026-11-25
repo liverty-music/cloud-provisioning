@@ -65,10 +65,7 @@ spec:
         # The same image reference as the stable Deployment after the base's own
         # rewrite, so the overlay's single `backend/api` pin (the one
         # bump-prod-pin writes) moves both and the candidate cannot fall behind
-        # stable. It also takes a new release at the pin bump, before the
-        # Rollout's automatic check ends, and after an abort it keeps the aborted
-        # image until the pin is put back, so put the pin back at once (runbook,
-        # "Abort"). A separate pin comes with task 8.6, together with the workflow
+        # stable. A separate pin comes with task 8.6, together with the workflow
         # change that bumps it.
         image: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:latest
         imagePullPolicy: Always
@@ -142,8 +139,7 @@ spec:
             memory: 256Mi
             ephemeral-storage: 100Mi
 ---
-# The candidate's own Service. The preview route targets it; the Rollout's
-# fan-api-preview-svc stays for the automatic check of the first implementation.
+# The candidate's own Service; the preview route (below) targets it.
 apiVersion: v1
 kind: Service
 metadata:
@@ -191,3 +187,24 @@ spec:
     group: ""
     kind: Service
     name: fan-api-candidate-svc
+---
+# The preview address of the API (design D2). It routes the fan API's server
+# port only. fan-api-webhook-svc is never a backend here, so the Stripe webhook
+# and the internal Zitadel action endpoints (:9090) are not reachable on this
+# address (same rule as base/fan-api/httproute.yaml).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fan-api-preview-route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  hostnames:
+  - api.preview.liverty-music.app
+  rules:
+  - backendRefs:
+    # The candidate lane: one warm instance that a rolling update replaces
+    # without a gap (design D1).
+    - name: fan-api-candidate-svc
+      port: 80
