@@ -9,6 +9,15 @@ spec:
     timeoutSec: 60
     connectionDraining:
       drainingTimeoutSec: 60
+    # A GCPBackendPolicy without a `logging` section turns the load balancer
+    # access log off, so it must be set here. sampleRate is an integer from 0 to
+    # 1000000 (1000000 = every request). Every request is logged: failed calls
+    # need the status, latency and backend response, and the volume is a few
+    # thousand entries a day, well inside Cloud Logging's free allotment.
+    # https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources ("HTTP access logging")
+    logging:
+      enabled: true
+      sampleRate: 1000000
   targetRef:
     group: ""
     kind: Service
