@@ -25,6 +25,8 @@ resources:
   - ../../base/reception-web
   - fan-web-configmap.yaml
   - fan-web-rollout.yaml
+  # fan-web candidate lane on the preview hostname (add-prod-preview-release, task 8.6).
+  - fan-web-candidate.yaml
   - admin-console-web-configmap.yaml
   - organizer-console-web-configmap.yaml
   - reception-web-configmap.yaml
