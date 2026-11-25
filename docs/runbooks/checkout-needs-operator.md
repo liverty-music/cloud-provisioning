@@ -89,10 +89,21 @@ Escalate it to the backend team with the ticket.
 
 ## 2c. Release of an ended purchase failed
 
-The fan did not receive tickets for this charge. Refund the PaymentIntent
-`provider_card_authorization_id` in full in the Stripe dashboard. The tickets
-were already returned to the sale. Record it in the support ticket, then delete
-the workflow's record:
+The fan did not receive tickets for this charge. Read the error of the failed
+`release` step (`/worker workflow steps release:<order_id>`); it says which of
+two cases this is, and the PaymentIntent `provider_card_authorization_id` shows
+the same in the Stripe dashboard:
+
+- **The provider had already captured it** (the card was charged). Refund the
+  PaymentIntent in full in the Stripe dashboard. The tickets were already
+  returned to the sale.
+- **It is still an uncaptured hold** (the release failed for another reason).
+  A refund is not possible. Fix the cause and resume the release
+  (`/worker workflow resume release:<order_id>`), or cancel the PaymentIntent in
+  the Stripe dashboard, so the hold is gone from the fan's card.
+
+Record it in the support ticket, then delete the workflow's record, only after
+the money or the hold is gone:
 
 ```bash
 kubectl exec deploy/workflow-worker -n backend -- /worker workflow delete release:<order_id>
