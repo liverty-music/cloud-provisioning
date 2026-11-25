@@ -7,6 +7,11 @@ interface Workload {
 	displayName: string
 	/** Value of the k8s-pod/app label used in the log filter. */
 	appLabel: string
+	/**
+	 * Extra Logging-language clause that is AND-ed into the filter, for lines
+	 * this workload logs at ERROR that another alert already owns.
+	 */
+	excludeFilter?: string
 }
 
 export interface MonitoringComponentArgs {
@@ -106,8 +111,43 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 		// unify-workload-naming: server->fan-api, consumer->event-consumer (the
 		// cronjob labels are unchanged). A stale appLabel silently orphans the
 		// per-workload ERROR-log alert (the log filter matches no pod).
+		//
+		// Coverage rule: every `app` label of a Deployment or CronJob under
+		// k8s/namespaces/backend/base needs exactly one entry here. A new
+		// workload MUST be added to this list in the same change that adds its
+		// manifest. Not covered on purpose: fan-api-candidate (the preview lane
+		// of fan-api, pre-release only) and one-off Jobs such as
+		// venue-area-backfill.
 		const workloads: Workload[] = [
 			{ displayName: 'Fan API', appLabel: 'fan-api' },
+			// The three console/reception APIs and identity run the same `api`
+			// image as fan-api, so they log errors the same way.
+			{ displayName: 'Admin Console API', appLabel: 'admin-console-api' },
+			{
+				displayName: 'Organizer Console API',
+				appLabel: 'organizer-console-api',
+			},
+			{ displayName: 'Reception API', appLabel: 'reception-api' },
+			{ displayName: 'Identity', appLabel: 'identity' },
+			// workflow-worker also logs "workflow needs an admin" at ERROR every 5
+			// minutes while a workflow is stuck; the dedicated Workflow Needs Admin
+			// policy below owns that signal, so it is excluded here to avoid a
+			// duplicate page.
+			{
+				displayName: 'Workflow Worker',
+				appLabel: 'workflow-worker',
+				excludeFilter: 'NOT jsonPayload.msg="workflow needs an admin"',
+			},
+			// CronJobs: they log ERROR only when a run fails, so a matching line
+			// is an incident, not a normal run. The deprecated-exporter stderr
+			// line that every run prints is excluded for all workloads below.
+			{ displayName: 'Sales Reminders', appLabel: 'sales-reminders' },
+			{ displayName: 'Artist Image Sync', appLabel: 'artist-image-sync' },
+			{ displayName: 'Artist Refresh', appLabel: 'artist-refresh' },
+			{
+				displayName: 'Official Site Refresh',
+				appLabel: 'official-site-refresh',
+			},
 			{ displayName: 'Event Consumer', appLabel: 'event-consumer' },
 			{
 				displayName: 'Concert Discovery',
@@ -134,6 +174,17 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 			},
 		]
 
+		// Lines that reach ERROR severity on a healthy run, shared by every
+		// workload (measured in prod logs 2026-11-11..25):
+		// - Every CronJob run prints the Google Cloud OpenTelemetry exporter
+		//   deprecation notice to stderr, which Cloud Logging ingests as ERROR.
+		// - On every rollout the API and consumer Pods log "error during
+		//   shutdown" because the final metrics flush reaches an otel-collector
+		//   that is already gone.
+		// Both would page on each normal run or release.
+		const noiseFilter = `NOT textPayload:"Monitoring exporter for Go is deprecated"
+NOT (jsonPayload.msg="error during shutdown" AND jsonPayload.error:"failed to upload metrics")`
+
 		this.alertPolicies = workloads.map(
 			(workload) =>
 				new gcp.monitoring.AlertPolicy(
@@ -152,7 +203,8 @@ resource.labels.location="${clusterLocation}"
 resource.labels.cluster_name="${clusterName}"
 resource.labels.namespace_name="backend"
 labels.k8s-pod/app="${workload.appLabel}"
-severity="ERROR"`,
+severity="ERROR"
+${noiseFilter}${workload.excludeFilter ? `\n${workload.excludeFilter}` : ''}`,
 									labelExtractors: {
 										error_code:
 											'EXTRACT(jsonPayload.error.code)',
@@ -1215,6 +1267,148 @@ jsonPayload.msg="notification delivery failed"`,
 				{ parent: this },
 			)
 		this.alertPolicies.push(this.webPushSubscriptionStarvationAlertPolicy)
+
+		// Stripe webhook rejection alert.
+		//
+		// The fan-api `/stripe-webhook` handler rejects a delivery at WARNING when
+		// the signing secret is not configured (503) or the Stripe-Signature check
+		// fails (401). Stripe then retries, but nothing in the product records the
+		// failure, so a rotated or missing signing secret would silently stop
+		// refund, dispute and payment events from being applied. A dispatch
+		// error after a valid signature logs ERROR, but the Fan API ERROR Log
+		// policy rate-limits notifications to one per 12 hours, so it gets its
+		// own condition here.
+		//
+		// Log-based metric on the existing backend lines (WARNING for the two
+		// rejections, ERROR for the dispatch error): no backend change is needed.
+		// The endpoint is publicly routed and unauthenticated, so a scanner can
+		// produce a few `signature verification failed` lines; three in an hour
+		// are needed to page (a rotated secret rejects every retry of every
+		// event, and the three real failures seen in prod on 2026-11-23 arrived
+		// within 11 minutes). `signing secret not configured` only happens on a
+		// real fault, so one occurrence pages. A dispatch error means a valid
+		// event failed to apply, so one in 5 minutes pages.
+		const stripeWebhookRejectionMetric = new gcp.logging.Metric(
+			'log-metric-stripe-webhook-rejections',
+			{
+				project: projectId,
+				name: 'stripe_webhook_rejections',
+				description:
+					'Stripe webhook deliveries that fan-api failed: signing secret not configured, signature verification failed, or dispatch error (backend logs), keyed by log message.',
+				filter: pulumi.interpolate`resource.type="k8s_container"
+resource.labels.project_id="${projectId}"
+resource.labels.location="${clusterLocation}"
+resource.labels.cluster_name="${clusterName}"
+resource.labels.namespace_name="backend"
+(jsonPayload.msg="stripe webhook: signature verification failed" OR jsonPayload.msg="stripe webhook: signing secret not configured; rejecting request" OR jsonPayload.msg="stripe webhook: dispatch error")`,
+				metricDescriptor: {
+					metricKind: 'DELTA',
+					valueType: 'INT64',
+					unit: '1',
+					labels: [
+						{
+							key: 'msg',
+							valueType: 'STRING',
+							description:
+								'Log message: one of three fixed strings from the Stripe webhook handler',
+						},
+					],
+				},
+				labelExtractors: {
+					msg: 'EXTRACT(jsonPayload.msg)',
+				},
+			},
+			{ parent: this },
+		)
+
+		const stripeWebhookRejectionAlertPolicy =
+			new gcp.monitoring.AlertPolicy(
+				'alert-stripe-webhook-rejections',
+				{
+					displayName: 'Stripe Webhook Failures',
+					project: projectId,
+					combiner: 'OR',
+					conditions: [
+						{
+							displayName:
+								'Stripe webhook signature failures >= 3 per hour',
+							conditionThreshold: {
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg="stripe webhook: signature verification failed"`,
+								aggregations: [
+									{
+										alignmentPeriod: '3600s', // 1 hour
+										perSeriesAligner: 'ALIGN_DELTA',
+										crossSeriesReducer: 'REDUCE_SUM',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 2,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+						{
+							displayName:
+								'Stripe webhook signing secret not configured',
+							conditionThreshold: {
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg="stripe webhook: signing secret not configured; rejecting request"`,
+								aggregations: [
+									{
+										alignmentPeriod: '600s', // 10 min
+										perSeriesAligner: 'ALIGN_DELTA',
+										crossSeriesReducer: 'REDUCE_SUM',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 0,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+						{
+							displayName:
+								'Stripe webhook dispatch error in 5 minutes',
+							conditionThreshold: {
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg="stripe webhook: dispatch error"`,
+								aggregations: [
+									{
+										alignmentPeriod: '300s', // 5 min
+										perSeriesAligner: 'ALIGN_DELTA',
+										crossSeriesReducer: 'REDUCE_SUM',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 0,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+					],
+					alertStrategy: {
+						// notificationRateLimit is rejected on conditionThreshold
+						// policies; the 1h alignment window is the debounce.
+						autoClose: '3600s', // 1 hour
+					},
+					notificationChannels,
+					documentation: {
+						content: [
+							'## Stripe Webhook Failures Alert',
+							'',
+							'fan-api failed Stripe webhook deliveries: three or more signature failures within an hour, a missing signing secret, or one dispatch error (a valid event that could not be applied) within 5 minutes. A completed charge is fulfilled and a lottery authorization is entered or released only through these events. Stripe retries a failed delivery for up to 3 days (live mode) and then gives up, so act before that.',
+							'',
+							'### Triage Steps',
+							'1. Read the lines: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="backend" AND severity>=WARNING AND jsonPayload.msg:"stripe webhook"\' --limit=20`, and open the endpoint\'s event deliveries in the Stripe Dashboard to see which events failed.',
+							'2. `signing secret not configured`: the `api-stripe` ExternalSecret did not deliver the webhook signing secret to fan-api. Check `kubectl -n backend get externalsecret` and the Pod environment wiring.',
+							'3. `signature verification failed`: the signing secret in Secret Manager differs from the one on the Stripe dashboard endpoint (rotated or wrong endpoint). Compare them without printing either value, fix the stored secret, and let External Secrets and Reloader roll fan-api.',
+							'4. `dispatch error`: the signature was valid but the use case failed; read the ERROR line (`event_id`, `event_type`, `error`) and fix the cause (often the database).',
+							'5. After the fix, resend the failed events and confirm an INFO line `stripe webhook: ... received` appears. The Dashboard can resend events up to 15 days old, the Stripe CLI up to 30 days.',
+						].join('\n'),
+						mimeType: 'text/markdown',
+					},
+				},
+				{ parent: this },
+			)
+		this.alertPolicies.push(stripeWebhookRejectionAlertPolicy)
 
 		this.registerOutputs({
 			alertPolicyCount: this.alertPolicies.length,
