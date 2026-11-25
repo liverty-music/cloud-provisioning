@@ -140,106 +140,19 @@ pending-1, never a third) — no eviction.
 
 ## Preview and promotion for `fan-web` and `fan-api`
 
-(OpenSpec change `add-prod-preview-release`.) `fan-web` and `fan-api` run as Argo Rollouts `blueGreen` Rollouts (`fan-web-app` in `frontend`, `fan-api` in `backend`; the Deployment of the same name only holds the Pod template and runs no Pods). **The pin bump is still the deploy, and every release is checked on the way:**
+(OpenSpec change `add-prod-preview-release`.) `fan-web` and `fan-api` are plain Deployments. A release goes live on the pin bump: the Deployment rolls with `minReadySeconds: 45`, `maxUnavailable: 0` and `maxSurge: 1`, so the old Pod stays until the new one has been Ready for 45 seconds, and the connection draining and `preStop` settings (design D9) let the load balancer drop the old endpoint without a failed request.
 
-1. The new Pods start and the preview Service selects them (`https://preview.liverty-music.app`, `https://api.preview.liverty-music.app`).
-2. A pre-promotion analysis (`prePromotionAnalysis`, a short Job named `fan-web-preview-smoke` or `fan-api-preview-smoke`) calls the new Pods through the preview Service: the page and `/config.json` for the web, a public read RPC for the API.
-3. If the Job passes, the Rollout switches the active Service and fans get the release. If it fails, the Rollout aborts: fans keep the current Pods and the Rollout shows `Degraded`.
+Each workload also has a candidate lane (`fan-web-candidate`, `fan-api-candidate`), a second always-warm instance that serves the preview hostname (`https://preview.liverty-music.app`, `https://api.preview.liverty-music.app`). Today the candidate follows the same image pin as stable, so it shows what fans have, not a waiting release. Holding a release on the preview hostname needs the separate candidate pin and the promote workflow of task 8.6; until then do not hold a release.
 
-After any pin bump, confirm both Rollouts are `Healthy` (`kubectl get rollout`, step 1 below). A `Degraded` Rollout is an aborted release (while a candidate lane exists, it keeps running the aborted image until the pin is put back, so put it back at once and do not fix forward first): read the failed run (`kubectl -n <ns> get analysisrun`, `kubectl -n <ns> logs job/<analysisrun job>`), then fix forward or put the pin back (step 3, "Abort").
-
-The other workloads (`admin-console-*`, `organizer-console-*`, `reception-*`, the consumers, the jobs) roll out on the pin bump as before.
-
-> **Transition (OpenSpec change `add-prod-preview-release`, tasks 8.4 to 8.6):** the Rollouts are being replaced by a plain Deployment plus a candidate lane per workload (design, Migration Plan step 4). **`fan-web` has no Rollout any more**: its releases are rolling updates of the Deployment with `minReadySeconds`, with no automatic smoke Job, and `https://preview.liverty-music.app` serves its candidate lane (which follows the shared `fan-web` pin). The text of this section about Rollouts, the smoke Job, `autoPromotionEnabled` and `promote-full` therefore applies to `fan-api` only, until `fan-api` is replaced the same way and this section is rewritten. For `fan-api`, while its candidate lane exists, `https://api.preview.liverty-music.app` serves the candidate lane, not the Rollout's preview Pods (the candidate follows the shared `backend/api` pin: the stable image except between a pin bump and the promotion or the revert of an aborted release), so the manual hold below cannot be looked at there and the table below does not hold for it. Until task 8.6 is done, do not hold a `fan-web` or `fan-api` release for a manual look. The payout is no longer a reason: it runs as a schedule of the workflow worker, not in any API Pod.
-
-### Hold a release for a manual preview check (rare)
-
-The automatic check cannot judge a layout or a flow. When a release is risky or the owner asks to look at it first, hold it **before** cutting the release:
-
-1. Open a PR that sets `autoPromotionEnabled: false` in the Rollout of the workload to hold (`k8s/namespaces/frontend/overlays/prod/fan-web-rollout.yaml`, `k8s/namespaces/backend/overlays/prod/fan-api/rollout.yaml`) and merge it. Confirm the Application is `Synced`.
-2. Cut the release. After the smoke Job passes, the Rollout stops (`Paused`) with the new Pods on the preview Service.
-3. Check the waiting release (steps 1 and 2 below), then promote or abort (step 3). An agent runs the checks and reports; the owner says whether to promote.
-4. Open a PR that sets `autoPromotionEnabled: true` again. A Rollout left on `false` holds every later release.
-
-While a release is held:
-
-| | fans | owner's preview |
-|---|---|---|
-| web | `https://liverty-music.app` → `fan-web-svc` (old Pods) | `https://preview.liverty-music.app` → `fan-web-preview-svc` (new Pods) |
-| API | `https://api.liverty-music.app` → `fan-api-svc` (old Pods) | `https://api.preview.liverty-music.app` → `fan-api-preview-svc` (new Pods) |
-
-The preview web app calls the preview API (it chooses its API address from the page's host). Preview uses the production database and the production Zitadel.
-
-### 1. Look at the Rollouts
-
-A held release is not an error, and nothing alerts on it. `STATUS Paused` means a release waits; after a normal release both Rollouts are `Healthy`:
+After a pin bump, confirm the rollout finished:
 
 ```bash
-export CLOUDSDK_ACTIVE_CONFIG_NAME=liverty-music
 CTX=gke_liverty-music-prod_asia-northeast2_autopilot-cluster-osaka
-kubectl --context=$CTX -n frontend get rollout fan-web-app
-kubectl --context=$CTX -n backend get rollout fan-api
+kubectl --context=$CTX -n frontend rollout status deploy/fan-web-app
+kubectl --context=$CTX -n backend rollout status deploy/fan-api
 ```
 
-`STATUS Paused` means a release waits. The ArgoCD Application shows `Synced` and `Suspended` while it waits, so anything that waits for the Application to be Healthy waits until the promotion.
-
-### 2. Check the waiting release (read-only; an agent can run all of it)
-
-```bash
-# Which Pods each Service selects. The hashes differ while a release waits.
-kubectl --context=$CTX -n frontend get svc fan-web-svc fan-web-preview-svc -o jsonpath='{range .items[*]}{.metadata.name} {.spec.selector}{"\n"}{end}'
-kubectl --context=$CTX -n backend get svc fan-api-svc fan-api-preview-svc fan-api-webhook-svc -o jsonpath='{range .items[*]}{.metadata.name} {.spec.selector}{"\n"}{end}'
-kubectl --context=$CTX -n backend get pods -l app=fan-api -L role,app.kubernetes.io/version
-kubectl --context=$CTX -n backend get endpointslices -l kubernetes.io/service-name=fan-api-webhook-svc -o jsonpath='{.items[*].endpoints[*].addresses[*]}'   # only the Pod with role=active
-
-# Web: the existing smoke spec against preview (frontend repository). While a
-# candidate lane exists it runs against the candidate lane, which is not the held
-# release (see the Transition note); use it to check the candidate lane itself.
-SMOKE_BASE_URL=https://preview.liverty-music.app npx playwright test --config=playwright.smoke.config.mjs
-
-# API: health and one public read RPC, compared with the fans' address
-for h in api.liverty-music.app api.preview.liverty-music.app; do
-  curl -s -o /dev/null -w "$h ListTop %{http_code}\n" -X POST -H 'content-type: application/json' -H 'connect-protocol-version: 1' \
-    -d '{"limit":1}' https://$h/liverty_music.rpc.artist.v1.ArtistService/ListTop
-done
-```
-
-`/stripe-webhook` and the Zitadel action paths are not routed on the preview address: a `POST` to `https://api.preview.liverty-music.app/stripe-webhook` is answered like any unknown path (`missing bearer token`), where the production address answers `invalid signature` from the webhook server.
-
-Opening a signed-in screen on preview is the owner's step. Use the owner's account only (nobody else signs in there: preview writes real data in production). A push subscription made on preview is a second, real subscription for that account: delete it when done.
-
-### 3. Promote or abort (the owner decides)
-
-`argocd` runs the Rollout's resource actions straight against the cluster (`--core`); it needs the current namespace of the kubeconfig to be `argocd`, so use a copy and leave your own kubeconfig alone:
-
-```bash
-cp ~/.kube/config /tmp/kubeconfig-argocd && export KUBECONFIG=/tmp/kubeconfig-argocd
-kubectl config set-context --current --namespace=argocd
-
-argocd app actions list frontend --kind Rollout --resource-name fan-web-app --namespace frontend --core
-
-# Run only the lines of a Rollout that has a waiting release. For a release that
-# changes both, the API goes first.
-argocd app actions run  backend  promote-full --kind Rollout --resource-name fan-api     --namespace backend  --core
-argocd app actions run  frontend promote-full --kind Rollout --resource-name fan-web-app --namespace frontend --core
-```
-
-- **Promote** is `promote-full` (verified on Argo CD v3.5.3; the other listed actions are `abort`, `pause`, `restart`, `resume`; `resume` has not been tried on a blueGreen pause). After it the active Service selects the new Pods and the old Pods stay for 5 minutes (`scaleDownDelaySeconds`).
-- **Abort** is the `abort` action (the Rollout then shows `Degraded` / `RolloutAborted` and the Application `Degraded`; fans stay on the stable Pods and the Rollout's Pods of the aborted release are scaled down; the candidate lane of the workload keeps the aborted image until the pin is put back). Then put back what the pin bump moved, so the Deployment's Pod template equals the stable one again; otherwise the next sync starts the aborted release again, and a template that matches neither release starts a new revision that waits:
-  - every `newTag:` line of that component with its `# commit` trailer (frontend: the four bundles in `k8s/namespaces/frontend/overlays/prod/kustomization.yaml`; backend: the `backend/*` entries in `k8s/namespaces/backend/overlays/prod/kustomization.yaml`);
-  - the `app.kubernetes.io/version` label in the same file. It is one value for the whole overlay and part of every Pod template, and `fan-api` reports it as its telemetry version, so a bundle left on the aborted tag would carry a wrong label (a first attempt that reverted only `fan-web` was rejected in review for that reason);
-  - for the frontend, `releaseVersion` in `k8s/namespaces/frontend/overlays/prod/fan-web-configmap.yaml`.
-
-  This is what `git revert` of that component's latest bump commit does. It also rolls back the other workloads of the component that already rolled out (frontend consoles and reception; backend `admin-console-api`, `organizer-console-api`, `reception-api`, the consumers and the jobs), and a rolled-back workload restarts once. That is safe only because migrations stay backward compatible (below).
-- A release that changes both: promote the API first, then the web (the order of the commands above), because a new web app must work against the API that already serves fans.
-
-### 4. Things to know
-
-- **Migrations stay backward compatible.** While a release waits, the old code runs against whatever schema the new release's migration made. Expand in one release and contract in a later one. Do not leave a release waiting for long.
-- **Config changes are releases too.** Reloader patches the Pod template of the Deployment when a ConfigMap or Secret it watches changes (e.g. `fan-web-runtime-config`, `fan-api-backend-secrets`), so that becomes a new Rollout revision: it goes live by itself, or waits if the Rollout is held. After a rotation of a webhook signing secret on a held Rollout, promote right away: the active Pods keep the old value until then. Every frontend release also shows one extra intermediate revision (old image and label, new Reloader ConfigMap hash, because the pin bump also changes `releaseVersion` in the ConfigMap); the Rollout moves on to the real revision within a second and scales the intermediate Pod down. The same happens when a pin is put back after an abort.
-- **Connections.** While a `fan-api` release waits there are two `fan-api` Pods (and for 5 minutes after a promotion): see the connection budget in `k8s/namespaces/backend/overlays/prod/fan-api/configmap.env`.
-- **The `fan-api` switch is not seamless yet, and it happens on every release now.** On 2026-11-24 a loop of one request about every 0.2 seconds to `https://api.liverty-music.app` answered `503` for about 17 to 25 seconds after the switch (two runs; the 503s came in one or two stretches). Argo CD does not report it. Prefer a quiet moment for a `fan-api` release. Requests that time out are not evidence: from the maintainer's WSL machine, an unrelated host (`admin.liverty-music.app`) timed out on about a fifth of the requests in the same kind of loop, so count `503` answers only. The `fan-web` promotions showed one `503` in the first run and none in the second.
-- **The first sync that introduces a Rollout** may leave the Services without the ReplicaSet hash in their selectors for several minutes (Argo CD applies the Service after the Rollouts controller switched it); it settles by itself. During a pause and a promote the selectors were not reverted (checked on both workloads).
+To measure a release for failed requests, use the release probe (`k8s/tools/release-probe/pod.yaml`; its header has the usage). Any response of 500 or above on a fans' hostname during a rollout is a defect to report.
 
 ## Manual recovery: `workflow_dispatch` fallback
 
