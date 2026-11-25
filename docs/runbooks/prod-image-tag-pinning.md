@@ -168,7 +168,7 @@ curl -fsS -X POST -H 'content-type: application/json' -H 'connect-protocol-versi
 #   SMOKE_BASE_URL=https://preview.liverty-music.app npx playwright test --project=smoke
 ```
 
-The candidate uses the production database and the production sign-in, so whatever the owner does on the preview hostname is real. Sign in with the owner's own account. The candidate API holds only two database connections (the shared database has 25 and most are in use) and takes no Stripe webhook or Zitadel action call (its `app` label differs from `fan-api`).
+The candidate uses the production database and the production sign-in, so whatever the owner does on the preview hostname is real. Sign in with the owner's own account. The candidate API holds only two database connections (the shared database allows 40 and about half are in use at a time; see the budget table in `src/gcp/components/postgres.ts`) and takes no Stripe webhook or Zitadel action call (its `app` label differs from `fan-api`).
 
 ### Promote or abort (the owner decides)
 
