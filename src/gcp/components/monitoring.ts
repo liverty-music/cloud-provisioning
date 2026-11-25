@@ -1274,33 +1274,45 @@ jsonPayload.msg="notification delivery failed"`,
 		// the signing secret is not configured (503) or the Stripe-Signature check
 		// fails (401). Stripe then retries, but nothing in the product records the
 		// failure, so a rotated or missing signing secret would silently stop
-		// refund, dispute and payment events from being applied. A dispatch error
-		// after a valid signature already logs ERROR and pages through the
-		// Fan API ERROR Log policy, so only the two WARNING lines are counted.
+		// refund, dispute and payment events from being applied. A dispatch
+		// error after a valid signature logs ERROR, but the Fan API ERROR Log
+		// policy rate-limits notifications to one per 12 hours, so it gets its
+		// own condition here.
 		//
-		// Log-based metric on the existing WARNING lines: no backend change is
-		// needed. The threshold is two rejections in an hour: one stray bad
-		// request from the internet does not page, while a real delivery that
-		// Stripe retries (or a second event) does. At pre-launch volume any
-		// sustained rejection is meaningful.
+		// Log-based metric on the existing backend lines (WARNING for the two
+		// rejections, ERROR for the dispatch error): no backend change is needed.
+		// Rejections need two in an hour, so one stray bad request from the
+		// internet does not page while a real delivery that Stripe retries (or a
+		// second event) does. A dispatch error means a valid event failed to
+		// apply, so one in 5 minutes pages.
 		const stripeWebhookRejectionMetric = new gcp.logging.Metric(
 			'log-metric-stripe-webhook-rejections',
 			{
 				project: projectId,
 				name: 'stripe_webhook_rejections',
 				description:
-					'Stripe webhook deliveries rejected by fan-api: signing secret not configured, or signature verification failed (backend WARNING logs).',
+					'Stripe webhook deliveries that fan-api failed: signing secret not configured, signature verification failed, or dispatch error (backend logs), keyed by log message.',
 				filter: pulumi.interpolate`resource.type="k8s_container"
 resource.labels.project_id="${projectId}"
 resource.labels.location="${clusterLocation}"
 resource.labels.cluster_name="${clusterName}"
 resource.labels.namespace_name="backend"
-severity="WARNING"
-(jsonPayload.msg="stripe webhook: signature verification failed" OR jsonPayload.msg="stripe webhook: signing secret not configured; rejecting request")`,
+(jsonPayload.msg="stripe webhook: signature verification failed" OR jsonPayload.msg="stripe webhook: signing secret not configured; rejecting request" OR jsonPayload.msg="stripe webhook: dispatch error")`,
 				metricDescriptor: {
 					metricKind: 'DELTA',
 					valueType: 'INT64',
 					unit: '1',
+					labels: [
+						{
+							key: 'msg',
+							valueType: 'STRING',
+							description:
+								'Log message: one of three fixed strings from the Stripe webhook handler',
+						},
+					],
+				},
+				labelExtractors: {
+					msg: 'EXTRACT(jsonPayload.msg)',
 				},
 			},
 			{ parent: this },
@@ -1310,7 +1322,7 @@ severity="WARNING"
 			new gcp.monitoring.AlertPolicy(
 				'alert-stripe-webhook-rejections',
 				{
-					displayName: 'Stripe Webhook Rejections',
+					displayName: 'Stripe Webhook Failures',
 					project: projectId,
 					combiner: 'OR',
 					conditions: [
@@ -1318,7 +1330,7 @@ severity="WARNING"
 							displayName:
 								'Stripe webhook rejections >= 2 per hour',
 							conditionThreshold: {
-								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container"`,
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg!="stripe webhook: dispatch error"`,
 								aggregations: [
 									{
 										alignmentPeriod: '3600s', // 1 hour
@@ -1332,6 +1344,24 @@ severity="WARNING"
 								trigger: { count: 1 },
 							},
 						},
+						{
+							displayName:
+								'Stripe webhook dispatch error in 5 minutes',
+							conditionThreshold: {
+								filter: pulumi.interpolate`metric.type="logging.googleapis.com/user/${stripeWebhookRejectionMetric.name}" AND resource.type="k8s_container" AND metric.labels.msg="stripe webhook: dispatch error"`,
+								aggregations: [
+									{
+										alignmentPeriod: '300s', // 5 min
+										perSeriesAligner: 'ALIGN_DELTA',
+										crossSeriesReducer: 'REDUCE_SUM',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 0,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
 					],
 					alertStrategy: {
 						// notificationRateLimit is rejected on conditionThreshold
@@ -1341,15 +1371,16 @@ severity="WARNING"
 					notificationChannels,
 					documentation: {
 						content: [
-							'## Stripe Webhook Rejections Alert',
+							'## Stripe Webhook Failures Alert',
 							'',
-							'fan-api rejected two or more Stripe webhook deliveries within an hour. Refund, dispute and payment events are not being applied while this lasts; Stripe keeps retrying, so events are delayed, not lost, until Stripe gives up.',
+							'fan-api failed Stripe webhook deliveries: two or more rejections (signing secret missing or signature invalid) within an hour, or one dispatch error (a valid event that could not be applied) within 5 minutes. A completed charge is fulfilled and a lottery authorization is entered or released only through these events. Stripe retries a failed delivery for up to 3 days (live mode) and then gives up, so act before that.',
 							'',
 							'### Triage Steps',
-							'1. Read the lines: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="backend" AND severity="WARNING" AND jsonPayload.msg:"stripe webhook"\' --limit=20`.',
+							'1. Read the lines: `gcloud logging read \'resource.type="k8s_container" AND resource.labels.namespace_name="backend" AND severity>=WARNING AND jsonPayload.msg:"stripe webhook"\' --limit=20`, and open the endpoint\'s event deliveries in the Stripe Dashboard to see which events failed.',
 							'2. `signing secret not configured`: the `api-stripe` ExternalSecret did not deliver the webhook signing secret to fan-api. Check `kubectl -n backend get externalsecret` and the Pod environment wiring.',
 							'3. `signature verification failed`: the signing secret in Secret Manager differs from the one on the Stripe dashboard endpoint (rotated or wrong endpoint). Compare them without printing either value, fix the stored secret, and let External Secrets and Reloader roll fan-api.',
-							'4. After the fix, resend a failed event from the Stripe dashboard and confirm the INFO line `stripe webhook: ... received` appears.',
+							'4. `dispatch error`: the signature was valid but the use case failed; read the ERROR line (`event_id`, `event_type`, `error`) and fix the cause (often the database).',
+							'5. After the fix, resend the failed events and confirm an INFO line `stripe webhook: ... received` appears. The Dashboard can resend events up to 15 days old, the Stripe CLI up to 30 days.',
 						].join('\n'),
 						mimeType: 'text/markdown',
 					},
