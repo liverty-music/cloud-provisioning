@@ -315,13 +315,11 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
 		// the next hang reproduces and we can correlate, a follow-up change
 		// adds the alert with a derived threshold.
 		//
-		// The Cloud SQL panel does carry a *visual* threshold line at 20
-		// (= 80% of `max_connections=25`, the GCP default for the
-		// `db-f1-micro` tier `postgres-osaka` runs on — see
-		// `postgres.ts:107`). If that tier ever changes, the panel value
-		// must be re-derived because the GCP default scales with tier
-		// memory. The line is observational guidance, not an alert
-		// threshold.
+		// The Cloud SQL panel does carry a *visual* threshold line at 32
+		// (= 80% of `max_connections=40`, the value `postgres.ts` sets by flag
+		// on `postgres-osaka`; the `db-f1-micro` default is 25). If that flag
+		// or the tier ever changes, the panel value must be re-derived. The
+		// line is observational guidance, not an alert threshold.
 		// Zero-valued tile positions (`xPos`/`yPos` of 0) are left out on
 		// purpose: the Monitoring API omits zero values when it returns the
 		// dashboard, so writing them made every `pulumi up` report a diff.
@@ -359,7 +357,7 @@ export class ZitadelMonitoringComponent extends pulumi.ComponentResource {
               }
             ],
             "thresholds": [
-              { "value": 20, "label": "80% of max_connections (dev tier db-f1-micro → 25)" }
+              { "value": 32, "label": "80% of max_connections (db-f1-micro, 40 by flag)" }
             ],
             "yAxis": {
               "label": "active backends",

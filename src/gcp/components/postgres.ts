@@ -199,10 +199,14 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		//   3. `pulumi destroy --target <urn>`     (now safe)
 		// Reversing 1↔2 leaves Pulumi willing to call delete but the API
 		// rejects with HTTP 400 because the instance is still locked.
-		// Connection budget (prod, one replica per workload). `db-f1-micro` allows 25 connections and
-		// reserves 3 for superusers (Cloud SQL's own agent, Atlas, a person with
-		// psql), which leaves 22 for the workloads below. Each number is the pool
-		// ceiling set in that workload's manifest, and pools open connections
+		// Connection budget (prod, one replica per workload). The default
+		// `max_connections` of `db-f1-micro` is 25 (Cloud SQL sets it from the
+		// memory: about 0.5 GB gives 25, 1.7 GB gives 50). A release exhausted the
+		// 22 slots left after the superuser reserve, so `max_connections` is set to
+		// 40 by flag below. PostgreSQL reserves 3 for superusers by default
+		// (`superuser_reserved_connections`; Cloud SQL's own value was not
+		// verified), which leaves 37 for the workloads below. Each number is the
+		// pool ceiling set in that workload's manifest, and pools open connections
 		// lazily. Update the table in the same change that edits a pool.
 		//
 		//   workload                ceiling  why this many
@@ -221,7 +225,7 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		//   at 12:00; official-site-refresh (1) and venue-coordinates-refresh (1)
 		//   together at 19:00; artist-refresh (1) at 20:00.
 		//   At the ceilings the worst overlap is 4 (sales-reminders with
-		//   concert-discovery at 09:00 or with the two 19:00 jobs), so 25 of 22.
+		//   concert-discovery at 09:00 or with the two 19:00 jobs), so 25 of 37.
 		//
 		// What exhausts the slots is a release, not the steady state. 7 days to
 		// 2026-11-25 averaged 12 connections for the application database and 4
@@ -237,8 +241,9 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		// begins to terminate.
 		//
 		// So the peak of a release is not bounded by the table. At the ceilings
-		// it could reach twice the 21 always on if everything rolled together; it
-		// holds only because pools open lazily and the rollouts do not line up.
+		// it could reach twice the 21 always on (42, above the 37) if everything
+		// rolled together; it holds only because pools open lazily and the rollouts
+		// do not line up.
 		// Zitadel exports no pool metrics, so its 4 is judged from the connection
 		// count alone (hourly mean 4.1, which includes idle connections): if
 		// login slows, raise it to 5 first.
@@ -253,9 +258,21 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		// Restoring HA at launch (`replicas: 2`, overlays/prod/kustomization.yaml)
 		// doubles every pool above, so it needs the larger tier below.
 		//
-		// If this budget is outgrown, the next step is a larger tier
-		// (`db-g1-small`), not another pool trimmed; check its `max_connections`
-		// and price before choosing.
+		// Why 40, and what to watch. Over 7 days to 2026-11-25 the instance used
+		// 21% of its 614 MiB of memory on average and 31% at the peak (Cloud
+		// Monitoring `database/memory/components`), and CPU 16% on average (55%
+		// at the hourly peak). More connections cost memory (the PostgreSQL docs
+		// give no per-connection figure), and Google's docs warn that IAM database
+		// authentication on a shared-core instance can be slow or time out when
+		// CPU is high; `db-f1-micro` is also outside the Cloud SQL SLA. Remove the
+		// flag if memory use passes 70% or connection latency and timeouts rise.
+		//
+		// If this budget is outgrown, the next step is a larger tier, not another
+		// pool trimmed. `db-g1-small` defaults to 50 (the memory table above) and
+		// costs about 7.2 yen per hour in Osaka against 2.2 now (list prices of
+		// 2026-11-25, Cloud Billing Catalog), about 3,700 yen more per month.
+		// Managed connection pooling needs Enterprise Plus, so it is not an option
+		// on this tier.
 		const postgresDbName = `postgres-${regionName}`
 		const instance = new gcp.sql.DatabaseInstance(
 			postgresDbName,
@@ -312,6 +329,14 @@ export class PostgresComponent extends pulumi.ComponentResource {
 						recordClientAddress: false,
 					},
 					databaseFlags: [
+						// Only while the instance runs: a STOPPED instance (dev)
+						// rejects a settings change, so the flag is added when
+						// `workloadEnabled` is true and applies in the update that
+						// starts it. Changing it restarts the database. The tier's
+						// default is 25; see the connection budget above.
+						...(workloadEnabled
+							? [{ name: 'max_connections', value: '40' }]
+							: []),
 						{ name: 'cloudsql.iam_authentication', value: 'on' },
 						{ name: 'log_checkpoints', value: 'on' },
 						{ name: 'log_connections', value: 'on' },
