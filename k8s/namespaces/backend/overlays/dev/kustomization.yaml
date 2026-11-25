@@ -355,6 +355,10 @@ configMapGenerator:
   behavior: merge
   envs:
   - cronjob/artist-refresh/configmap.env
+- name: venue-coordinates-refresh-job-config
+  behavior: merge
+  envs:
+  - cronjob/venue-coordinates-refresh/configmap.env
 - name: sales-phase-discovery-job-config
   behavior: merge
   envs:

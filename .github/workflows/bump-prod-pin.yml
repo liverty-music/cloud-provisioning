@@ -189,7 +189,7 @@ jobs:
               # successor to `server`/`fan-api`; it pins both the fan-api and
               # admin-console-api workloads. `consumer` backs event-consumer.
               # sales-phase-discovery / sales-reminders / official-site-refresh /
-              # artist-refresh are
+              # artist-refresh / venue-coordinates-refresh are
               # the CronJob images;
               # series-image-consumer is the KEDA-scaled long-running consumer
               # (backend/series-image-consumer).
@@ -199,7 +199,7 @@ jobs:
               # only workload holding the identity-provider keys. The backend
               # release retag matrix already publishes all of them under the release
               # tag, so a single dispatch pins them in lock-step.
-              IMAGES="api consumer identity worker concert-discovery artist-image-sync official-site-refresh artist-refresh sales-phase-discovery sales-reminders series-image-consumer"
+              IMAGES="api consumer identity worker concert-discovery artist-image-sync official-site-refresh artist-refresh sales-phase-discovery sales-reminders venue-coordinates-refresh series-image-consumer"
               BUMP_LABEL=true
               # The candidate lane's own pin, and the stable image it runs.
               CAND=fan-api-candidate; PRIMARY=api ;;
