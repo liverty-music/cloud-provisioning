@@ -75,7 +75,9 @@ spec:
   - preview.liverty-music.app
   rules:
   - backendRefs:
-    - name: fan-web-preview-svc
+    # The candidate lane (fan-web-candidate.yaml), not the Rollout's preview
+    # Service: the preview hostname keeps serving one warm instance (task 8.6).
+    - name: fan-web-candidate-svc
       port: 80
 ---
 # Checks the new fan-web Pods through the preview Service before the Rollout
