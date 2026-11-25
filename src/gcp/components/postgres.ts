@@ -216,28 +216,39 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		//   reception-api              1
 		//   series-image-consumer      1
 		//   always on                 21
-		//   CronJobs: sales-reminders (2) every 15 minutes, plus one daily job (1 or 2)
+		//   CronJobs (UTC): sales-reminders (2) every 15 minutes; concert-discovery
+		//   (2) at 09:00; artist-image-sync (1) at 10:00; sales-phase-discovery (1)
+		//   at 12:00; official-site-refresh (1) and venue-coordinates-refresh (1)
+		//   together at 19:00; artist-refresh (1) at 20:00.
+		//   At the ceilings the worst overlap is 4 (sales-reminders with
+		//   concert-discovery at 09:00 or with the two 19:00 jobs), so 25 of 22.
 		//
 		// What exhausts the slots is a release, not the steady state. 7 days to
 		// 2026-11-25 averaged 12 connections for the application database and 4
-		// for Zitadel, and the pools are close to what the workloads use (peak
-		// active connections: API Pods 2, event-consumer 2, workflow-worker 5,
-		// CronJobs 1), so there is little to trim. But a backend release rolls
-		// every workload at once, and an old Pod keeps its pool until it exits
-		// (a 120 s preStop, then `MaxConnIdleTime` 10 min) while the new Pod opens
-		// its own. On 2026-11-25 that failed 37 fan-api requests. A strategy of
-		// `maxSurge: 0` does not help: the replacement starts as soon as the old
-		// Pod begins to terminate, so the two pools still overlap.
+		// for Zitadel (hourly maxima 18 and 8, not necessarily in the same hour),
+		// and the pools are close to what the workloads use (peak active
+		// connections: API Pods 2, event-consumer 2, workflow-worker 5, CronJobs
+		// 1), so there is little to trim. But a backend release rolls every
+		// workload at once, and an old Pod keeps its pool until it exits (a 120 s
+		// preStop, then the shutdown) while the new Pod opens its own, so each
+		// rolled workload holds two pools for two to three minutes. On
+		// 2026-11-25 that failed 37 fan-api requests. A strategy of `maxSurge: 0`
+		// does not change this: the replacement starts as soon as the old Pod
+		// begins to terminate.
 		//
-		// At the ceilings a release peaks at 26 of 22 (fan-api +3, candidate +2
-		// beyond the 21 always on), and it holds only because pools open lazily.
+		// So the peak of a release is not bounded by the table. At the ceilings
+		// it could reach twice the 21 always on if everything rolled together; it
+		// holds only because pools open lazily and the rollouts do not line up.
 		// Zitadel exports no pool metrics, so its 4 is judged from the connection
 		// count alone (hourly mean 4.1, which includes idle connections): if
 		// login slows, raise it to 5 first.
 		//
-		// To lower the peak of a release without a larger tier, stagger the
-		// rollouts (ArgoCD sync waves on the Deployments) or give the candidate
-		// lane `maxSurge: 0` (its gap is seen by the owner only).
+		// The overlap lasts as long as an old Pod's preStop plus shutdown. A
+		// shorter preStop (the 120 s is there for load balancer draining; check
+		// what each API needs) would shorten it, and a larger tier would raise the
+		// limit. `maxSurge: 0` (also on the candidate lane) and ArgoCD sync waves
+		// would not: a wave waits for the new Pods, not for the old ones to exit.
+		// None of these has been tried.
 		//
 		// Restoring HA at launch (`replicas: 2`, overlays/prod/kustomization.yaml)
 		// doubles every pool above, so it needs the larger tier below.
