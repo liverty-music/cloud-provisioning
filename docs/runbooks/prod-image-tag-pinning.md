@@ -181,7 +181,11 @@ gh workflow run bump-prod-pin.yml -R liverty-music/cloud-provisioning -f compone
 gh workflow run bump-prod-pin.yml -R liverty-music/cloud-provisioning -f component=backend -f mode=abort
 ```
 
-Promotion is an ordinary rolling update of the stable Deployment, so it is as gap-free as a release. An abort needs no rollout of stable. A release or pre-release cut while another is held replaces the candidate pin, so promote or abort a held release before cutting the next one.
+Promotion is an ordinary rolling update of the stable Deployment, so it is as gap-free as a release. An abort needs no rollout of stable. A release or pre-release cut while another is held replaces the candidate pin, so promote or abort a held release before cutting the next one. Re-running or redelivering a release of the tag that stable already has changes nothing and leaves a held candidate alone.
+
+A promote or abort shares the `bump-prod-pin` concurrency group with the release dispatches (a pre-release is a dispatch like a release). When a third run queues, GitHub cancels the superseded *pending* run, which can be the promote or abort itself or an automated release dispatch that was waiting. After a promote or abort, look at the run list of the workflow and run again any run that shows as cancelled.
+
+The candidate lane's own telemetry (`app_version` in OpenTelemetry and PostHog) and the preview web app's `releaseVersion` show the stable version until the release is promoted: the version label and the web ConfigMap move only with stable.
 
 **Backend migrations are not held.** Database migrations apply when the backend change merges to `main` (`backend-migrations` tracks `main`), before any pre-release. A held backend release must stay compatible with the stable API on the same schema.
 
