@@ -83,11 +83,13 @@ on:
 # third independently-releasing writer is ever added to this group, add
 # `queue: max` (up to 100 FIFO pending) then.
 #
-# Human runs (pre-release, promote, abort: OpenSpec change
-# add-prod-preview-release) are a third writer, but a rare one: they start
-# minutes after a release, not within seconds of it. If one is ever cancelled as
-# the superseded pending run, the Actions page shows it as cancelled; run it
-# again.
+# A promote or abort (always started by a person) is a third writer in this
+# group, a rare one: it starts minutes after a release, not within seconds of
+# it. A pre-release is a repository_dispatch like a release. When a third run
+# queues, the cancelled one is the superseded PENDING run, whichever it is: the
+# promote or abort itself, or an automated release dispatch that was waiting.
+# After a promote or abort, look at the run list of this workflow; run again any
+# run that shows as cancelled.
 concurrency:
   group: bump-prod-pin
   cancel-in-progress: false
