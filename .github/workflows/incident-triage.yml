@@ -169,8 +169,10 @@ jobs:
             Read `.claude/skills/incident-triage/SKILL.md` and follow it exactly.
             Write your report to `triage-report.md` in the repository root, a first
             version early and the refined version at the end.
+          # The run of 2026-11-24 needed 28 turns and was aborted at 25 with
+          # "exceeding the configured maximum", although its report was complete.
           claude_args: |
-            --max-turns 25
+            --max-turns 30
           # Allowlist (D9). Everything not allowed is denied in headless mode;
           # deny rules win over allow rules.
           #
