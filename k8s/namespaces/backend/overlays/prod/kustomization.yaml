@@ -408,6 +408,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - cronjob/artist-refresh/configmap.env
+  - name: venue-coordinates-refresh-job-config
+    behavior: merge
+    envs:
+      - cronjob/venue-coordinates-refresh/configmap.env
   - name: sales-phase-discovery-job-config
     behavior: merge
     envs:
@@ -510,6 +514,11 @@ images:
     newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
+  # venue-coordinates-refresh (OpenSpec change globalize-venues). Bumped with
+  # the other backend images by bump-prod-pin.yml.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/venue-coordinates-refresh
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/venue-coordinates-refresh
     newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   # series-image-consumer: shipped from the shared backend AR repo
   # (backend/series-image-consumer). Pinned to the prod AR + semver tag; the

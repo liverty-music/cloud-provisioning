@@ -123,8 +123,9 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		const apiService = new ApiService(project, environment)
 		// API enablement on a GCP project is free at the enable step (per-call
 		// pricing kicks in only when the API is invoked). `places.googleapis.com`
-		// is currently used by the dev venue-enrichment feature; prod does not
-		// call it but enabling the API costs nothing. Per
+		// serves venue search and place details in the organizer console, venue
+		// enrichment, and the daily venue-coordinates-refresh job; its per-day
+		// caps are `placesDailyCaps` in `src/gcp/index.ts`. Per
 		// `refactor-unify-env-dispatch`, no env-gated enablement.
 		const apisToEnable: GoogleApis[] = [
 			'container.googleapis.com',
