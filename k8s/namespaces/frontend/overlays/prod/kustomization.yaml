@@ -104,6 +104,29 @@ patches:
       - op: add
         path: /spec/hostnames
         value: ["liverty-music.app"]
+      # Migration step 2 of OpenSpec change add-prod-preview-release (task 8.6):
+      # fans are served by the candidate lane (the same image) while the Rollout
+      # is replaced by a plain Deployment. The stable Service stays listed with
+      # weight 0, so its backend stays programmed and health-checked. A weight
+      # change moves traffic between backends that are already warm; no endpoint
+      # has to pass the load balancer's health check first. Step 4 swaps the
+      # weights back.
+      #
+      # TEMPORARY, minutes to a few tens of minutes: while fans are on the
+      # candidate lane, the Rollout's automatic check gates only fan-web-svc, which
+      # carries no fan traffic, so a frontend release cut in this window reaches
+      # fans without that check (the candidate takes it once it has been Ready for
+      # minReadySeconds). Cut no frontend release until step 4 is merged; to undo
+      # a release that slipped in, put the pin back.
+      - op: replace
+        path: /spec/rules/0/backendRefs
+        value:
+        - name: fan-web-svc
+          port: 80
+          weight: 0
+        - name: fan-web-candidate-svc
+          port: 80
+          weight: 100
   # Prod admin console HTTPRoute hostname. admin-console-web-route replaces the
   # deleted admin-route and owns admin.liverty-music.app -> admin-console-web-svc.
   - target:
