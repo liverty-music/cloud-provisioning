@@ -178,6 +178,12 @@ images:
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
     newTag: v1.174.0 # commit 1451eab047161db39fa52990ff40f88b5cc7b096
+  # fan-web-candidate: the image of the candidate lane (fan-web-candidate.yaml),
+  # pinned apart from fan-web (OpenSpec change add-prod-preview-release, D1). A
+  # release bumps both pins; a GitHub pre-release bumps only this one.
+  - name: fan-web-candidate
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
+    newTag: v1.174.0 # commit 1451eab047161db39fa52990ff40f88b5cc7b096
   # admin-console-web (unify-workload-naming): the admin console bundle, successor
   # to admin-app. Now ACTIVE — the admin-console-web-app Deployment (create-new)
   # references it. Pinned at v1.52.0 (the release that first published

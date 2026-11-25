@@ -9,7 +9,8 @@
 # - the `app` label (`fan-api-candidate`), so fan-api-svc and above all
 #   fan-api-webhook-svc (selecting `app: fan-api`) never reach it: a release
 #   nobody has checked receives no Stripe webhook and no Zitadel action call;
-# - nothing in the image: it follows the shared pin of the stable one (see below);
+# - the image pin: its own (`fan-api-candidate`), so it can run a pre-release
+#   while stable keeps the current release;
 # - a pool of two database connections (the shared database allows 25 in all and
 #   the other Pods already use most of them; see the comment on the variable);
 # - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
@@ -19,8 +20,7 @@
 # runs only as a schedule of the workflow worker (OpenSpec change
 # add-prod-preview-release, design D10), so this Pod carries no payout job. It
 # still uses the production database and Stripe keys like the stable Pod, so what
-# the owner does on the preview hostname is real. Its image follows the shared pin
-# (see the image below) until task 8.6 gives it a pin of its own.
+# the owner does on the preview hostname is real.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,12 +62,12 @@ spec:
           name: fan-api-zkp-verification-key
       containers:
       - name: fan-api
-        # The same image reference as the stable Deployment after the base's own
-        # rewrite, so the overlay's single `backend/api` pin (the one
-        # bump-prod-pin writes) moves both and the candidate cannot fall behind
-        # stable. A separate pin comes with task 8.6, together with the workflow
-        # change that bumps it.
-        image: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api:latest
+        # Its own image pin (images: `fan-api-candidate` in the overlay's
+        # kustomization.yaml), apart from the stable `backend/api` pin: a GitHub
+        # pre-release moves only this one, a release moves both, and promoting
+        # copies this one to stable (bump-prod-pin.yml, docs/runbooks/
+        # prod-image-tag-pinning.md).
+        image: fan-api-candidate
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
