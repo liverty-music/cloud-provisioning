@@ -419,6 +419,13 @@ export class ObjectStorageComponent extends pulumi.ComponentResource {
 		)
 
 		// Global forwarding rule: :443 → target HTTPS proxy → the global IP.
+		// `ipAddresses: []` is set explicitly because @pulumi/gcp 10.5.0 added it
+		// as a forceNew input that is absent from state written by older
+		// providers. Without it, a preview that does not refresh state (Pulumi
+		// Cloud pull-request previews) plans to replace this protected rule.
+		// `ignoreChanges` does not help: the diff comes from a computed value.
+		// An empty list means "no extra addresses", so the rule is still
+		// addressed by `ipAddress`.
 		new gcp.compute.GlobalForwardingRule(
 			'object-storage-forwarding-rule',
 			{
@@ -427,8 +434,12 @@ export class ObjectStorageComponent extends pulumi.ComponentResource {
 				ipAddress: address.address,
 				portRange: '443',
 				loadBalancingScheme: 'EXTERNAL_MANAGED',
+				ipAddresses: [],
 			},
-			{ parent: this, protect: protectInProd },
+			{
+				parent: this,
+				protect: protectInProd,
+			},
 		)
 
 		// Cloudflare A record for `cdn.<publicDomain>` → the CDN LB IP.

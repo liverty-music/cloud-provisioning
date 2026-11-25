@@ -140,19 +140,58 @@ pending-1, never a third) — no eviction.
 
 ## Preview and promotion for `fan-web` and `fan-api`
 
-(OpenSpec change `add-prod-preview-release`.) `fan-web` and `fan-api` are plain Deployments. A release goes live on the pin bump: the Deployment rolls with `minReadySeconds: 45`, `maxUnavailable: 0` and `maxSurge: 1`, so the old Pod stays until the new one has been Ready for 45 seconds, and the connection draining and `preStop` settings (design D9) let the load balancer drop the old endpoint without a failed request.
+(OpenSpec change `add-prod-preview-release`.) `fan-web` and `fan-api` are plain Deployments, and each has a **candidate lane** (`fan-web-candidate`, `fan-api-candidate`): a second, always-warm instance that serves the preview hostnames (`https://preview.liverty-music.app` for the web app, `https://api.preview.liverty-music.app` for the API; the preview web app calls the preview API). Each lane has its own image pin next to the stable pin in the prod overlay's `images:` (`fan-web-candidate` / `fan-web`, `fan-api-candidate` / `backend/api`).
 
-Each workload also has a candidate lane (`fan-web-candidate`, `fan-api-candidate`), a second always-warm instance that serves the preview hostname (`https://preview.liverty-music.app`, `https://api.preview.liverty-music.app`). Today the candidate follows the same image pin as stable, so it shows what fans have, not a waiting release. Holding a release on the preview hostname needs the separate candidate pin and the promote workflow of task 8.6; until then do not hold a release.
+| What you publish | What `bump-prod-pin.yml` moves | What fans get |
+|---|---|---|
+| A GitHub **Release** (the default) | the stable pin and the candidate pin | the release, as soon as ArgoCD rolls it: the pin bump is the deploy |
+| A GitHub **pre-release** (a risky release, or the owner asked to look first) | only the candidate pin | nothing yet: the release waits on the preview hostname |
 
-After a pin bump, confirm the rollout finished:
+A pre-release moves only `fan-api-candidate` (backend) or `fan-web-candidate` (frontend). The other images of that release (workers, consumers, the other web bundles, the version label and `releaseVersion`) move when the release is promoted.
+
+### How a fan never sees a failed request
+
+A stable Pod is replaced by a rolling update: `minReadySeconds: 45`, `maxUnavailable: 0`, `maxSurge: 1`. The new Pod must be Ready for 45 seconds before the old Pod is stopped, because the NEG readiness gate does not wait for the load balancer in this cluster and a new endpoint needs about 19 seconds to pass its health check. The old Pod then keeps serving through `preStop` and a connection-draining policy (design D9). The same settings apply to the console web apps and APIs.
+
+### Look at a held release (read-only; an agent can run all of it)
 
 ```bash
 CTX=gke_liverty-music-prod_asia-northeast2_autopilot-cluster-osaka
-kubectl --context=$CTX -n frontend rollout status deploy/fan-web-app
-kubectl --context=$CTX -n backend rollout status deploy/fan-api
+# Which tag does each pin hold? A pre-release shows the candidate ahead of stable.
+yq '.images[] | select(.name == "fan-api-candidate" or (.name | test("/api$"))) | .name + " " + .newTag' k8s/namespaces/backend/overlays/prod/kustomization.yaml
+yq '.images[] | select(.name == "fan-web-candidate" or (.name | test("/fan-web$"))) | .name + " " + .newTag' k8s/namespaces/frontend/overlays/prod/kustomization.yaml
+kubectl --context=$CTX -n backend rollout status deploy/fan-api-candidate
+kubectl --context=$CTX -n frontend rollout status deploy/fan-web-candidate
+curl -fsS -X POST -H 'content-type: application/json' -H 'connect-protocol-version: 1' \
+  -d '{"limit":1}' https://api.preview.liverty-music.app/liverty_music.rpc.artist.v1.ArtistService/ListTop
+# The frontend smoke spec against the candidate web app (run in liverty-music/frontend):
+#   SMOKE_BASE_URL=https://preview.liverty-music.app npx playwright test --project=smoke
 ```
 
-To measure a release for failed requests, use the release probe (`k8s/tools/release-probe/pod.yaml`; its header has the usage). Any response of 500 or above on a fans' hostname during a rollout is a defect to report.
+The candidate uses the production database and the production sign-in, so whatever the owner does on the preview hostname is real. Sign in with the owner's own account. The candidate API holds only two database connections (the shared database has 25 and most are in use) and takes no Stripe webhook or Zitadel action call (its `app` label differs from `fan-api`).
+
+### Promote or abort (the owner decides)
+
+Both are runs of `bump-prod-pin.yml` started by a person (`workflow_dispatch`; a bot is refused). Choose the component and `mode`; `tag` and `sha` are ignored because they are read from the pins.
+
+```bash
+# Promote: copy the candidate tag to the stable pin and the other images of the release.
+gh workflow run bump-prod-pin.yml -R liverty-music/cloud-provisioning -f component=backend -f mode=promote
+# Abort: put the candidate back on the stable tag. Fans were never on the held release.
+gh workflow run bump-prod-pin.yml -R liverty-music/cloud-provisioning -f component=backend -f mode=abort
+```
+
+Promotion is an ordinary rolling update of the stable Deployment, so it is as gap-free as a release. An abort needs no rollout of stable. A release or pre-release cut while another is held replaces the candidate pin, so promote or abort a held release before cutting the next one. Re-running or redelivering a release of the tag that stable already has changes nothing and leaves a held candidate alone.
+
+A promote or abort shares the `bump-prod-pin` concurrency group with the release dispatches (a pre-release is a dispatch like a release). When a third run queues, GitHub cancels the superseded *pending* run, which can be the promote or abort itself or an automated release dispatch that was waiting. After a promote or abort, look at the run list of the workflow and run again any run that shows as cancelled.
+
+The candidate lane's own telemetry (`app_version` in OpenTelemetry and PostHog) and the preview web app's `releaseVersion` show the stable version until the release is promoted: the version label and the web ConfigMap move only with stable.
+
+**Backend migrations are not held.** Database migrations apply when the backend change merges to `main` (`backend-migrations` tracks `main`), before any pre-release. A held backend release must stay compatible with the stable API on the same schema.
+
+### Measure a release for failed requests
+
+`k8s/tools/release-probe/pod.yaml` sends a request about every 0.1 seconds from inside the cluster to a fans' hostname and to a control host, and prints every response of 500 or above (its header has the usage). Any response of 500 or above on a fans' hostname during a rollout is a defect to report.
 
 ## Manual recovery: `workflow_dispatch` fallback
 

@@ -117,6 +117,12 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 				displayName: 'Sales Phase Discovery',
 				appLabel: 'sales-phase-discovery',
 			},
+			// venue-coordinates-refresh logs ERROR when a run fails (a listing,
+			// expiry or map catalog read failed); the next day's run retries.
+			{
+				displayName: 'Venue Coordinates Refresh',
+				appLabel: 'venue-coordinates-refresh',
+			},
 			// series-image-consumer logs ERROR only for genuine system failures (GCS/DB
 			// write, libvips-internal); invalid/unsafe uploads are user error and
 			// log WARN, so this alert stays incident-only. Queue backlog for its

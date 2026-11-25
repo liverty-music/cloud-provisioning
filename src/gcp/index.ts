@@ -1084,14 +1084,17 @@ export class Gcp {
 			// a budget acts only after billing data lands hours later. Places
 			// is not eligible for Cloud Billing spend caps. Values sit a little
 			// above observed use (Text Search peaked at 588/day, 2026-05-30 to
-			// 2026-10-20); methods the backend never calls get 0.
+			// 2026-10-20); methods the backend never calls get 0. Get Place
+			// covers the venue-coordinates-refresh job (at most 1,000 Place
+			// Details Essentials calls a run; its first run reads about 900
+			// Venues, later runs about 45 a day) plus the consoles' place picks.
 			const placesDailyCaps: [
 				name: string,
 				quotaId: string,
 				value: string,
 			][] = [
 				['search-text', 'SearchTextRequestPerDayPerProject', '1000'],
-				['get-place', 'GetPlaceRequestPerDayPerProject', '100'],
+				['get-place', 'GetPlaceRequestPerDayPerProject', '1200'],
 				[
 					'autocomplete',
 					'AutocompletePlacesRequestPerDayPerProject',

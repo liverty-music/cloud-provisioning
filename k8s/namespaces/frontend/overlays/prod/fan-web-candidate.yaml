@@ -43,9 +43,11 @@ spec:
       terminationGracePeriodSeconds: 120
       containers:
       - name: caddy
-        # The same image reference as the stable Deployment after the base's own
-        # rewrite, so the overlay's `fan-web` pin moves both.
-        image: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web:latest
+        # Its own image pin (images: `fan-web-candidate` in the overlay's
+        # kustomization.yaml), apart from the stable `fan-web` pin: a GitHub
+        # pre-release moves only this one, a release moves both, and promoting
+        # copies this one to stable (bump-prod-pin.yml).
+        image: fan-web-candidate
         imagePullPolicy: Always
         ports:
         - containerPort: 80

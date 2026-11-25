@@ -12,6 +12,15 @@ name: Bump Prod Pin
 # `kustomize build`, then pushes straight to `main` as `github-actions[bot]`.
 # ArgoCD's existing auto-sync rolls it out. No PR.
 #
+# Two pins per previewed workload (OpenSpec change add-prod-preview-release,
+# D1): the stable pin (what fans get: `backend/api`, `fan-web`) and the
+# candidate pin (`fan-api-candidate`, `fan-web-candidate`), served on the preview
+# hostname. A Release bumps both, so the pin bump is still the deploy. A GitHub
+# pre-release bumps only the candidate pin, so the owner can look at it on the
+# preview hostname first. `mode: promote` copies the candidate pin to stable
+# (and the other images of the release); `mode: abort` puts the candidate back
+# on the stable tag.
+#
 # See docs/runbooks/prod-image-tag-pinning.md for the operator-facing flow,
 # the manual-recovery path, and the `git revert` rollback.
 
@@ -35,13 +44,23 @@ on:
         options:
           - backend
           - frontend
+      mode:
+        description: 'release: pin stable and candidate. prerelease: pin only the candidate. promote: copy the candidate pin to stable (tag and sha are read from the candidate pin). abort: put the candidate back on the stable tag.'
+        required: false
+        type: choice
+        default: release
+        options:
+          - release
+          - prerelease
+          - promote
+          - abort
       tag:
-        description: 'Release tag to pin (vX.Y.Z)'
-        required: true
+        description: 'Release tag to pin (vX.Y.Z); required for release and prerelease, ignored for promote and abort'
+        required: false
         type: string
       sha:
-        description: 'Source commit SHA (recorded in the inline newTag trailer)'
-        required: true
+        description: 'Source commit SHA (recorded in the inline newTag trailer); required for release and prerelease, ignored for promote and abort'
+        required: false
         type: string
       allow_rollback:
         description: 'Allow pinning BELOW the current prod pin (intentional rollback). Default false — the no-downgrade guard fails closed.'
@@ -63,6 +82,14 @@ on:
 # backend + one frontend release = running-1 + pending-1, never a third. If a
 # third independently-releasing writer is ever added to this group, add
 # `queue: max` (up to 100 FIFO pending) then.
+#
+# A promote or abort (always started by a person) is a third writer in this
+# group, a rare one: it starts minutes after a release, not within seconds of
+# it. A pre-release is a repository_dispatch like a release. When a third run
+# queues, the cancelled one is the superseded PENDING run, whichever it is: the
+# promote or abort itself, or an automated release dispatch that was waiting.
+# After a promote or abort, look at the run list of this workflow; run again any
+# run that shows as cancelled.
 concurrency:
   group: bump-prod-pin
   cancel-in-progress: false
@@ -115,9 +142,26 @@ jobs:
           # repository_dispatch path carries no such field, so this coalesces to
           # 'false' there and the no-downgrade guard always fails closed.
           ALLOW_ROLLBACK: ${{ github.event.client_payload.allow_rollback || inputs.allow_rollback || 'false' }}
+          # A GitHub pre-release dispatches with `prerelease: true`; the manual
+          # trigger chooses a mode.
+          PRERELEASE: ${{ github.event.client_payload.prerelease || 'false' }}
+          MODE_IN: ${{ inputs.mode }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          echo "Trigger: ${{ github.event_name }}; component=${COMPONENT} tag=${TAG} sha=${SHA}"
+          if [ "${EVENT}" = repository_dispatch ]; then
+            if [ "${PRERELEASE}" = true ]; then MODE=prerelease; else MODE=release; fi
+          else
+            MODE="${MODE_IN:-release}"
+          fi
+          echo "Trigger: ${EVENT}; mode=${MODE} component=${COMPONENT} tag=${TAG} sha=${SHA}"
+          case "${MODE}" in
+            release|prerelease|promote|abort) ;;
+            *)
+              echo "::error::Invalid mode '${MODE}'."
+              exit 1
+              ;;
+          esac
 
           case "${COMPONENT}" in
             backend|frontend) ;;
@@ -127,18 +171,19 @@ jobs:
               ;;
           esac
 
-          if ! echo "${TAG}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Invalid tag '${TAG}' — must match ^v[0-9]+\.[0-9]+\.[0-9]+$ (e.g. v1.4.0)."
-            exit 1
-          fi
+          # promote and abort read the tag and sha from the overlay (the
+          # "Resolve the pins" step); the other two carry them.
+          if [ "${MODE}" = release ] || [ "${MODE}" = prerelease ]; then
+            if ! echo "${TAG}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::Invalid tag '${TAG}' — must match ^v[0-9]+\.[0-9]+\.[0-9]+$ (e.g. v1.4.0)."
+              exit 1
+            fi
 
-          if [ -z "${SHA}" ]; then
-            echo "::error::Empty sha — the source commit SHA is required for the inline newTag trailer."
-            exit 1
+            if [ -z "${SHA}" ]; then
+              echo "::error::Empty sha — the source commit SHA is required for the inline newTag trailer."
+              exit 1
+            fi
           fi
-
-          # Bare semver (no leading `v`) for the app.kubernetes.io/version label.
-          BARE="${TAG#v}"
 
           # Per-component routing. Each component maps to the set of image entries
           # it pins within its overlay. `backend` and `frontend` each pin all of
@@ -152,7 +197,7 @@ jobs:
               # successor to `server`/`fan-api`; it pins both the fan-api and
               # admin-console-api workloads. `consumer` backs event-consumer.
               # sales-phase-discovery / sales-reminders / official-site-refresh /
-              # artist-refresh are
+              # artist-refresh / venue-coordinates-refresh are
               # the CronJob images;
               # series-image-consumer is the KEDA-scaled long-running consumer
               # (backend/series-image-consumer).
@@ -162,8 +207,10 @@ jobs:
               # only workload holding the identity-provider keys. The backend
               # release retag matrix already publishes all of them under the release
               # tag, so a single dispatch pins them in lock-step.
-              IMAGES="api consumer identity worker concert-discovery artist-image-sync official-site-refresh artist-refresh sales-phase-discovery sales-reminders series-image-consumer"
-              BUMP_LABEL=true ;;
+              IMAGES="api consumer identity worker concert-discovery artist-image-sync official-site-refresh artist-refresh sales-phase-discovery sales-reminders venue-coordinates-refresh series-image-consumer"
+              BUMP_LABEL=true
+              # The candidate lane's own pin, and the stable image it runs.
+              CAND=fan-api-candidate; PRIMARY=api ;;
             frontend)
               # One frontend release ships four web bundles from the same tag —
               # fan-web (consumer), admin-console-web, organizer-console-web,
@@ -175,14 +222,17 @@ jobs:
               # version label + fan-web-configmap track the consumer (fan-web).
               OVERLAY=frontend; AR_REPO=frontend
               IMAGES="fan-web admin-console-web organizer-console-web reception-web"
-              BUMP_LABEL=true ;;
+              BUMP_LABEL=true
+              CAND=fan-web-candidate; PRIMARY=fan-web ;;
           esac
 
           {
             echo "component=${COMPONENT}"
             echo "tag=${TAG}"
             echo "sha=${SHA}"
-            echo "bare=${BARE}"
+            echo "mode=${MODE}"
+            echo "cand=${CAND}"
+            echo "primary=${PRIMARY}"
             echo "overlay=${OVERLAY}"
             echo "ar_repo=${AR_REPO}"
             echo "images=${IMAGES}"
@@ -214,6 +264,73 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
           token: ${{ steps.bot.outputs.token }}
+
+      # ----------------------------------------------------------------------
+      # Resolve the pins: which tag goes where. A Release pins stable and the
+      # candidate; a pre-release pins only the candidate (`scope=candidate`);
+      # promote copies the candidate's tag to stable and the candidate's source
+      # sha with it; abort puts the candidate back on the stable tag. The tag
+      # and sha of promote and abort are read from the overlay, so a person
+      # promotes "what is on the preview hostname" without retyping a tag.
+      # ----------------------------------------------------------------------
+      - name: Resolve the pins
+        id: resolve
+        env:
+          MODE: ${{ steps.payload.outputs.mode }}
+          OVERLAY: ${{ steps.payload.outputs.overlay }}
+          IMAGES: ${{ steps.payload.outputs.images }}
+          CAND: ${{ steps.payload.outputs.cand }}
+          PRIMARY: ${{ steps.payload.outputs.primary }}
+          TAG: ${{ steps.payload.outputs.tag }}
+          SHA: ${{ steps.payload.outputs.sha }}
+        run: |
+          set -euo pipefail
+          file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
+          # The entry of the candidate (named exactly) or of a stable image
+          # (named by the `/<image>` suffix of its dev-AR name).
+          cand_entry='.images[] | select(.name == strenv(CAND))'
+          stable_entry='.images[] | select(.name | test("/" + strenv(PRIMARY) + "$"))'
+
+          case "${MODE}" in
+            promote)
+              TAG="$(CAND="${CAND}" yq "(${cand_entry}).newTag" "$file")"
+              SHA="$(CAND="${CAND}" yq "(${cand_entry}).newTag | line_comment" "$file")"
+              SHA="${SHA#commit }"
+              ;;
+            abort)
+              TAG="$(PRIMARY="${PRIMARY}" yq "(${stable_entry}).newTag" "$file")"
+              SHA="$(PRIMARY="${PRIMARY}" yq "(${stable_entry}).newTag | line_comment" "$file")"
+              SHA="${SHA#commit }"
+              ;;
+          esac
+
+          if ! echo "${TAG}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::No usable tag '${TAG}' for mode ${MODE}."
+            exit 1
+          fi
+          if [ -z "${SHA}" ]; then
+            echo "::error::No source sha for mode ${MODE}: the pin has no '# commit <sha>' trailer."
+            exit 1
+          fi
+
+          case "${MODE}" in
+            release|promote)
+              SCOPE=both; STABLE_IMAGES="${IMAGES}"; PROV_IMAGES="${IMAGES}"; BUMP_LABEL=true ;;
+            *)
+              SCOPE=candidate; STABLE_IMAGES=""; PROV_IMAGES="${PRIMARY}"; BUMP_LABEL=false ;;
+          esac
+
+          {
+            echo "tag=${TAG}"
+            echo "sha=${SHA}"
+            # Bare semver (no leading `v`) for the app.kubernetes.io/version label.
+            echo "bare=${TAG#v}"
+            echo "scope=${SCOPE}"
+            echo "stable_images=${STABLE_IMAGES}"
+            echo "prov_images=${PROV_IMAGES}"
+            echo "bump_label=${BUMP_LABEL}"
+          } >> "$GITHUB_OUTPUT"
+          echo "mode=${MODE} scope=${SCOPE} tag=${TAG} sha=${SHA}"
 
       # ----------------------------------------------------------------------
       # 1.2a Provenance gate — fail-closed BEFORE any edit. The prod-AR image
@@ -254,8 +371,8 @@ jobs:
         id: provenance
         env:
           AR_REPO: ${{ steps.payload.outputs.ar_repo }}
-          IMAGES: ${{ steps.payload.outputs.images }}
-          TAG: ${{ steps.payload.outputs.tag }}
+          IMAGES: ${{ steps.resolve.outputs.prov_images }}
+          TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
           base="${REGION}-docker.pkg.dev/${PROD_PROJECT_ID}/${AR_REPO}"
@@ -285,11 +402,14 @@ jobs:
       # An intentional rollback must set `allow_rollback=true` on the manual
       # workflow_dispatch; the automated repository_dispatch path never sets it.
       # ----------------------------------------------------------------------
+      # Only a change of the stable pin can roll fans backward; the candidate
+      # pin (pre-release, abort) reaches only the preview hostname.
       - name: No-downgrade guard
+        if: steps.resolve.outputs.scope == 'both'
         env:
           OVERLAY: ${{ steps.payload.outputs.overlay }}
-          IMAGES: ${{ steps.payload.outputs.images }}
-          TAG: ${{ steps.payload.outputs.tag }}
+          IMAGES: ${{ steps.resolve.outputs.stable_images }}
+          TAG: ${{ steps.resolve.outputs.tag }}
           ALLOW_ROLLBACK: ${{ steps.payload.outputs.allow_rollback }}
         run: |
           set -euo pipefail
@@ -332,15 +452,30 @@ jobs:
         id: idem
         env:
           OVERLAY: ${{ steps.payload.outputs.overlay }}
-          IMAGES: ${{ steps.payload.outputs.images }}
-          TAG: ${{ steps.payload.outputs.tag }}
+          IMAGES: ${{ steps.resolve.outputs.stable_images }}
+          CAND: ${{ steps.payload.outputs.cand }}
+          MODE: ${{ steps.payload.outputs.mode }}
+          TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
           file="k8s/namespaces/${OVERLAY}/overlays/prod/kustomization.yaml"
-          # Distinct newTag set across ONLY this component's image entries
-          # (matched by the `/<image>` name suffix), so a backend bump is
-          # idempotent against its own entries alone, not the whole overlay.
-          current="$(for img in ${IMAGES}; do IMG="$img" yq '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag' "$file"; done | sort -u)"
+          # Distinct newTag set across the entries whose value decides whether
+          # this run changes anything, matched by name:
+          # - release: the stable image entries only. A redelivered or re-run
+          #   release of a tag that stable already has must not reset a held
+          #   candidate (a candidate ahead of stable is a waiting pre-release);
+          # - promote: the stable entries and the candidate (already promoted
+          #   when both equal the tag);
+          # - prerelease and abort: the candidate only.
+          # Stable entries are matched by the `/<image>` name suffix, so a
+          # backend bump is idempotent against its own entries alone.
+          stable_tags() { for img in ${IMAGES}; do IMG="$img" yq '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag' "$file"; done; }
+          cand_tag() { CAND="${CAND}" yq '(.images[] | select(.name == strenv(CAND))).newTag' "$file"; }
+          case "${MODE}" in
+            release) current="$(stable_tags | sort -u)" ;;
+            promote) current="$({ stable_tags; cand_tag; } | sort -u)" ;;
+            *)       current="$(cand_tag)" ;;
+          esac
           if [ "${current}" = "${TAG}" ]; then
             echo "All target newTag values already equal ${TAG}; nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -356,11 +491,13 @@ jobs:
         if: steps.idem.outputs.skip != 'true'
         env:
           OVERLAY: ${{ steps.payload.outputs.overlay }}
-          IMAGES: ${{ steps.payload.outputs.images }}
-          TAG: ${{ steps.payload.outputs.tag }}
-          SHA: ${{ steps.payload.outputs.sha }}
-          BARE: ${{ steps.payload.outputs.bare }}
-          BUMP_LABEL: ${{ steps.payload.outputs.bump_label }}
+          IMAGES: ${{ steps.resolve.outputs.stable_images }}
+          CAND: ${{ steps.payload.outputs.cand }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          BARE: ${{ steps.resolve.outputs.bare }}
+          BUMP_LABEL: ${{ steps.resolve.outputs.bump_label }}
+          SCOPE: ${{ steps.resolve.outputs.scope }}
           COMPONENT: ${{ steps.payload.outputs.component }}
         run: |
           set -euo pipefail
@@ -372,6 +509,11 @@ jobs:
             IMG="$img" TAG="${TAG}" yq -i '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag = strenv(TAG)' "$file"
             IMG="$img" COMMENT="commit ${SHA}" yq -i '(.images[] | select(.name | test("/" + strenv(IMG) + "$"))).newTag line_comment = strenv(COMMENT)' "$file"
           done
+          # The candidate pin follows every run: a release and a promote move it
+          # together with stable, a pre-release moves only it, and an abort sets
+          # it back to the stable tag.
+          CAND="${CAND}" TAG="${TAG}" yq -i '(.images[] | select(.name == strenv(CAND))).newTag = strenv(TAG)' "$file"
+          CAND="${CAND}" COMMENT="commit ${SHA}" yq -i '(.images[] | select(.name == strenv(CAND))).newTag line_comment = strenv(COMMENT)' "$file"
           # Bump the app.kubernetes.io/version label in lock-step. Both backend
           # and frontend set BUMP_LABEL=true; the guard is retained so a future
           # label-agnostic component can opt out without reworking this step.
@@ -387,7 +529,7 @@ jobs:
           # (step above) has already passed, so a blocked bump never reaches here.
           # The configmap tracks the consumer (fan-web) release only; backend
           # bumps have no such file.
-          if [ "${COMPONENT}" = "frontend" ]; then
+          if [ "${COMPONENT}" = "frontend" ] && [ "${SCOPE}" = both ]; then
             configmap="k8s/namespaces/${OVERLAY}/overlays/prod/fan-web-configmap.yaml"
             # Tag format is v[0-9]+\.[0-9]+\.[0-9]+ — safe for sed substitution.
             sed -i "s/\"releaseVersion\": \"[^\"]*\"/\"releaseVersion\": \"${TAG}\"/" "${configmap}"
@@ -423,10 +565,12 @@ jobs:
         env:
           COMPONENT: ${{ steps.payload.outputs.component }}
           OVERLAY: ${{ steps.payload.outputs.overlay }}
-          TAG: ${{ steps.payload.outputs.tag }}
-          SHA: ${{ steps.payload.outputs.sha }}
-          BARE: ${{ steps.payload.outputs.bare }}
-          BUMP_LABEL: ${{ steps.payload.outputs.bump_label }}
+          MODE: ${{ steps.payload.outputs.mode }}
+          SCOPE: ${{ steps.resolve.outputs.scope }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          BARE: ${{ steps.resolve.outputs.bare }}
+          BUMP_LABEL: ${{ steps.resolve.outputs.bump_label }}
           BOT_SLUG: ${{ steps.bot.outputs.app-slug }}
         run: |
           set -euo pipefail
@@ -442,7 +586,7 @@ jobs:
           # including it unconditionally causes `fatal: pathspec` for non-frontend
           # bumps under `set -euo pipefail`.
           paths=("$file")
-          if [ "${COMPONENT}" = "frontend" ]; then
+          if [ "${COMPONENT}" = "frontend" ] && [ "${SCOPE}" = both ]; then
             paths+=("k8s/namespaces/${OVERLAY}/overlays/prod/fan-web-configmap.yaml")
           fi
 
@@ -456,8 +600,32 @@ jobs:
           git add "${paths[@]}"
           # Build the commit message in a file to avoid heredoc indentation
           # leaking YAML/shell indent into the body.
+          if [ "${SCOPE}" = candidate ]; then
+            {
+              if [ "${MODE}" = abort ]; then
+                printf 'feat(prod): put the %s candidate back on %s\n\n' "${COMPONENT}" "${TAG}"
+                printf 'The held %s release was aborted: the candidate pin returns to the\n' "${COMPONENT}"
+                printf 'stable tag. Fans were never on it.\n\n'
+              else
+                printf 'feat(prod): pin the %s candidate to %s\n\n' "${COMPONENT}" "${TAG}"
+                printf 'A %s pre-release (%s) moves only the candidate pin, which serves the\n' "${COMPONENT}" "${TAG}"
+                printf 'preview hostname. Fans keep the stable pin until the owner promotes it.\n\n'
+              fi
+              printf 'component: %s\n' "${COMPONENT}"
+              printf 'tag: %s\n' "${TAG}"
+              printf 'source sha: %s\n\n' "${SHA}"
+              printf 'Refs: %s\n' "${TRACKING_ISSUE}"
+            } > /tmp/bump-commit-msg.txt
+            git commit -F /tmp/bump-commit-msg.txt
+          else
           {
+            if [ "${MODE}" = promote ]; then
+              printf 'feat(prod): promote %s %s to stable\n\n' "${COMPONENT}" "${TAG}"
+              printf 'The owner promoted the candidate release: the stable pin and the\n'
+              printf 'other images of the release move to the candidate tag.\n\n'
+            else
             printf 'feat(prod): pin %s prod overlay to %s\n\n' "${COMPONENT}" "${TAG}"
+            fi
             printf 'Automated prod kustomize pin-bump: a %s Release (%s) retagged its\n' "${COMPONENT}" "${TAG}"
             printf 'dev-AR digest into prod AR, so this moves the prod overlay image pin\n'
             if [ "${BUMP_LABEL}" = "true" ]; then
@@ -477,6 +645,7 @@ jobs:
             printf 'Refs: %s\n' "${TRACKING_ISSUE}"
           } > /tmp/bump-commit-msg.txt
           git commit -F /tmp/bump-commit-msg.txt
+          fi
 
           # Fetch-rebase-retry: a concurrent bump touches a DIFFERENT overlay
           # file, so the rebase is conflict-free; the retry simply re-applies

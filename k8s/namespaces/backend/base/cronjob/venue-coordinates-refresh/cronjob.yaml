@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: venue-coordinates-refresh-app
+spec:
+  # 04:00 JST daily. Venue coordinates are a cache of Google Maps Places and
+  # may be kept 30 days: each run reads again those missing or older than 20
+  # days (at most 1,000) and removes those older than 30 days
+  # (OpenSpec change globalize-venues).
+  schedule: "0 19 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      # A failed run is not retried the same day: the Venues it could not
+      # refresh are listed again by the next day's run, and their coordinates
+      # stay until they are 30 days old.
+      backoffLimit: 0
+      template:
+        spec:
+          terminationGracePeriodSeconds: 120
+          serviceAccountName: backend-app
+          restartPolicy: Never
+          containers:
+          - name: venue-coordinates-refresh
+            image: venue-coordinates-refresh
+            imagePullPolicy: Always
+            # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+            env: []
+            envFrom:
+            - configMapRef:
+                name: venue-coordinates-refresh-job-config
+            - secretRef:
+                name: backend-secrets
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+                ephemeral-storage: 100Mi
+              limits:
+                cpu: 250m
+                memory: 256Mi
+                ephemeral-storage: 100Mi
