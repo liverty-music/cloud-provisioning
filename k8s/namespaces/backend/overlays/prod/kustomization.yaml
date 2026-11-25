@@ -488,7 +488,7 @@ images:
   # D1). A release bumps both pins; a GitHub pre-release bumps only this one.
   - name: fan-api-candidate
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
+    newTag: v1.144.1 # commit a185bafb641421eccf53c08cc7a1290f55f3d4db
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
