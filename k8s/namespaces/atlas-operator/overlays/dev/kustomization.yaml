@@ -37,7 +37,12 @@ patches:
                 cpu: 10m
                 memory: 64Mi
                 ephemeral-storage: 100Mi
+              # The manager runs the atlas CLI in its own container. Applying
+              # the area reference data (about 700 KB of SQL) while the schema
+              # migrations reconcile held it at 98m of 100m CPU and 126Mi of
+              # 128Mi, so its liveness probe timed out and it restarted before
+              # either AtlasMigration finished (2026-11-25).
               limits:
-                cpu: 100m
-                memory: 128Mi
+                cpu: 500m
+                memory: 512Mi
                 ephemeral-storage: 100Mi

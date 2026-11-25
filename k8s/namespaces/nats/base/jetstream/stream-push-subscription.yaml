@@ -1,0 +1,14 @@
+apiVersion: jetstream.nats.io/v1beta2
+kind: Stream
+metadata:
+  name: push-subscription
+spec:
+  name: PUSH_SUBSCRIPTION
+  subjects: ["PUSH_SUBSCRIPTION.*"]
+  storage: file
+  retention: limits
+  maxAge: 168h
+  duplicateWindow: 2m
+  discard: old
+  replicas: 1
+  preventDelete: true

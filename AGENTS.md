@@ -13,9 +13,9 @@ This repository carries no planning of its own. `openspec/config.yaml` declares 
 - **Run `openspec doctor` first** on a fresh machine and at the start of every cloud thread. If the store is not registered, register a `specification` checkout: the sibling clone when one exists (`openspec store register "$(git rev-parse --show-toplevel)/../specification" --id openspec-store`, the layout of a multi-repo Claude Project thread), otherwise clone the public repo first (`git clone --depth 1 https://github.com/liverty-music/specification.git /tmp/openspec-store`) and register that path. Keep that checkout on `main` and pull it before implementing: OpenSpec never pulls.
 - **Isolate local work with `claude --worktree <change>`** (`.claude/worktrees/<change>`, branch `worktree-<change>`). In `specification`, the main checkout is the shared store and stays on `main`; branch work there (plan PR, proto PR, archive) goes through its own worktrees (`specification` README "Branch work in this repository").
 - **Record progress in the store, never commit there.** `/opsx:apply` checks off `tasks.md` and updates `design.md` in the `specification` checkout's working tree on `main`, uncommitted. Several changes share that working tree, so never run `git stash`, `git reset --hard`, `git checkout -- .` / `git restore .` or `git clean` there, never `git add -A` / `git add .`, and never switch its branch.
-- **Every PR must cite its change**: fill the `OpenSpec-Change` (or `OpenSpec-Spec`) field and the store commit SHA in the PR template's OpenSpec Traceability section. One PR per repository.
+- **Every PR must cite its change**: fill the `OpenSpec-Change` (or `OpenSpec-Spec`) field and the store commit SHA in the PR template's OpenSpec Traceability section.
 - **Close-out happens in `specification`**, after every implementing PR has merged and the release is confirmed in production: `/opsx:verify`, then archive in a `<change>-archive` worktree of `specification`, staging only that change's paths (README "Lifecycle of a change", step 5). Do not archive from this repository.
-- **Cloud threads run no repository hooks**: run `make check` before committing; CI is the gate.
+- **Checks before a commit**: in a local session the commit hook runs `make lint` and `make test`; do not run them yourself just before committing. Cloud threads run no repository hooks: there, run `make check` before committing. CI is the gate.
 
 ## Cross-repo workflow (poly-repo)
 
@@ -30,10 +30,20 @@ General Pulumi practice comes from the `pulumi` plugin skills enabled in `.claud
 - **dev is stopped indefinitely** to save cost (`liverty-music:workloadEnabled: "false"` in `Pulumi.dev.yaml`): its cluster and workloads do not exist. Verify changes in prod with unit tests and read-only checks, and do not plan work that needs dev running.
 - **dev**: merging to `main` runs `pulumi up` via Pulumi Cloud Deployments. Agents may also run `pulumi up -s dev` locally after showing the preview and getting the user's approval; the next merge to `main` re-applies `main`, so a branch applied this way is temporary.
 - **prod**: agents run `pulumi preview` and read-only state commands only. The user triggers `pulumi up` from the Pulumi Cloud console (https://app.pulumi.com/pannpers/liverty-music/prod/deployments). Write out any `destroy`, `refresh`, `import` or `state` command for the user instead of running it.
+- **`fan-web` and `fan-api` releases go live on the pin bump.** Both are plain Deployments that roll with `minReadySeconds: 45`, `maxUnavailable: 0` and drain settings (no Rollout; OpenSpec change `add-prod-preview-release`, design D1). Each also has a candidate lane (`fan-web-candidate`, `fan-api-candidate`) with its own image pin, served on the preview hostname. A GitHub Release bumps both pins; a GitHub **pre-release** bumps only the candidate pin, so the owner can look at it on `https://preview.liverty-music.app` / `https://api.preview.liverty-music.app` before fans get it. Cut a pre-release only for a risky release or when the user asks. Promote (`bump-prod-pin.yml`, `mode: promote`) or abort (`mode: abort`) only when the user says so. See `docs/runbooks/prod-image-tag-pinning.md`, "Preview and promotion".
 - **Pull-request previews** run on Pulumi Cloud Deployments, triggered by the `paths` in `src/pulumi-cloud/deployment-settings.ts`. Do not add a GitHub Actions preview or up job (design D6 of `automate-dependency-updates`), and do not add dependency manifests to `paths`.
 
 ## Changing Pulumi code
 
+- **Persistent settings live in this program**, whether they belong to GCP, Cloudflare, GitHub, Zitadel or PostHog. This holds even when a plan says "by hand" or an MCP tool could make the change now.
+  - Before choosing a manual step, check three places:
+    - the providers, including the bridged ones in `sdks/` (for example `sdks/posthog/insight.ts`)
+    - the service's REST API
+    - the dynamic-resource precedents in `src/zitadel/dynamic/` and `src/posthog/dynamic/`
+  - A manual step is right only in three cases, and its runbook says which one applies:
+    - the service has no API (Data Studio reports)
+    - the API refuses API keys (PostHog `integration:write`)
+    - the action happens once (a backfill)
 - **Repository visibility** is set per repository in `src/github/components/organization.ts` (`REPOSITORY_VISIBILITY`). Before changing it, follow `docs/runbooks/repository-visibility.md`.
 - Introduce a `ComponentResource` only after working out which resources outside it will need to reference its children. Moving an existing resource under a parent changes its URN and needs `aliases`. `Gcp` in `src/gcp/index.ts` stays a plain class on purpose.
 - Resource names are kebab-case. Regions and zones come from `src/gcp/region.ts`.

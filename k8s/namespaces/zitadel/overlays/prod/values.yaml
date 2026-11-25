@@ -82,7 +82,7 @@ zitadel:
   # See ../dev/values.yaml + base/values.yaml for full rationale.
   initContainers:
   - name: cloud-sql-proxy
-    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2@sha256:c01857183fd88d7f4366500f8f89e79206d5dba596d1b4eada8974082c162000
     restartPolicy: Always
     args:
     - --psc
@@ -111,3 +111,13 @@ zitadel:
 login:
   # See the top-level `nodeSelector: null` above.
   nodeSelector: null
+  # The patched Login V2 image, which offers no way to set a password (OpenSpec
+  # change remove-password-setup-from-hosted-login). Built from
+  # zitadel-login/ by .github/workflows/zitadel-login.yml; the tag is
+  # <UPSTREAM_TAG>-lm.<first 12 chars of the zitadel-login/ git tree>, and
+  # `make lint-k8s` (scripts/check-zitadel-login-image.ts) fails unless it
+  # matches the checked-out zitadel-login/. Upgrade and rollback:
+  # docs/runbooks/zitadel-helm-chart.md.
+  image:
+    repository: asia-northeast2-docker.pkg.dev/liverty-music-prod/zitadel-login/zitadel-login
+    tag: v4.20.5-lm.aaa930fd7324

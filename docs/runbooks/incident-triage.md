@@ -74,7 +74,7 @@ To also stop dispatches at the source (e.g. a notification storm), remove
   (collapsed), which is there even when Claude produced nothing.
 - A **warning** at the top means the run did not succeed and names the stage: setup
   before Claude (checkout, GCP auth, GKE credentials, dependency install), Claude Code
-  failing to start, Claude not finishing (error or the `--max-turns 25` cap), or the job
+  failing to start, Claude not finishing (error or the `--max-turns 30` cap), or the job
   timing out. With a partial report it may be the early draft; otherwise the post says
   no report was produced.
 - **Report withheld** means the report contained the Claude OAuth token or a GCP access
@@ -229,7 +229,7 @@ Audit (2026-10-04, `.github/workflows/`):
 |---|---|---|---|---|
 | `bump-prod-pin.yml` | `repository_dispatch`, `workflow_dispatch` | ci-bot token (pushes `main`) | `workflow_dispatch`; re-run of a past run | a `workflow_dispatch` run (or a re-run of one) started by a bot fails at its first step; a re-run `repository_dispatch` replays its own tag — idempotent no-op or rejected by the no-downgrade guard |
 | `claude.yml` | `issue_comment`, `pull_request_review_comment`, `issues`, `pull_request_review` | Claude App token (cannot reach `main`: ruleset) | re-run only | repeats a request a human already made |
-| `claude-code-review.yml`, `ci.yml`, `lint.yml` | `pull_request` / `push` | none (read-only) | re-run only | — |
+| `claude-code-review.yml`, `ci.yml` | `pull_request` / `push` | none (read-only) | re-run only | — |
 | `incident-triage.yml` | `workflow_dispatch` | `issues: write` in `report` only | dispatch (intended) | kill switch; read-only GCP identity |
 
 `bump-prod-pin.yml` is the only privileged `workflow_dispatch` path and it refuses bots,

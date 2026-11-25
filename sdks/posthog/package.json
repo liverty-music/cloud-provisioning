@@ -1,0 +1,26 @@
+{
+    "name": "@pulumi/posthog",
+    "version": "1.0.25",
+    "description": "A Pulumi provider dynamically bridged from posthog.",
+    "repository": "https://github.com/posthog/terraform-provider-posthog",
+    "main": "bin/index.js",
+    "scripts": {
+        "build": "tsc",
+        "postinstall": "node ./scripts/postinstall.js"
+    },
+    "dependencies": {
+        "@pulumi/pulumi": "^3.238.0",
+        "@types/node": "^20",
+        "typescript": "^4.7.0"
+    },
+    "pulumi": {
+        "resource": true,
+        "name": "terraform-provider",
+        "version": "1.5.0",
+        "parameterization": {
+            "name": "posthog",
+            "version": "1.0.25",
+            "value": "eyJyZW1vdGUiOnsidXJsIjoicmVnaXN0cnkub3BlbnRvZnUub3JnL3Bvc3Rob2cvcG9zdGhvZyIsInZlcnNpb24iOiIxLjAuMjUifX0="
+        }
+    }
+}

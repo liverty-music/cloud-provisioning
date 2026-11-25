@@ -26,6 +26,8 @@ spec:
           - name: sales-reminders
             image: sales-reminders
             imagePullPolicy: Always
+            # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+            env: []
             envFrom:
             - configMapRef:
                 name: sales-reminders-job-config

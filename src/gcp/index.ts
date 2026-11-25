@@ -4,6 +4,7 @@ import * as random from '@pulumi/random'
 import * as tls from '@pulumi/tls'
 import type { CloudflareConfig } from '../cloudflare/config.js'
 import type { Environment } from '../config.js'
+import { AnalyticsWarehouseComponent } from './components/analytics-warehouse.js'
 import { BillingExportComponent } from './components/billing-export.js'
 import { KmsComponent } from './components/kms.js'
 import { KubernetesComponent } from './components/kubernetes.js'
@@ -88,6 +89,12 @@ export interface GcpArgs {
 	 *  as `WEBHOOK_PASSKEY_EVENT_SIGNING_KEY`, exactly like the login-event key.
 	 *  Present only when the Zitadel workload is provisioned. */
 	passkeyEventSigningKey?: pulumi.Output<string>
+	/** HMAC signing key Zitadel generated for the password-setup-refusal
+	 *  Actions v2 Target (PAYLOAD_TYPE_JSON). Stored in Secret Manager as
+	 *  `webhook-password-setup-refusal-signing-key` and synced into the fan-api
+	 *  secrets as `WEBHOOK_PASSWORD_SETUP_REFUSAL_SIGNING_KEY`, like the
+	 *  passkey-event key. Present only when the Zitadel workload is provisioned. */
+	passwordSetupRefusalSigningKey?: pulumi.Output<string>
 	cloudflareConfig: CloudflareConfig
 	postmarkConfig: PostmarkDnsConfig
 	/** Zitadel machine key JWT profile JSON. Stored in Secret Manager for backend use. */
@@ -97,13 +104,13 @@ export interface GcpArgs {
 	 *  instance consumes. */
 	zitadelEnabled?: boolean
 	/** JWT profile JSON for the organizer-provisioner machine user. Stored in
-	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`) for the
-	 *  backend to provision Organizer tenant orgs at runtime. */
+	 *  Secret Manager (`zitadel-machine-key-for-organizer-provisioner`) with
+	 *  ESO-only access and mounted only on the identity service. */
 	zitadelOrganizerProvisionerKey?: pulumi.Output<string>
 	/** JWT profile JSON for the fan-passkey-recovery machine user (ORG_OWNER on
 	 *  the product org). Stored in Secret Manager
 	 *  (`zitadel-machine-key-for-fan-passkey-recovery`) with ESO-only access and
-	 *  mounted only on `event-consumer`. */
+	 *  mounted only on the identity service. */
 	zitadelFanPasskeyRecoveryKey?: pulumi.Output<string>
 	/** Gate for the workload tier (GKE / Cloud SQL / monitoring / GSM
 	 *  Zitadel bootstrap secrets). When false (dev shutdown mode), these
@@ -146,6 +153,9 @@ export class Gcp {
 	public readonly githubActionsSAEmail: pulumi.Output<string>
 	public readonly incidentTriageSAEmail: pulumi.Output<string>
 	public readonly githubWorkloadIdentityProvider: pulumi.Output<string>
+	/** Prod only: the BigQuery side of the analytics warehouse, which the
+	 *  PostHog export in `src/index.ts` writes into. */
+	public readonly analyticsWarehouse?: AnalyticsWarehouseComponent
 	/** Workload-tier resources — all defined together when
 	 *  `workloadEnabled=true`, or the whole group is undefined when the
 	 *  workload tier is destroyed (dev shutdown mode). Grouping the
@@ -201,6 +211,7 @@ export class Gcp {
 			postmarkServerToken,
 			loginEventSigningKey,
 			passkeyEventSigningKey,
+			passwordSetupRefusalSigningKey,
 			cloudflareConfig,
 			postmarkConfig,
 			zitadelMachineKey,
@@ -313,6 +324,29 @@ export class Gcp {
 			{ parent: this.project },
 		)
 
+		// The patched Zitadel Login V2 image (remove-password-setup-from-hosted-login
+		// D3/D4), built from `zitadel-login/` by its GitHub Actions workflow.
+		// Prod only: dev's workload is disabled and its overlay keeps the
+		// upstream image. Only the GKE node service account pulls it.
+		const zitadelLoginArtifactRegistry =
+			environment === 'prod'
+				? new gcp.artifactregistry.Repository(
+						'zitadel-login-repository',
+						{
+							repositoryId: 'zitadel-login',
+							location: this.region,
+							format: 'DOCKER',
+							project: this.project.projectId,
+							description:
+								'Docker repository for the patched Zitadel Login V2 image',
+							dockerConfig,
+							cleanupPolicies,
+							cleanupPolicyDryRun,
+						},
+						{ parent: this.project },
+					)
+				: undefined
+
 		// The `series-image-consumer` image ships from the backend build into the
 		// SHARED `backend` Artifact Registry repo (as `backend/series-image-consumer`),
 		// exactly like the other backend binaries (consumer, concert-discovery,
@@ -413,10 +447,23 @@ export class Gcp {
 		// docs/runbooks/enable-billing-export.md. See OpenSpec change
 		// `prod-cost-optimization` §3 for the motivation.
 		if (environment === 'prod') {
-			new BillingExportComponent('gcp-billing-export', {
-				project: this.project,
-				environment,
-			})
+			const billingExport = new BillingExportComponent(
+				'gcp-billing-export',
+				{
+					project: this.project,
+					environment,
+				},
+			)
+
+			// 4.7. Analytics warehouse — PostHog events and the backend's
+			// analytics log lines next to billing_export, in the same location
+			// so one query joins them. Depends on the billing export for the
+			// BigQuery API it enables. OpenSpec change `build-analytics-warehouse`.
+			this.analyticsWarehouse = new AnalyticsWarehouseComponent(
+				'analytics-warehouse',
+				{ project: this.project },
+				{ dependsOn: [billingExport] },
+			)
 		}
 
 		const osakaConfig = NetworkConfig.Osaka
@@ -484,6 +531,7 @@ export class Gcp {
 					backendArtifactRegistry,
 					frontendArtifactRegistry,
 				],
+				zitadelLoginArtifactRegistry,
 				secrets: [
 					...(lastFmApiKey
 						? [
@@ -635,6 +683,32 @@ export class Gcp {
 								},
 							]
 						: []),
+					// HMAC signing key for the password-setup-refusal Actions v2
+					// Target (PAYLOAD_TYPE_JSON), verified by the fan-api
+					// `/refuse-password-setup` webhook handler. Same lifecycle as
+					// the passkey-event key above.
+					...(passwordSetupRefusalSigningKey
+						? [
+								{
+									name: 'webhook-password-setup-refusal-signing-key',
+									value: pulumi.secret(
+										passwordSetupRefusalSigningKey,
+									),
+								},
+							]
+						: []),
+				],
+				esoOnlySecrets: [
+					// The identity-provider keys. ESO-only: no workload Service
+					// Account may read them from Secret Manager. ESO syncs them into
+					// `identity-secrets`, mounted only on the identity service. See
+					// OpenSpec change `identity-service`, design D5.
+					//   - backend-app (ORG_USER_MANAGER on the product org):
+					//     verification emails and fan identity removal
+					//   - organizer-provisioner (IAM_ORG_MANAGER): Organizers'
+					//     Organizations
+					//   - fan-passkey-recovery (ORG_OWNER on the product org):
+					//     passkey registration links
 					...(zitadelMachineKey
 						? [
 								{
@@ -643,11 +717,6 @@ export class Gcp {
 								},
 							]
 						: []),
-					// JWT key for the organizer-provisioner machine user — the
-					// backend reads it to provision Organizer tenant orgs at
-					// runtime. Backend-tier readable (same path as backend-app),
-					// but a distinct GSM secret + Zitadel identity so its blast
-					// radius stays isolated. See OpenSpec change `organizer-tenancy`.
 					...(zitadelOrganizerProvisionerKey
 						? [
 								{
@@ -658,14 +727,6 @@ export class Gcp {
 								},
 							]
 						: []),
-				],
-				esoOnlySecrets: [
-					// JWT key for the fan-passkey-recovery machine user (ORG_OWNER on
-					// the product org). ESO-only: no workload Service Account may read
-					// it from Secret Manager. ESO syncs it into the dedicated
-					// `event-consumer-secrets` Secret, mounted only on event-consumer
-					// and never on the internet-facing fan-api. See OpenSpec change
-					// `fan-passkey-recovery-and-management`, design D2.
 					...(zitadelFanPasskeyRecoveryKey
 						? [
 								{
@@ -1023,14 +1084,17 @@ export class Gcp {
 			// a budget acts only after billing data lands hours later. Places
 			// is not eligible for Cloud Billing spend caps. Values sit a little
 			// above observed use (Text Search peaked at 588/day, 2026-05-30 to
-			// 2026-10-20); methods the backend never calls get 0.
+			// 2026-10-20); methods the backend never calls get 0. Get Place
+			// covers the venue-coordinates-refresh job (at most 1,000 Place
+			// Details Essentials calls a run; its first run reads about 900
+			// Venues, later runs about 45 a day) plus the consoles' place picks.
 			const placesDailyCaps: [
 				name: string,
 				quotaId: string,
 				value: string,
 			][] = [
 				['search-text', 'SearchTextRequestPerDayPerProject', '1000'],
-				['get-place', 'GetPlaceRequestPerDayPerProject', '100'],
+				['get-place', 'GetPlaceRequestPerDayPerProject', '1200'],
 				[
 					'autocomplete',
 					'AutocompletePlacesRequestPerDayPerProject',

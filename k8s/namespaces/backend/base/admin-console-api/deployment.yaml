@@ -6,9 +6,17 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 2
+  # Keeps the old Pod until the new one has been Ready for this long. The NEG
+  # readiness gate does not wait for the load balancer in this cluster, so
+  # without this the old Pod stops before the new endpoint passes the load
+  # balancer's health check (about 19 s) and requests get 503 (OpenSpec change
+  # add-prod-preview-release, D1 and D9; measured on fan-web). 45 s covers it.
+  minReadySeconds: 45
   strategy:
+    type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       # `app: admin-console-api` (with selector) is applied by this sub-base's
@@ -19,30 +27,13 @@ spec:
       # can never route to them, and `admin-console-api-svc` (selector
       # `app: admin-console-api`) routes ONLY to these Pods.
     spec:
-      terminationGracePeriodSeconds: 75
+      # Drain, per the GKE guidance (D9): terminationGracePeriod >= preStop +
+      # shutdown time, and preStop >= drainingTimeoutSec (backend-policy.yaml,
+      # 60 s) + drain latency (GKE estimates one minute). The app gets SIGTERM
+      # only after the preStop, and SHUTDOWN_TIMEOUT (fan-api-config, 60 s) must
+      # fit after it: 190 = 120 + 60 + 10 buffer.
+      terminationGracePeriodSeconds: 190
       serviceAccountName: admin-console-api
-      volumes:
-      # backend-app key from the DEDICATED admin-console-api-secrets — DI builds
-      # the fan identity remover (admin UserService Delete) from it. Admin is the
-      # only API workload that holds it; the shared backend-secrets does not
-      # carry it.
-      - name: zitadel-machine-key
-        secret:
-          secretName: admin-console-api-secrets
-          items:
-          - key: zitadel-machine-key-for-backend-app.json
-            path: zitadel-machine-key-for-backend-app.json
-      # Powerful organizer-provisioner key from the DEDICATED admin-console-api-secrets
-      # (not co-mingled into the shared backend-secrets). Presence of this mount +
-      # ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH is what activates the
-      # provisioner in this process. Renamed from admin-console-secrets to match the
-      # workload (unify-workload-naming cutover).
-      - name: zitadel-organizer-provisioner-key
-        secret:
-          secretName: admin-console-api-secrets
-          items:
-          - key: zitadel-machine-key-for-organizer-provisioner.json
-            path: zitadel-machine-key-for-organizer-provisioner.json
       containers:
       - name: server
         image: server
@@ -58,19 +49,17 @@ spec:
           name: http-admin
         env:
         # The API deployment this process runs as (backend API_WORKLOAD). admin
-        # is the only workload that provisions organizer tenants, and the backend
-        # requires the provisioner credential below for it.
+        # is the only workload that provisions Organizers' Organizations, through
+        # the identity service below.
         - name: API_WORKLOAD
           value: admin
-        # The backend-app credential, required on the admin workload only. Set
-        # here because the shared fan-api-config no longer carries it.
-        - name: ZITADEL_MACHINE_KEY_FOR_BACKEND_APP_PATH
-          value: /secrets/zitadel/zitadel-machine-key-for-backend-app.json
-        # The organizer-provisioner credential; the backend refuses it on any
-        # workload other than admin.
-        - name: ZITADEL_MACHINE_KEY_FOR_ORGANIZER_PROVISIONER_PATH
-          value: /secrets/zitadel-organizer-provisioner/zitadel-machine-key-for-organizer-provisioner.json
-        # Env-specific Zitadel project the provisioner grants tenant orgs into.
+        # Identity service listener for this workload: fan identity removal and
+        # Organization provisioning go through it. The admin console API holds
+        # no identity-provider key (OpenSpec change identity-service).
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity:9101
+        # Env-specific Zitadel organizer-console project (the organizer server's
+        # role-claim check).
         # Value is a Pulumi output (organizerConsoleProjectId); set per overlay.
         - name: ORGANIZER_CONSOLE_PROJECT_ID
           value: REPLACE_ME_IN_OVERLAY
@@ -81,6 +70,16 @@ spec:
         # for the same key. Set per overlay to the admin-console-api IAM user.
         - name: DATABASE_USER
           value: REPLACE_ME_IN_OVERLAY
+        # A pool of two: fan-api-config (envFrom) carries fan-api's share of
+        # the connection budget, and `env` takes precedence over it (OpenSpec
+        # change introduce-durable-workflows, design "Connections"). The DBOS
+        # client it starts workflows through holds one connection for its
+        # notification listener (publish-events-through-outbox), so a pool of
+        # one leaves the server none.
+        - name: DATABASE_MAX_OPEN_CONNS
+          value: "2"
+        - name: DATABASE_MAX_IDLE_CONNS
+          value: "1"
         # Stripe secret key for the admin OrderService.Refund. Optional so the
         # Pod still starts (with the Noop payment ports, Refund → Unavailable)
         # in an environment where the GSM secret is not provisioned.
@@ -102,17 +101,12 @@ spec:
         # start outside local without them.
         - secretRef:
             name: api-stripe-secrets
-        volumeMounts:
-        - name: zitadel-machine-key
-          mountPath: /secrets/zitadel
-          readOnly: true
-        - name: zitadel-organizer-provisioner-key
-          mountPath: /secrets/zitadel-organizer-provisioner
-          readOnly: true
         lifecycle:
+          # Keeps serving while the load balancer drops this Pod's endpoint:
+          # 60 s drain + 60 s estimated drain latency.
           preStop:
-            exec:
-              command: ["sleep", "5"]
+            sleep:
+              seconds: 120
         readinessProbe:
           grpc:
             port: 8090

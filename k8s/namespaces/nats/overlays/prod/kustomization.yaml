@@ -25,7 +25,7 @@ resources:
 helmCharts:
 - name: nats
   repo: https://nats-io.github.io/k8s/helm/charts/
-  version: 2.15.1
+  version: 2.15.3
   releaseName: nats
   namespace: nats
   valuesFile: values.yaml
@@ -33,7 +33,7 @@ helmCharts:
 # installed at the cut-over and are left unmanaged (no includeCRDs), as before.
 - name: nack
   repo: https://nats-io.github.io/k8s/helm/charts/
-  version: 0.35.0
+  version: 0.36.0
   releaseName: nack
   namespace: nats
   valuesFile: ../../base/nack-values.yaml

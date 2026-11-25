@@ -117,6 +117,12 @@ export class MonitoringComponent extends pulumi.ComponentResource {
 				displayName: 'Sales Phase Discovery',
 				appLabel: 'sales-phase-discovery',
 			},
+			// venue-coordinates-refresh logs ERROR when a run fails (a listing,
+			// expiry or map catalog read failed); the next day's run retries.
+			{
+				displayName: 'Venue Coordinates Refresh',
+				appLabel: 'venue-coordinates-refresh',
+			},
 			// series-image-consumer logs ERROR only for genuine system failures (GCS/DB
 			// write, libvips-internal); invalid/unsafe uploads are user error and
 			// log WARN, so this alert stays incident-only. Queue backlog for its
@@ -534,6 +540,152 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 			{ parent: this },
 		)
 		this.alertPolicies.push(this.goroutineLeakAlertPolicy)
+
+		// Workflow Needs Admin Alert (introduce-durable-workflows, design
+		// "Failure classification").
+		//
+		// The workflow worker's `report-workflows-needing-admin` schedule counts,
+		// every 5 minutes, the workflows that ended with an error nobody planned
+		// for, were interrupted too often, or passed their deadline (statuses
+		// ERROR, MAX_RECOVERY_ATTEMPTS_EXCEEDED, CANCELLED), into the OTel gauge
+		// `workflow.needs_admin`. Like the goroutine-leak gauge it reaches Cloud
+		// Monitoring through the otel-collector's `googlecloud` exporter, as
+		// `workload.googleapis.com/workflow.needs_admin` on `generic_node`.
+		//
+		// The gauge stays above 0 until an admin resumes, forks or deletes the
+		// workflow, so the incident is open exactly while one needs an admin and
+		// closes when the gauge returns to 0. The worker logs each such workflow
+		// once with its id ("workflow needs an admin"); the alert names only the
+		// workflow name and status, so the runbook starts from that log.
+		this.alertPolicies.push(
+			new gcp.monitoring.AlertPolicy(
+				'alert-workflow-needs-admin',
+				{
+					displayName: 'Workflow Needs Admin',
+					project: projectId,
+					combiner: 'OR',
+					conditions: [
+						{
+							displayName:
+								'A workflow ended in a state an admin must resolve',
+							conditionThreshold: {
+								// resource.type is required on threshold filters; the
+								// googlecloud exporter lands OTLP gauges on generic_node
+								// (see the goroutine-leak alert above).
+								filter: 'metric.type="workload.googleapis.com/workflow.needs_admin" AND resource.type="generic_node"',
+								aggregations: [
+									{
+										// The schedule updates the gauge every 5 minutes.
+										alignmentPeriod: '300s',
+										perSeriesAligner: 'ALIGN_MAX',
+										crossSeriesReducer: 'REDUCE_MAX',
+										groupByFields: [
+											'metric.label.workflow_name',
+											'metric.label.status',
+										],
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 0,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+					],
+					alertStrategy: {
+						// notificationRateLimit is rejected on threshold policies.
+						// autoClose only applies when the gauge stops reporting
+						// (the worker is down); a gauge back at 0 closes it at once.
+						autoClose: '3600s', // 1 hour
+					},
+					notificationChannels,
+					documentation: {
+						content: [
+							'## Workflow Needs Admin Alert',
+							'',
+							'A durable workflow ended in a state that no retry will leave: it failed with an error nobody planned for (`ERROR`), its worker stopped during it more than 100 times (`MAX_RECOVERY_ATTEMPTS_EXCEEDED`), or it passed its deadline (`CANCELLED`). It stays reported until an admin resumes, forks or deletes it.',
+							'',
+							'### Alert Labels',
+							'- `workflow_name`: the registered workflow',
+							'- `status`: ERROR, MAX_RECOVERY_ATTEMPTS_EXCEEDED or CANCELLED',
+							'',
+							'### Triage',
+							'Follow docs/runbooks/workflow-needs-admin.md: find the workflow ids in the "workflow needs an admin" log lines, read its steps with `/worker workflow steps <id>`, then `resume`, `fork -step N`, or handle it by hand and `delete`.',
+						].join('\n'),
+						mimeType: 'text/markdown',
+					},
+				},
+				{ parent: this },
+			),
+		)
+
+		// Undelivered announcement alert (OpenSpec change
+		// publish-events-through-outbox, requirement "An announcement that
+		// cannot be delivered is reported").
+		//
+		// Entity operations record their announcements in the backend's outbox
+		// table in the transaction of the change; the forwarder in
+		// workflow-worker delivers each row to NATS JetStream and deletes it.
+		// The same `report-workflows-needing-admin` schedule sets, every 5
+		// minutes, the OTel gauge `event_delivery.oldest_undelivered_age_seconds`
+		// (0 when the outbox is empty), which lands in Cloud Monitoring as
+		// `workload.googleapis.com/event_delivery.oldest_undelivered_age_seconds`
+		// on `generic_node`, like the gauge above. An announcement still in the
+		// outbox 10 minutes after it was recorded (a broker that cannot be
+		// reached, a row no stream captures) fires it; the worker logs that
+		// announcement once with its subject and record time
+		// ("announcement not delivered").
+		this.alertPolicies.push(
+			new gcp.monitoring.AlertPolicy(
+				'alert-announcement-undelivered',
+				{
+					displayName: 'Announcement Not Delivered',
+					project: projectId,
+					combiner: 'OR',
+					conditions: [
+						{
+							displayName:
+								'An announcement is still undelivered 10 minutes after it was recorded',
+							conditionThreshold: {
+								filter: 'metric.type="workload.googleapis.com/event_delivery.oldest_undelivered_age_seconds" AND resource.type="generic_node"',
+								aggregations: [
+									{
+										// The schedule updates the gauge every 5 minutes.
+										alignmentPeriod: '300s',
+										perSeriesAligner: 'ALIGN_MAX',
+										crossSeriesReducer: 'REDUCE_MAX',
+									},
+								],
+								comparison: 'COMPARISON_GT',
+								thresholdValue: 600,
+								duration: '0s',
+								trigger: { count: 1 },
+							},
+						},
+					],
+					alertStrategy: {
+						// A gauge back under the threshold closes it at once; autoClose
+						// applies when the worker stops reporting.
+						autoClose: '3600s', // 1 hour
+					},
+					notificationChannels,
+					documentation: {
+						content: [
+							'## Announcement Not Delivered Alert',
+							'',
+							'An announcement recorded in the backend outbox (`watermill_events_outbox`) is still undelivered 10 minutes after it was recorded. Every later announcement waits behind it, because the forwarder reads the outbox in insertion order. Nothing is lost: it is delivered once delivery works again.',
+							'',
+							'### Triage',
+							'1. Read the workflow-worker log line "announcement not delivered" for the subject and record time of the oldest row.',
+							'2. Check that NATS is up and that a stream captures that subject (`USER.*`, `ORDER.*`, ...).',
+							'3. A row that can never be published (a subject no stream captures, a message over the size limit) is fixed forward: declare the stream, or record the row and delete it.',
+						].join('\n'),
+						mimeType: 'text/markdown',
+					},
+				},
+				{ parent: this },
+			),
+		)
 
 		// ClusterSecretStore not-ready alert (CP#457 detection hardening).
 		//

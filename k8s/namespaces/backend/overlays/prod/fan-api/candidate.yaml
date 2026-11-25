@@ -1,0 +1,210 @@
+# fan-api candidate lane (OpenSpec change add-prod-preview-release, D1 candidate B).
+#
+# A second, always-warm instance of fan-api that serves the preview hostname
+# (https://api.preview.liverty-music.app) with the candidate release, apart from
+# the Pods fans use. Promotion would be a normal rolling update of the stable
+# Deployment, so a switch for fans never moves a Service selector or a route.
+#
+# It differs from the stable Pod template in four places only:
+# - the `app` label (`fan-api-candidate`), so fan-api-svc and above all
+#   fan-api-webhook-svc (selecting `app: fan-api`) never reach it: a release
+#   nobody has checked receives no Stripe webhook and no Zitadel action call;
+# - the image pin: its own (`fan-api-candidate`), so it can run a pre-release
+#   while stable keeps the current release;
+# - a pool of two database connections (the shared database allows 25 in all and
+#   the other Pods already use most of them; see the comment on the variable);
+# - the rolling update is spelled out (maxUnavailable 0, maxSurge 1).
+# Everything else (ServiceAccount, ConfigMap, Secrets, probes, drain) is the same.
+#
+# The settlement payout sweeper that used to run in every fan API process now
+# runs only as a schedule of the workflow worker (OpenSpec change
+# add-prod-preview-release, design D10), so this Pod carries no payout job. It
+# still uses the production database and Stripe keys like the stable Pod, so what
+# the owner does on the preview hostname is real.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fan-api-candidate
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  # Keeps the old Pod until the new one has been Ready for this long. The NEG
+  # readiness gate does not wait for the load balancer here: on every run the
+  # Pod events say "NEG is not attached to any Backend Service with health
+  # checking. Marking condition load-balancer-neg-ready to True" about 5 s after
+  # the Pod starts, the old Pod is stopped about 6 s later, and the new endpoint
+  # needs about 19 s after its attach to pass the load balancer's health check
+  # (5 s interval, 2 successes, plus propagation). Without this, requests got
+  # 503 for 5 to 10 s in 4 of 5 rolling updates (OpenSpec task 8.3, 2026-11-24).
+  # 45 s covers the 19 s with room to spare.
+  minReadySeconds: 45
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: fan-api-candidate
+  template:
+    metadata:
+      labels:
+        app: fan-api-candidate
+    spec:
+      # Drain, as in base/fan-api/deployment.yaml: 190 = 120 preStop + 60
+      # SHUTDOWN_TIMEOUT + 10 buffer.
+      terminationGracePeriodSeconds: 190
+      serviceAccountName: fan-api
+      volumes:
+      - name: zkp-verification-key
+        configMap:
+          name: fan-api-zkp-verification-key
+      containers:
+      - name: fan-api
+        # Its own image pin (images: `fan-api-candidate` in the overlay's
+        # kustomization.yaml), apart from the stable `backend/api` pin: a GitHub
+        # pre-release moves only this one, a release moves both, and promoting
+        # copies this one to stable (bump-prod-pin.yml, docs/runbooks/
+        # prod-image-tag-pinning.md).
+        image: fan-api-candidate
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: webhook
+        env:
+        - name: API_WORKLOAD
+          value: fan
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity:9102
+        # Overrides fan-api-config for this Pod only (an env entry wins over
+        # envFrom). Two, not one: DBOS (the durable workflow client) shares this
+        # pool and holds one connection for its LISTEN loop for good, so with a
+        # pool of one the readiness ping never gets a connection ("database ping
+        # failed: context deadline exceeded") and the Pod never becomes Ready.
+        # Measured on 2026-11-24: the database had 19 of its 25 connections in
+        # use (3 reserved for superusers), so a pool of three would leave little
+        # room for the Pod a rolling update adds.
+        - name: DATABASE_MAX_OPEN_CONNS
+          value: "2"
+        - name: DATABASE_MAX_IDLE_CONNS
+          value: "2"
+        envFrom:
+        - configMapRef:
+            name: fan-api-config
+        - secretRef:
+            name: fan-api-backend-secrets
+        - secretRef:
+            name: api-stripe-secrets
+        volumeMounts:
+        - name: zkp-verification-key
+          mountPath: /configs/zkp/zkp-verification-key.json
+          subPath: zkp-verification-key.json
+          readOnly: true
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 120
+        readinessProbe:
+          grpc:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          grpc:
+            port: 8080
+            service: liveness
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 36
+        livenessProbe:
+          grpc:
+            port: 8080
+            service: liveness
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 60Mi
+            ephemeral-storage: 100Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+            ephemeral-storage: 100Mi
+---
+# The candidate's own Service; the preview route (below) targets it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: fan-api-candidate-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: fan-api-candidate
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+    appProtocol: kubernetes.io/h2c # HTTP/2 Cleartext
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: fan-api-candidate-policy
+spec:
+  default:
+    timeoutSec: 60
+    connectionDraining:
+      drainingTimeoutSec: 60
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-api-candidate-svc
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: fan-api-candidate-policy
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: GRPC
+      grpcHealthCheck:
+        port: 8080
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-api-candidate-svc
+---
+# The preview address of the API (design D2). It routes the fan API's server
+# port only. fan-api-webhook-svc is never a backend here, so the Stripe webhook
+# and the internal Zitadel action endpoints (:9090) are not reachable on this
+# address (same rule as base/fan-api/httproute.yaml).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fan-api-preview-route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  hostnames:
+  - api.preview.liverty-music.app
+  rules:
+  - backendRefs:
+    # The candidate lane: one warm instance that a rolling update replaces
+    # without a gap (design D1).
+    - name: fan-api-candidate-svc
+      port: 80

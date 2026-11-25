@@ -99,6 +99,10 @@ make lint-k8s
    `service.version=vX.Y.Z` and without an explicit bump Cloud Trace
    service maps + alert annotations report the stale prior version.
 
+   **Prod does not run the upstream Login UI image.** The same pull
+   request bumps `zitadel-login/UPSTREAM_TAG` and the prod
+   `login.image.tag`; see "Patched Login V2 image (prod)" below.
+
    **Re-review `HTTPClient.DenyList`** in `overlays/prod/values.yaml`
    against the target image's `cmd/defaults.yaml`
    (`https://github.com/zitadel/zitadel/blob/vX.Y.Z/cmd/defaults.yaml`).
@@ -140,6 +144,95 @@ make lint-k8s
 6. **PR + dev verify before prod.** Same cutover order as the initial
    migration — see `tasks.md` of the original
    `migrate-zitadel-to-helm-chart` change for the procedure.
+
+## Patched Login V2 image (prod)
+
+Prod runs a patched Login V2 image that offers no way to set a password:
+sign-up offers only a passkey, the credential choice offers no Password,
+`/register/password`, `/password/set` and `/password/change` are not
+found, the password page offers no reset, and the server actions behind
+those pages refuse. Password sign-in for identities that already have a
+password (the end-to-end test fans) is untouched. Zitadel has no
+"passkeys only" login policy (`zitadel/zitadel#11682`), so the patch is
+the only place the choice can be removed. OpenSpec change
+`remove-password-setup-from-hosted-login`.
+
+```
+zitadel-login/
+├── UPSTREAM_TAG   ← the zitadel/zitadel tag the patch applies to (= base image.tag)
+├── build.sh       ← the whole build: checkout, git am, unit tests, build, docker build
+├── patches/       ← git format-patch output against zitadel/zitadel at UPSTREAM_TAG
+└── ROLLBACK       ← present only during an emergency rollback (see below)
+```
+
+- `.github/workflows/zitadel-login.yml` runs `build.sh`. On a pull
+  request touching `zitadel-login/` its `Zitadel Login` check builds and
+  tests without pushing (required check). On `main` its `Publish` job
+  pushes `asia-northeast2-docker.pkg.dev/liverty-music-prod/zitadel-login/zitadel-login:<UPSTREAM_TAG>-lm.<tree>`,
+  `<tree>` being the first 12 characters of
+  `git rev-parse HEAD:zitadel-login`, and skips the push when the tag
+  already exists (the repository's tags are immutable).
+- `overlays/prod/values.yaml` sets `login.image.repository` and
+  `login.image.tag` to that image; base and dev keep the upstream image.
+- `make lint-k8s` runs `scripts/check-zitadel-login-image.ts`, which
+  fails unless `UPSTREAM_TAG` equals `base/values.yaml` `image.tag` and
+  the prod override names exactly the tag built from the current
+  `zitadel-login/`. A missing override also fails, unless `ROLLBACK`
+  exists. Print the expected tag with:
+  ```bash
+  node -e "import('./scripts/check-zitadel-login-image.ts').then(m => console.log(m.expectedTag('$(cat zitadel-login/UPSTREAM_TAG)', m.workingTreeId('zitadel-login'))))"
+  ```
+
+### Upgrading Zitadel
+
+One pull request:
+
+1. Bump `zitadel-login/UPSTREAM_TAG`, `base/values.yaml` `image.tag`
+   (and the rest of the chart bump procedure above).
+2. Check the patch still applies:
+   ```bash
+   git clone --depth 1 --branch <tag> https://github.com/zitadel/zitadel.git /tmp/zitadel
+   git -C /tmp/zitadel am "$PWD"/zitadel-login/patches/*.patch
+   ```
+   If `git am` fails, resolve it in `/tmp/zitadel` (`git am --show-current-patch`,
+   fix, `git am --continue`), keep the patch's unit tests passing, and
+   regenerate the file with
+   `git -C /tmp/zitadel format-patch -1 --no-signature --zero-commit -o "$PWD"/zitadel-login/patches/`
+   (delete the old file first). Check whether the upstream source added
+   another page or server action that sets a password, and close it too.
+3. Set the prod `login.image.tag` to the tag printed above; `make lint-k8s`
+   passes once it matches.
+4. Open the pull request and wait for the `Zitadel Login` check (it
+   applies the patch, runs the unit tests and builds the image). Merge.
+5. The `main` run pushes the image. ArgoCD may roll the Login V2
+   Deployment a few minutes before the push lands; the new pod waits in
+   `ImagePullBackOff` while the old pod keeps serving (one replica,
+   `maxUnavailable` 0). Confirm `Synced Healthy` and that
+   `zitadel-api-login` runs the new tag.
+
+A change to a patch or `build.sh` alone also changes the tag: update the
+prod `login.image.tag` in the same pull request.
+
+### Emergency rollback to the upstream image
+
+**This re-opens password setup on the hosted login for every
+organization.** Do it only to recover from a broken login, and restore
+the patched image as soon as it is fixed.
+
+1. In one pull request, delete the `login.image` block from
+   `overlays/prod/values.yaml` and add `zitadel-login/ROLLBACK` with one
+   line stating why (incident, issue link). Without `ROLLBACK` the
+   lint check fails on the missing override.
+2. Merge; ArgoCD rolls Login V2 back to `ghcr.io/zitadel/zitadel-login`
+   at `base/values.yaml`'s tag. The API image is unaffected.
+3. To restore, in one pull request re-add the `login.image` override and
+   delete `ROLLBACK`; leaving `ROLLBACK` beside an override fails the
+   check. Deleting `ROLLBACK` returns the tree, and so the tag, to the
+   one already pushed, so `Publish` skips the push.
+
+Rolling back an *upgrade* to the previous patched image is a plain revert
+of that upgrade's pull request: it reverts the tag pin, the patch and the
+prod tag together, and that image already exists.
 
 ## Known chart quirks
 

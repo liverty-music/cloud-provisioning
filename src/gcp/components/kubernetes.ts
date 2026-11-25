@@ -46,6 +46,12 @@ export interface KubernetesComponentArgs {
 	artifactRegistries: gcp.artifactregistry.Repository[]
 
 	/**
+	 * The Artifact Registry repository of the patched Zitadel Login V2 image.
+	 * Only the GKE node service account is granted pull access to it.
+	 */
+	zitadelLoginArtifactRegistry?: gcp.artifactregistry.Repository
+
+	/**
 	 * Runtime secrets to provision in GCP Secret Manager and grant access to the backend-app SA.
 	 * Each entry creates a secret, a version (value from Pulumi config), and an IAM accessor binding.
 	 */
@@ -109,6 +115,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 			// downstream change at re-introduction time.
 			etcdCmekKeyName,
 			artifactRegistries,
+			zitadelLoginArtifactRegistry,
 			secrets = [],
 			esoOnlySecrets = [],
 		} = args
@@ -116,8 +123,9 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 		const apiService = new ApiService(project, environment)
 		// API enablement on a GCP project is free at the enable step (per-call
 		// pricing kicks in only when the API is invoked). `places.googleapis.com`
-		// is currently used by the dev venue-enrichment feature; prod does not
-		// call it but enabling the API costs nothing. Per
+		// serves venue search and place details in the organizer console, venue
+		// enrichment, and the daily venue-coordinates-refresh job; its per-day
+		// caps are `placesDailyCaps` in `src/gcp/index.ts`. Per
 		// `refactor-unify-env-dispatch`, no env-gated enablement.
 		const apisToEnable: GoogleApis[] = [
 			'container.googleapis.com',
@@ -158,6 +166,15 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				`${registryNames[index]}-gke-node`,
 				gkeNodeSa.email,
 				registry,
+				region,
+				this,
+			)
+		}
+		if (zitadelLoginArtifactRegistry) {
+			iamSvc.bindArtifactRegistryReader(
+				'zitadel-login-gke-node',
+				gkeNodeSa.email,
+				zitadelLoginArtifactRegistry,
 				region,
 				this,
 			)
@@ -497,46 +514,30 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 				},
 				{ parent: this },
 			)
-			// Isolate the Zitadel organizer-provisioner key to the dedicated
-			// admin-console-api SA: this key grants IAM_ORG_MANAGER (instance-wide
-			// org create + cross-org grants), so only the backend admin workload —
-			// not the shared backend-app tier — may read it. All other secrets stay
-			// readable by backend-app.
-			const isProvisionerKey =
-				secret.name === 'zitadel-machine-key-for-organizer-provisioner'
-			const appAccessorSa = isProvisionerKey
-				? adminConsoleApiSa
-				: backendAppSa
-			const appAccessorSuffix = isProvisionerKey
-				? 'admin-console-api-accessor'
-				: 'backend-app-accessor'
 			new gcp.secretmanager.SecretIamMember(
-				`${secret.name}-${appAccessorSuffix}`,
+				`${secret.name}-backend-app-accessor`,
 				{
 					secretId: secretResource.secretId,
 					project: project.projectId,
 					role: Roles.SecretManager.SecretAccessor,
-					member: pulumi.interpolate`serviceAccount:${appAccessorSa.email}`,
+					member: pulumi.interpolate`serviceAccount:${backendAppSa.email}`,
 				},
 				{ parent: this },
 			)
 			// fan-api per-secret binding — the backend-app successor reads the
-			// same secrets as backend-app (everything except the isolated
-			// provisioner key). Added ADDITIVELY so both identities can read
-			// during the migration window; the backend-app binding is removed at
-			// delete-old.
-			if (!isProvisionerKey) {
-				new gcp.secretmanager.SecretIamMember(
-					`${secret.name}-fan-api-accessor`,
-					{
-						secretId: secretResource.secretId,
-						project: project.projectId,
-						role: Roles.SecretManager.SecretAccessor,
-						member: pulumi.interpolate`serviceAccount:${fanApiSa.email}`,
-					},
-					{ parent: this },
-				)
-			}
+			// same secrets as backend-app. Added ADDITIVELY so both identities can
+			// read during the migration window; the backend-app binding is
+			// removed at delete-old.
+			new gcp.secretmanager.SecretIamMember(
+				`${secret.name}-fan-api-accessor`,
+				{
+					secretId: secretResource.secretId,
+					project: project.projectId,
+					role: Roles.SecretManager.SecretAccessor,
+					member: pulumi.interpolate`serviceAccount:${fanApiSa.email}`,
+				},
+				{ parent: this },
+			)
 			// ESO per-secret binding — avoids project-level secretAccessor
 			new gcp.secretmanager.SecretIamMember(
 				`${secret.name}-eso-accessor`,
@@ -552,7 +553,7 @@ export class KubernetesComponent extends pulumi.ComponentResource {
 
 		// 3b. GCP Secret Manager secrets with ESO-only access
 		// These secrets are consumed only via ExternalSecret (e.g., by ArgoCD, or the
-		// fan-passkey-recovery key by event-consumer).
+		// identity-provider keys by the identity service).
 		// Only the ESO SA receives SecretAccessor — no backend-app SA binding.
 		for (const secret of esoOnlySecrets) {
 			const secretResource = new gcp.secretmanager.Secret(

@@ -10,6 +10,44 @@ export interface FrontendComponentArgs {
 	provider: zitadel.Provider
 }
 
+/**
+ * The sign-in and sign-out addresses the fan application accepts.
+ *
+ * Ternary spread (per `refactor-unify-env-dispatch`): localhost URIs are only
+ * meaningful when env === 'dev', and the preview address only exists in prod
+ * (OpenSpec change `add-prod-preview-release`, D4: a release waiting for
+ * promotion is served at `preview.<domain>`, and the owner signs in there with
+ * a real passkey). Other envs receive the public domain only.
+ * `/auth/passkeys-callback` is the passkey-management sign-in (a second OIDC
+ * request with `max_age=300` on the same client; OpenSpec change
+ * `fan-passkey-recovery-and-management`, design D3).
+ */
+export function fanSignInUris(env: Environment): {
+	redirectUris: string[]
+	postLogoutRedirectUris: string[]
+} {
+	const domain = baseDomainMap[env]
+	const hosts = [domain, ...(env === 'prod' ? [`preview.${domain}`] : [])]
+	return {
+		redirectUris: [
+			...hosts.flatMap((host) => [
+				`https://${host}/auth/callback`,
+				`https://${host}/auth/passkeys-callback`,
+			]),
+			...(env === 'dev'
+				? [
+						'http://localhost:9000/auth/callback',
+						'http://localhost:9000/auth/passkeys-callback',
+					]
+				: []),
+		],
+		postLogoutRedirectUris: [
+			...hosts.map((host) => `https://${host}/`),
+			...(env === 'dev' ? ['http://localhost:9000/'] : []),
+		],
+	}
+}
+
 export class FrontendComponent extends pulumi.ComponentResource {
 	public readonly application: zitadel.ApplicationOidc
 	public readonly loginPolicy: zitadel.LoginPolicy
@@ -26,27 +64,7 @@ export class FrontendComponent extends pulumi.ComponentResource {
 		const resourceOptions = { provider, parent: this }
 
 		const domain = baseDomainMap[env]
-
-		// Ternary spread (per `refactor-unify-env-dispatch`): localhost URIs
-		// are only meaningful when env === 'dev'. Other envs receive the
-		// public domain only.
-		// `/auth/passkeys-callback` is the passkey-management sign-in (a second
-		// OIDC request with `max_age=300` on the same client; OpenSpec change
-		// `fan-passkey-recovery-and-management`, design D3).
-		const redirectUris = [
-			`https://${domain}/auth/callback`,
-			`https://${domain}/auth/passkeys-callback`,
-			...(env === 'dev'
-				? [
-						'http://localhost:9000/auth/callback',
-						'http://localhost:9000/auth/passkeys-callback',
-					]
-				: []),
-		]
-		const postLogoutRedirectUris = [
-			`https://${domain}/`,
-			...(env === 'dev' ? ['http://localhost:9000/'] : []),
-		]
+		const { redirectUris, postLogoutRedirectUris } = fanSignInUris(env)
 
 		// 1. Define zitadel.ApplicationOidc resource
 		this.application = new zitadel.ApplicationOidc(

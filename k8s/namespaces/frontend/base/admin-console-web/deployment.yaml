@@ -11,10 +11,25 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
+  # Keeps the old Pod until the new one has been Ready for this long. The NEG
+  # readiness gate does not wait for the load balancer in this cluster, so
+  # without this the old Pod stops before the new endpoint passes the load
+  # balancer's health check (about 19 s) and requests get 503 (OpenSpec change
+  # add-prod-preview-release, D1 and D9; measured on fan-web). 45 s covers it.
+  minReadySeconds: 45
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       # Labels handled by kustomize labels transformer
     spec:
+      # Drain, per the GKE guidance (D9): preStop >= drainingTimeoutSec (30 s,
+      # GCPBackendPolicy) + drain latency (GKE estimates one minute);
+      # terminationGracePeriod >= preStop + shutdown time. 120 = 90 + 30.
+      terminationGracePeriodSeconds: 120
       containers:
       - name: caddy
         image: admin-console-web
@@ -47,6 +62,11 @@ spec:
             cpu: 200m
             memory: 128Mi
             ephemeral-storage: 100Mi
+        lifecycle:
+          # Keeps serving while the load balancer drops this Pod's endpoint.
+          preStop:
+            sleep:
+              seconds: 90
         volumeMounts:
         - name: runtime-config
           mountPath: /srv/config.json

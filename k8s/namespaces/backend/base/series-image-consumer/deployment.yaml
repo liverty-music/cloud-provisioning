@@ -38,6 +38,8 @@ spec:
         ports:
         - containerPort: 8081
           name: health
+        # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+        env: []
         envFrom:
         - configMapRef:
             name: series-image-consumer-config

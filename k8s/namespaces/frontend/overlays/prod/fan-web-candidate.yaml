@@ -1,0 +1,157 @@
+# fan-web candidate lane (OpenSpec change add-prod-preview-release, D1 candidate B).
+#
+# A second, always-warm instance of fan-web that serves the preview hostname
+# (https://preview.liverty-music.app) with the candidate release, apart from the
+# Pods fans use. Promotion is a normal rolling update of the stable Deployment,
+# so a switch for fans never moves a Service selector or a route.
+#
+# It differs from the stable Pod template in three places only:
+# - the `app` label (`fan-web-candidate`), so fan-web-svc never reaches it;
+# - its own Service and policies (below);
+# - the rolling update is spelled out (maxUnavailable 0, maxSurge 1) with
+#   minReadySeconds: the NEG readiness gate does not wait for the load balancer
+#   (measured in task 8.3), so the old Pod stays until the new one has been Ready
+#   long enough to pass the load balancer's health check.
+# Its image follows the shared `fan-web` pin of the overlay until task 8.6 gives
+# it a pin of its own; after an abort it keeps the aborted image until the pin is
+# put back (runbook, "Abort").
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fan-web-candidate
+  annotations:
+    # Trigger a rolling restart when fan-web-runtime-config changes (the file is
+    # mounted with subPath, which kubelet does not live-update).
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  minReadySeconds: 45
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: fan-web-candidate
+  template:
+    metadata:
+      labels:
+        app: fan-web-candidate
+    spec:
+      # Drain, as in base/fan-web/deployment.yaml: 120 = 90 preStop + 30.
+      terminationGracePeriodSeconds: 120
+      containers:
+      - name: caddy
+        # Its own image pin (images: `fan-web-candidate` in the overlay's
+        # kustomization.yaml), apart from the stable `fan-web` pin: a GitHub
+        # pre-release moves only this one, a release moves both, and promoting
+        # copies this one to stable (bump-prod-pin.yml).
+        image: fan-web-candidate
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: http
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 52Mi
+            ephemeral-storage: 100Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+            ephemeral-storage: 100Mi
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 90
+        volumeMounts:
+        - name: runtime-config
+          mountPath: /srv/config.json
+          subPath: config.json
+          readOnly: true
+      volumes:
+      - name: runtime-config
+        configMap:
+          name: fan-web-runtime-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fan-web-candidate-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: fan-web-candidate
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: fan-web-candidate-policy
+spec:
+  default:
+    connectionDraining:
+      drainingTimeoutSec: 30
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-web-candidate-svc
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: fan-web-candidate-policy
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 80
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: fan-web-candidate-svc
+---
+# The preview address (design D2). It serves the candidate lane, which follows
+# the shared pin: the production release, except between a pin bump and the
+# revert of an aborted one.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fan-web-preview-route
+spec:
+  parentRefs:
+  - name: external-gateway
+    namespace: gateway
+  hostnames:
+  - preview.liverty-music.app
+  rules:
+  - backendRefs:
+    - name: fan-web-candidate-svc
+      port: 80

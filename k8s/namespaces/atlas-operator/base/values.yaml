@@ -8,7 +8,9 @@ prewarmDevDB: false
 rbac:
   clusterWideSecretAccess: false
 
-# Only the backend-migration AtlasMigration lives here. Rendered as the
+# The backend's AtlasMigrations live here: backend-migration (the schema
+# migrations) and backend-reference-data (the area and time zone seed, applied
+# after them), both synced by the backend-migrations Application. Rendered as the
 # manager's --namespace arg, which the Deployment patch in kustomization.yaml
 # must repeat because it replaces the args list.
 watchNamespaces:
@@ -16,8 +18,8 @@ watchNamespaces:
 
 resources:
   limits:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 500m
+    memory: 512Mi
     ephemeral-storage: 100Mi
   requests:
     cpu: 50m

@@ -10,6 +10,9 @@ import {
 	GitHubRepositoryComponent,
 	RepositoryName,
 } from './github/index.js'
+import { ErrorTracking } from './posthog/components/error-tracking.js'
+import { ProductAnalytics } from './posthog/components/product-analytics.js'
+import { WarehouseExport } from './posthog/components/warehouse-export.js'
 import { DeploymentSettingsComponent } from './pulumi-cloud/index.js'
 import {
 	StripePaymentMethodDomain,
@@ -64,6 +67,37 @@ const stripeSecretKey = config.getSecret('stripeSecretKey')
 // "sk_test_…" --secret`. When unset, the secret is simply not created and the
 // E2E job stays skipped.
 const stripeTestSecretKey = config.getSecret('stripeTestSecretKey')
+// PostHog personal API key the frontend's image build uses to upload source
+// maps to Error Tracking (OpenSpec `capture-client-errors`, design D7), scoped
+// to the prod project (190464) with the "Source map upload" preset
+// (`error_tracking:write`, `organization:read`). A personal key is a workaround
+// until PostHog's project secret API keys accept that scope (see the runbook's
+// exit condition). Exposed as the repo-level Actions secret
+// POSTHOG_SOURCEMAP_API_KEY on the frontend repo; repo-level and managed in the
+// prod stack only, like STRIPE_TEST_SECRET_KEY, because the key belongs to the
+// prod PostHog project while the image build runs in the `dev` environment.
+// Sourced via `pulumi env set liverty-music/prod
+// pulumiConfig.posthogSourcemapApiKey --file - --secret --string`. When unset,
+// the secret is not created and the build uploads nothing. See
+// docs/runbooks/frontend-error-tracking.md.
+const posthogSourcemapApiKey = config.getSecret('posthogSourcemapApiKey')
+// PostHog personal API key this program manages the prod PostHog project's
+// error-tracking alerts, settings, insights and BigQuery exports with
+// (`hog_function:write`, `project:write`, `insight:write`,
+// `integration:read`, `batch_export:write`, limited to project 190464). Separate from
+// posthogSourcemapApiKey, which a CI build holds and which must not be able to
+// change alerts. Personal for the same reason: PostHog's project secret API
+// keys accept neither scope yet. Sourced via `pulumi env set liverty-music/prod
+// pulumiConfig.posthogManagementApiKey --file - --secret --string`. When
+// unset, no PostHog resource is managed.
+const posthogManagementApiKey = config.getSecret('posthogManagementApiKey')
+// PostHog personal API key for the organization-scoped managed reverse proxy
+// record, the one resource a project-scoped key cannot reach: not limited to a
+// project, `organization:write` only. Sourced via `pulumi env set
+// liverty-music/prod pulumiConfig.posthogOrganizationApiKey --file - --secret
+// --string`. When unset, no proxy is managed. See
+// docs/runbooks/posthog-project-settings.md.
+const posthogOrganizationApiKey = config.getSecret('posthogOrganizationApiKey')
 // Restricted Stripe key used ONLY to register the webhook endpoint below.
 // Stripe recommends restricted keys over secret keys; this one should carry
 // `Webhook Endpoints: write` and nothing else, so a compromised Pulumi run
@@ -127,11 +161,15 @@ const stripeWebhookEndpoint = stripeWebhookAdminKey
 				apiKey: stripeWebhookAdminKey,
 				url: stripeWebhookUrl,
 				description:
-					'Liverty Music — completed charges, transfer, payout, refund and dispute events',
+					'Liverty Music — completed card authentications and charges, transfer, payout, refund and dispute events',
 				enabledEvents: [
 					// A completed charge (checkout capture or lottery win) fulfils
 					// and announces the paid Order (first-come-ticket-sales D6).
 					'payment_intent.succeeded',
+					// A lottery card authorization the fan authenticated becomes
+					// their entry, or is released, even when the browser never
+					// calls Confirm (enter-lottery-at-confirm).
+					'payment_intent.amount_capturable_updated',
 					'charge.refunded',
 					'charge.dispute.created',
 					'charge.dispute.closed',
@@ -344,6 +382,20 @@ const gcp = new Gcp({
 			}
 			return key
 		}),
+	// HMAC signing key Zitadel generated for the password-setup-refusal Target
+	// (PAYLOAD_TYPE_JSON), plumbed to fan-api as GSM secret
+	// `webhook-password-setup-refusal-signing-key` like the keys above.
+	passwordSetupRefusalSigningKey:
+		zitadel?.actionsV2.passwordSetupRefusalTarget.signingKey.apply(
+			(key) => {
+				if (!key) {
+					throw new Error(
+						'password-setup-refusal Target signingKey missing — expected for PAYLOAD_TYPE_JSON',
+					)
+				}
+				return key
+			},
+		),
 	workloadEnabled,
 	postgresAvailabilityType,
 })
@@ -414,6 +466,8 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.BACKEND,
 	environment: env,
+	// Release workflow admitted to GCP from tags (workload-identity.ts).
+	protectReleaseTags: true,
 	variables: sharedVariables,
 	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
@@ -435,9 +489,17 @@ new GitHubRepositoryComponent({
 	githubConfig,
 	repositoryName: RepositoryName.FRONTEND,
 	environment: env,
+	// Release workflow admitted to GCP from tags (workload-identity.ts).
+	protectReleaseTags: true,
 	variables: sharedVariables,
 	secrets: ciBotSecrets,
 	requiredStatusCheckContexts: ['CI Success'],
+	// Repo-level source-map upload key for `push-image.yaml` (see
+	// `posthogSourcemapApiKey` above). Absent until the ESC value is set.
+	repositorySecrets:
+		env === 'prod' && posthogSourcemapApiKey
+			? { POSTHOG_SOURCEMAP_API_KEY: posthogSourcemapApiKey }
+			: undefined,
 })
 
 // Specification Repository
@@ -472,7 +534,10 @@ new GitHubRepositoryComponent({
 	// flip it in the GitHub UI and Pulumi does not revert it.
 	operatorOwnedVariables:
 		env === 'prod' ? { INCIDENT_TRIAGE_ENABLED: 'false' } : undefined,
-	requiredStatusCheckContexts: ['CI Success'],
+	// `Zitadel Login` (zitadel-login.yml) builds the patched Login V2 image on
+	// every pull request that touches zitadel-login/ and is skipped otherwise,
+	// so a patch that no longer applies cannot merge.
+	requiredStatusCheckContexts: ['CI Success', 'Zitadel Login'],
 	requireUpToDateBranch: true,
 	// Express prod `main` protection as a RepositoryRuleset whose sole bypass
 	// actor is the org-owned ci-bot App, so the bump workflow (pushing as a
@@ -504,6 +569,43 @@ new GitHubRepositoryComponent({
 				}
 			: undefined,
 })
+
+// PostHog Error Tracking for the fan app (prod project only; OpenSpec
+// `capture-client-errors`). Manual settings it cannot hold are in
+// docs/runbooks/frontend-error-tracking.md.
+if (env === 'prod' && posthogManagementApiKey) {
+	new ErrorTracking('posthog-error-tracking', {
+		apiKey: posthogManagementApiKey,
+	})
+}
+
+// The fan app's PostHog project settings and its managed reverse proxy
+// (OpenSpec `expand-product-analytics`). Manual settings it cannot hold are in
+// docs/runbooks/posthog-project-settings.md.
+export const posthogProxyHost =
+	env === 'prod' && posthogManagementApiKey
+		? new ProductAnalytics('posthog-product-analytics', {
+				apiKey: posthogManagementApiKey,
+				organizationApiKey: posthogOrganizationApiKey,
+				publicDomain: 'liverty-music.app',
+				cloudflareConfig,
+			}).proxyHost
+		: undefined
+
+// The prod PostHog project's hourly BigQuery exports into the analytics
+// warehouse (OpenSpec `build-analytics-warehouse`). See
+// docs/runbooks/posthog-bigquery-export.md.
+if (env === 'prod' && posthogManagementApiKey && gcp.analyticsWarehouse) {
+	new WarehouseExport(
+		'posthog-warehouse-export',
+		{
+			apiKey: posthogManagementApiKey,
+			serviceAccountEmail: gcp.analyticsWarehouse.posthogExportSaEmail,
+			datasetId: gcp.analyticsWarehouse.posthogRaw.datasetId,
+		},
+		{ dependsOn: [gcp.analyticsWarehouse] },
+	)
+}
 
 // Export common resources
 export const folder = gcp.folder

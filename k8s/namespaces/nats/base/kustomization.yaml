@@ -13,7 +13,7 @@ resources:
 helmCharts:
 - name: nats
   repo: https://nats-io.github.io/k8s/helm/charts/
-  version: 2.15.1
+  version: 2.15.3
   releaseName: nats
   namespace: nats
   valuesFile: values.yaml
@@ -23,7 +23,7 @@ helmCharts:
 # controller-runtime backend for more reliable state enforcement.
 - name: nack
   repo: https://nats-io.github.io/k8s/helm/charts/
-  version: 0.35.0
+  version: 0.36.0
   releaseName: nack
   namespace: nats
   valuesFile: nack-values.yaml

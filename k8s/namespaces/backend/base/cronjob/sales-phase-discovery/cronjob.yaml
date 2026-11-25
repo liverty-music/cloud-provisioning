@@ -30,6 +30,8 @@ spec:
           - name: sales-phase-discovery
             image: sales-phase-discovery
             imagePullPolicy: Always
+            # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+            env: []
             envFrom:
             - configMapRef:
                 name: sales-phase-discovery-job-config

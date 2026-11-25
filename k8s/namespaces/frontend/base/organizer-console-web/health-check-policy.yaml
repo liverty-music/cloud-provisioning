@@ -1,0 +1,23 @@
+# Explicit health check for the web Service. GKE Gateway does not infer it
+# from the readiness probe, and with no policy it checks every 15 s; with a
+# policy and an interval of 5 s a new Pod joins the backend sooner. It matches
+# what the default check already did: HTTP GET / on the serving port.
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: policy
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 2
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 80
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: svc # Referenced via kustomizeconfig.yaml 'nameReference'

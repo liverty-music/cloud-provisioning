@@ -26,6 +26,8 @@ spec:
           - name: concert-discovery
             image: concert-discovery
             imagePullPolicy: Always
+            # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+            env: []
             envFrom:
             - configMapRef:
                 name: concert-discovery-job-config

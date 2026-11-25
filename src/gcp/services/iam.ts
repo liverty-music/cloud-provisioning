@@ -64,12 +64,23 @@ export const Roles = {
 		 *  a deleted Organizer's series images (deleting variants lists a key prefix). */
 		ObjectUser: 'roles/storage.objectUser',
 	},
+	BigQuery: {
+		/** Run BigQuery jobs (loads, queries) in the project. */
+		JobUser: 'roles/bigquery.jobUser',
+		/** Read and write tables of a dataset. Granted dataset-scoped
+		 *  (DatasetIamMember), never on the project. */
+		DataEditor: 'roles/bigquery.dataEditor',
+	},
 	Iam: {
 		/** Allows a principal to mint short-lived credentials / signatures for a
 		 *  service account (SignBlob, access tokens). Granted to a workload ON ITS
 		 *  OWN service account so it can create keyless V4 signed URLs via IAM
 		 *  SignBlob (e.g. organizer-console-api signing direct-upload PUT URLs). */
 		ServiceAccountTokenCreator: 'roles/iam.serviceAccountTokenCreator',
+		/** Read a service account (`iam.serviceAccounts.get`). Granted with
+		 *  ServiceAccountTokenCreator to an outside service that impersonates
+		 *  one of our accounts and must first read it (PostHog's batch export). */
+		ServiceAccountViewer: 'roles/iam.serviceAccountViewer',
 	},
 } as const
 

@@ -199,6 +199,63 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		//   3. `pulumi destroy --target <urn>`     (now safe)
 		// Reversing 1↔2 leaves Pulumi willing to call delete but the API
 		// rejects with HTTP 400 because the instance is still locked.
+		// Connection budget (prod, one replica per workload). `db-f1-micro` allows 25 connections and
+		// reserves 3 for superusers (Cloud SQL's own agent, Atlas, a person with
+		// psql), which leaves 22 for the workloads below. Each number is the pool
+		// ceiling set in that workload's manifest, and pools open connections
+		// lazily. Update the table in the same change that edits a pool.
+		//
+		//   workload                ceiling  why this many
+		//   Zitadel                    4     2 projection workers + 2 for requests
+		//   workflow-worker            5     one pool shared by the workflows and DBOS (DBOS's minimum)
+		//   fan-api                    3     the fan API; its DBOS client keeps 1 for LISTEN
+		//   fan-api-candidate          2     the preview lane; it keeps 1 for LISTEN
+		//   event-consumer             2     the NATS consumer
+		//   admin-console-api          2     the DBOS client keeps 1 for LISTEN
+		//   organizer-console-api      1
+		//   reception-api              1
+		//   series-image-consumer      1
+		//   always on                 21
+		//   CronJobs (UTC): sales-reminders (2) every 15 minutes; concert-discovery
+		//   (2) at 09:00; artist-image-sync (1) at 10:00; sales-phase-discovery (1)
+		//   at 12:00; official-site-refresh (1) and venue-coordinates-refresh (1)
+		//   together at 19:00; artist-refresh (1) at 20:00.
+		//   At the ceilings the worst overlap is 4 (sales-reminders with
+		//   concert-discovery at 09:00 or with the two 19:00 jobs), so 25 of 22.
+		//
+		// What exhausts the slots is a release, not the steady state. 7 days to
+		// 2026-11-25 averaged 12 connections for the application database and 4
+		// for Zitadel (hourly maxima 18 and 8, not necessarily in the same hour),
+		// and the pools are close to what the workloads use (peak active
+		// connections: API Pods 2, event-consumer 2, workflow-worker 5, CronJobs
+		// 1), so there is little to trim. But a backend release rolls every
+		// workload at once, and an old Pod keeps its pool until it exits (a 120 s
+		// preStop, then the shutdown) while the new Pod opens its own, so each
+		// rolled workload holds two pools for two to three minutes. On
+		// 2026-11-25 that failed 37 fan-api requests. A strategy of `maxSurge: 0`
+		// does not change this: the replacement starts as soon as the old Pod
+		// begins to terminate.
+		//
+		// So the peak of a release is not bounded by the table. At the ceilings
+		// it could reach twice the 21 always on if everything rolled together; it
+		// holds only because pools open lazily and the rollouts do not line up.
+		// Zitadel exports no pool metrics, so its 4 is judged from the connection
+		// count alone (hourly mean 4.1, which includes idle connections): if
+		// login slows, raise it to 5 first.
+		//
+		// The overlap lasts as long as an old Pod's preStop plus shutdown. A
+		// shorter preStop (the 120 s is there for load balancer draining; check
+		// what each API needs) would shorten it, and a larger tier would raise the
+		// limit. `maxSurge: 0` (also on the candidate lane) and ArgoCD sync waves
+		// would not: a wave waits for the new Pods, not for the old ones to exit.
+		// None of these has been tried.
+		//
+		// Restoring HA at launch (`replicas: 2`, overlays/prod/kustomization.yaml)
+		// doubles every pool above, so it needs the larger tier below.
+		//
+		// If this budget is outgrown, the next step is a larger tier
+		// (`db-g1-small`), not another pool trimmed; check its `max_connections`
+		// and price before choosing.
 		const postgresDbName = `postgres-${regionName}`
 		const instance = new gcp.sql.DatabaseInstance(
 			postgresDbName,

@@ -16,9 +16,20 @@ resources:
 - cronjob/concert-discovery
 - cronjob/artist-image-sync
 - cronjob/official-site-refresh
+- cronjob/venue-coordinates-refresh
+- cronjob/artist-refresh
 - cronjob/sales-phase-discovery
 - cronjob/sales-reminders
 - event-consumer
 - series-image-consumer
+# identity: the only workload holding the identity-provider keys (OpenSpec
+# change identity-service).
+- identity
+# workflow-worker: the only process that runs durable workflows (OpenSpec
+# change introduce-durable-workflows).
+- workflow-worker
+# Outside the identity sub-base on purpose: its `labels` transformer
+# (includeSelectors) would rewrite the `from` podSelectors to `app: identity`.
+- identity-networkpolicy.yaml
 
 namespace: backend

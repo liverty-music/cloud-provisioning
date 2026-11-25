@@ -6,12 +6,25 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 2
+  # Keeps the old Pod until the new one has been Ready for this long. The NEG
+  # readiness gate does not wait for the load balancer in this cluster, so
+  # without this the old Pod stops before the new endpoint passes the load
+  # balancer's health check (about 19 s) and requests get 503 (OpenSpec change
+  # add-prod-preview-release, D1 and D9; measured on fan-web). 45 s covers it.
+  minReadySeconds: 45
   strategy:
+    type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
+      maxSurge: 1
   template:
     spec:
-      terminationGracePeriodSeconds: 75
+      # Drain, per the GKE guidance (D9): terminationGracePeriod >= preStop +
+      # shutdown time, and preStop >= drainingTimeoutSec (backend-policy.yaml,
+      # 60 s) + drain latency (GKE estimates one minute). The app gets SIGTERM
+      # only after the preStop, and SHUTDOWN_TIMEOUT (fan-api-config, 60 s) must
+      # fit after it: 190 = 120 + 60 + 10 buffer.
+      terminationGracePeriodSeconds: 190
       serviceAccountName: reception-api
       # No identity-provider credential: the reception path never calls Zitadel,
       # and the backend does not require it here (OpenSpec change
@@ -27,13 +40,20 @@ spec:
           name: http-reception
         env:
         # The API deployment this process runs as (backend API_WORKLOAD).
-        # reception neither runs the payment sweepers nor provisions tenants.
+        # reception does not provision tenants.
         - name: API_WORKLOAD
           value: reception
         # Authenticate to Cloud SQL as this workload's OWN reception-only IAM DB
         # user (overrides fan-api-config's DATABASE_USER). Set per overlay.
         - name: DATABASE_USER
           value: REPLACE_ME_IN_OVERLAY
+        # A pool of one: fan-api-config (envFrom) carries fan-api's share of
+        # the connection budget, and `env` takes precedence over it (OpenSpec
+        # change introduce-durable-workflows, design "Connections").
+        - name: DATABASE_MAX_OPEN_CONNS
+          value: "1"
+        - name: DATABASE_MAX_IDLE_CONNS
+          value: "1"
         envFrom:
         # fan-api-config carries RECEPTION_SERVER_PORT and
         # RECEPTION_CORS_ALLOWED_ORIGINS (overridden per overlay).
@@ -46,9 +66,11 @@ spec:
         - secretRef:
             name: api-stripe-secrets
         lifecycle:
+          # Keeps serving while the load balancer drops this Pod's endpoint:
+          # 60 s drain + 60 s estimated drain latency.
           preStop:
-            exec:
-              command: ["sleep", "5"]
+            sleep:
+              seconds: 120
         readinessProbe:
           grpc:
             port: 8092

@@ -5,45 +5,64 @@ namespace: nats
 # which omitting it also means). NACK writes each CR back with a full Update
 # whose Go struct tags the field omitempty, so a 0 is stripped on every
 # reconcile and ArgoCD reports the Consumer OutOfSync forever.
+#
+# Every Consumer sets preventDelete, so removing one here leaves its durable on
+# the server: delete it by hand as docs/runbooks/retire-jetstream-durable.md says.
 resources:
 - stream-concert.yaml
-- stream-venue.yaml
 - stream-artist.yaml
 - stream-user.yaml
-- stream-notification.yaml
-- stream-sales-phase.yaml
 - stream-ticket-journey.yaml
-- stream-ticket-email.yaml
 - stream-organizer.yaml
 - stream-series-image.yaml
 - stream-order.yaml
+- stream-event.yaml
+- stream-follow.yaml
+- stream-passkey.yaml
+- stream-push-subscription.yaml
+- stream-ticket-sale.yaml
+- stream-lottery-entry.yaml
+- stream-resale-entry.yaml
+- stream-resale-listing.yaml
+- stream-checkout.yaml
+- stream-ticket.yaml
 - stream-poison.yaml
-- consumer-ingest-concert.yaml
 - consumer-notify-concert.yaml
-- consumer-resolve-artist-name.yaml
+- consumer-refresh-artist.yaml
 - consumer-resolve-artist-image.yaml
 - consumer-verify-user-email.yaml
-- consumer-reissue-email-verification.yaml
 - consumer-track-user-created.yaml
-- consumer-track-user-logged-in.yaml
-- consumer-send-passkey-recovery-link.yaml
-- consumer-notify-passkey-change.yaml
-- consumer-record-passkey-change.yaml
-- consumer-track-artist-followed.yaml
+- consumer-track-user-signed-in.yaml
+- consumer-notify-passkey-added.yaml
+- consumer-notify-passkey-removed.yaml
+- consumer-track-follow-created.yaml
 - consumer-search-first-followed-artist.yaml
-- consumer-track-artist-unfollowed.yaml
-- consumer-track-notification-subscribed.yaml
-- consumer-track-notification-unsubscribed.yaml
-- consumer-track-notification-delivered.yaml
-- consumer-deliver-notification.yaml
+- consumer-track-follow-removed.yaml
+- consumer-track-push-subscription-subscribed.yaml
+- consumer-track-push-subscription-unsubscribed.yaml
 - consumer-track-ticket-journey.yaml
-- consumer-track-ticket-email.yaml
-- consumer-analytics-organizer-created.yaml
-- consumer-analytics-organizer-artist-associated.yaml
-- consumer-notify-sales-phase.yaml
-- consumer-notify-sales-reminder.yaml
+- consumer-track-organizer-activated.yaml
+- consumer-track-artist-represented.yaml
+- consumer-notify-ticket-sale-discovered.yaml
 - consumer-log-poison.yaml
 - consumer-process-series-image.yaml
 - consumer-send-order-confirmation.yaml
 - consumer-send-resale-sold.yaml
 - consumer-mark-ticket-journey-paid.yaml
+- consumer-mark-ticket-journey-applied.yaml
+- consumer-track-follow-hype-changed.yaml
+- consumer-track-order-paid.yaml
+- consumer-track-lottery-entry-result.yaml
+- consumer-start-lottery-entry-workflow.yaml
+- consumer-start-resale-entry-workflow.yaml
+- consumer-send-resale-entry-ended.yaml
+- consumer-start-resale-refund.yaml
+- consumer-send-lottery-loss.yaml
+- consumer-track-checkout-expired.yaml
+- consumer-start-checkout-expiry.yaml
+- consumer-release-expired-checkout.yaml
+- consumer-release-released-checkout.yaml
+- consumer-track-ticket-admitted.yaml
+- consumer-send-event-cancelled.yaml
+- consumer-end-lottery-entries-of-cancelled-event.yaml
+- consumer-send-order-refunded.yaml

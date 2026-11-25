@@ -3,8 +3,22 @@ import type * as zitadel from '@pulumiverse/zitadel'
 import {
 	ZitadelExecutionEvent,
 	ZitadelExecutionFunction,
+	ZitadelExecutionRequest,
 	ZitadelTarget,
 } from '../dynamic/index.js'
+
+/**
+ * The API methods a signed-in person can call to set, change or reset the
+ * password of their own identity; the Zitadel Console's self-service password
+ * page calls SetPassword. The management API is not listed: it needs
+ * organization permissions a fan or member does not hold, and provisioning
+ * sets the end-to-end test fans' passwords through it.
+ */
+export const PASSWORD_SETTING_METHODS = [
+	'/zitadel.user.v2.UserService/SetPassword',
+	'/zitadel.user.v2.UserService/PasswordReset',
+	'/zitadel.auth.v1.AuthService/UpdateMyPassword',
+] as const
 
 export interface ActionsV2ComponentArgs {
 	/** Zitadel domain hosting the Management API (e.g. `auth.dev.liverty-music.app`). */
@@ -13,13 +27,17 @@ export interface ActionsV2ComponentArgs {
 	jwtProfileJson: pulumi.Input<string>
 	/** In-cluster URL of the backend `/pre-access-token` webhook handler. */
 	preAccessTokenEndpoint: pulumi.Input<string>
-	/** In-cluster URL of the backend `/account-login-event` webhook handler —
-	 *  the account.login source, bound to the session.user.checked event. */
+	/** In-cluster URL of the backend `/account-login-event` webhook handler,
+	 *  bound to the session.user.checked event. It records the sign-in, which
+	 *  announces USER.signed_in. */
 	loginEventEndpoint: pulumi.Input<string>
 	/** In-cluster URL of the backend `/passkey-event` webhook handler, bound to
 	 *  the passkey added (`user.human.passwordless.token.verified`) and removed
 	 *  (`user.human.passwordless.token.removed`) events. */
 	passkeyEventEndpoint: pulumi.Input<string>
+	/** In-cluster URL of the backend `/refuse-password-setup` webhook handler,
+	 *  bound to the request executions on PASSWORD_SETTING_METHODS. */
+	passwordSetupRefusalEndpoint: pulumi.Input<string>
 	/** Pulumi Zitadel v1 provider — required as a `dependsOn` marker so executions
 	 *  are created after the Management API is reachable via the provider. */
 	provider: zitadel.Provider
@@ -79,6 +97,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 	public readonly loginEventTarget: ZitadelTarget
 	public readonly loginEventExecution: ZitadelExecutionEvent
 	public readonly passkeyEventTarget: ZitadelTarget
+	public readonly passwordSetupRefusalTarget: ZitadelTarget
 	public readonly passkeyAddedExecution: ZitadelExecutionEvent
 	public readonly passkeyRemovedExecution: ZitadelExecutionEvent
 
@@ -95,6 +114,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			preAccessTokenEndpoint,
 			loginEventEndpoint,
 			passkeyEventEndpoint,
+			passwordSetupRefusalEndpoint,
 			provider,
 		} = args
 
@@ -133,7 +153,7 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			},
 		)
 
-		// Login-event Target + ExecutionEvent — the account.login source.
+		// Login-event Target + ExecutionEvent — the source of USER.signed_in.
 		// REST_CALL with PAYLOAD_TYPE_JSON (the Zitadel-recommended default):
 		// Zitadel signs each body with an HMAC and the backend verifies the
 		// `ZITADEL-Signature` header with the Target's generated `signingKey`
@@ -235,10 +255,59 @@ export class ActionsV2Component extends pulumi.ComponentResource {
 			},
 		)
 
+		// Password-setup-refusal Target + one ExecutionRequest per
+		// PASSWORD_SETTING_METHODS entry (OpenSpec change
+		// `remove-password-setup-from-hosted-login`, design D8). The patched
+		// Login V2 offers no way to set a password, but the Zitadel Console's
+		// self-service page and a direct API call reach these methods. The
+		// handler never answers 2xx and `interruptOnError` is TRUE, so Zitadel
+		// refuses every such request; if the handler is down or its signing key
+		// is not synced yet, the request is refused all the same.
+		// PAYLOAD_TYPE_JSON with the HMAC `signingKey` (plumbed to fan-api via
+		// GSM `webhook-password-setup-refusal-signing-key`), like the event
+		// Targets above. Zitadel matches a request execution on the gRPC method,
+		// which both the Console's gRPC-web calls and the REST gateway reach.
+		this.passwordSetupRefusalTarget = new ZitadelTarget(
+			'password-setup-refusal-webhook',
+			{
+				domain,
+				jwtProfileJson,
+				name: 'password-setup-refusal-webhook',
+				endpoint: passwordSetupRefusalEndpoint,
+				targetType: 'REST_CALL',
+				timeout: '10s',
+				payloadType: 'PAYLOAD_TYPE_JSON',
+				interruptOnError: true,
+			},
+			{ parent: this, dependsOn: [provider] },
+		)
+
+		for (const method of PASSWORD_SETTING_METHODS) {
+			const slug = method
+				.split('/')
+				.pop()
+				?.replace(/[A-Z]/g, (c, i) => (i ? '-' : '') + c.toLowerCase())
+			new ZitadelExecutionRequest(
+				`refuse-${slug}-execution`,
+				{
+					domain,
+					jwtProfileJson,
+					method,
+					targetIds: [this.passwordSetupRefusalTarget.targetId],
+				},
+				{
+					parent: this,
+					dependsOn: [this.passwordSetupRefusalTarget],
+				},
+			)
+		}
+
 		this.registerOutputs({
 			preAccessTokenTargetId: this.preAccessTokenTarget.targetId,
 			loginEventTargetId: this.loginEventTarget.targetId,
 			passkeyEventTargetId: this.passkeyEventTarget.targetId,
+			passwordSetupRefusalTargetId:
+				this.passwordSetupRefusalTarget.targetId,
 		})
 	}
 }

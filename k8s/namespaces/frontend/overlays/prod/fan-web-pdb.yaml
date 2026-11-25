@@ -1,0 +1,11 @@
+# Keeps one fan-web Pod serving when GKE evicts the other (node scale-down, a
+# drain, a Spot preemption). OpenSpec change add-prod-preview-release, D1.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fan-web-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: fan-web

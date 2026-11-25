@@ -8,6 +8,7 @@ kind: Kustomization
 # default ComputeClass, not a per-Deployment patch.
 resources:
   - ../../base
+  - fan-web-pdb.yaml
   # admin-console-web: the admin console workload (unify-workload-naming),
   # successor to the deleted `admin` workload. Owns admin.liverty-music.app via
   # admin-console-web-route. Prod-only (no dev environment runs the admin console).
@@ -24,6 +25,8 @@ resources:
   # via reception-web-route.
   - ../../base/reception-web
   - fan-web-configmap.yaml
+  # fan-web candidate lane on the preview hostname (add-prod-preview-release, task 8.6).
+  - fan-web-candidate.yaml
   - admin-console-web-configmap.yaml
   - organizer-console-web-configmap.yaml
   - reception-web-configmap.yaml
@@ -41,7 +44,7 @@ namespace: frontend
 #   on the Deployment so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.114.0"
+      app.kubernetes.io/version: "1.174.2"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -69,15 +72,20 @@ patches:
                 limits:
                   cpu: 100m
                   memory: 128Mi
-  # Pre-launch (optimize-prod-gke-cost D3): a single fan-web replica with no
-  # topology spread and no PodDisruptionBudget. The hard hostname spread forced
-  # the second replica onto an on-demand node, and a minAvailable: 1 PDB on one
-  # replica blocks every voluntary eviction (drain, active migration back to
-  # Spot). A Spot preemption now drops the site briefly, accepted with no users.
+  # fan-web is a plain Deployment again (OpenSpec change add-prod-preview-release,
+  # task 8.6): a rolling update that keeps the old Pod until the new one has been
+  # Ready for minReadySeconds, because the NEG readiness gate does not wait for
+  # the load balancer (measured in task 8.3). The preview hostname is served by
+  # the candidate lane (fan-web-candidate.yaml).
   #
-  # At launch, restore HA: replicas: 2, a topologySpreadConstraint on
-  # kubernetes.io/hostname with whenUnsatisfiable: ScheduleAnyway and
-  # nodeTaintsPolicy: Honor, and a minAvailable: 1 PodDisruptionBudget.
+  # Two replicas, a soft hostname spread and a minAvailable: 1 PodDisruptionBudget
+  # (fan-web-pdb.yaml), because a release must not fail a request (OpenSpec change
+  # add-prod-preview-release, D1). With one replica, GKE Autopilot's node
+  # scale-down evicted the fresh Pod right after two releases (events "deleting
+  # pod for node scale down", 2026-11-25) and the site answered 503 until the
+  # replacement was Ready: minReadySeconds cannot prevent that. This reverses the
+  # single replica of optimize-prod-gke-cost D3 for fan-web only; the spread is
+  # soft (ScheduleAnyway) so it does not force an on-demand node.
   - target:
       kind: Deployment
       name: fan-web-app
@@ -87,7 +95,23 @@ patches:
       metadata:
         name: fan-web-app
       spec:
-        replicas: 1
+        replicas: 2
+        minReadySeconds: 45
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxUnavailable: 0
+            maxSurge: 1
+        template:
+          spec:
+            topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              nodeTaintsPolicy: Honor
+              labelSelector:
+                matchLabels:
+                  app: fan-web
   # Prod consumer-site HTTPRoute hostname (apex). fan-web-route replaces the
   # deleted web-route and owns liverty-music.app -> fan-web-svc.
   - target:
@@ -163,7 +187,13 @@ images:
   # release (routed to fan-web in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/fan-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
-    newTag: v1.114.0 # commit 4ffedc2672f61642aa9c870d7703c181456349f3
+    newTag: v1.174.2 # commit 1451eab047161db39fa52990ff40f88b5cc7b096
+  # fan-web-candidate: the image of the candidate lane (fan-web-candidate.yaml),
+  # pinned apart from fan-web (OpenSpec change add-prod-preview-release, D1). A
+  # release bumps both pins; a GitHub pre-release bumps only this one.
+  - name: fan-web-candidate
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/fan-web
+    newTag: v1.174.2 # commit 1451eab047161db39fa52990ff40f88b5cc7b096
   # admin-console-web (unify-workload-naming): the admin console bundle, successor
   # to admin-app. Now ACTIVE — the admin-console-web-app Deployment (create-new)
   # references it. Pinned at v1.52.0 (the release that first published
@@ -172,7 +202,7 @@ images:
   # (the fan-out that `batch-frontend-prod-pin-dispatch` later collapsed).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/admin-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/admin-console-web
-    newTag: v1.114.0 # commit 4ffedc2672f61642aa9c870d7703c181456349f3
+    newTag: v1.174.2 # commit 1451eab047161db39fa52990ff40f88b5cc7b096
   # organizer-console-web (unify-workload-naming): successor to organizer-app. Now
   # ACTIVE — the organizer-console-web-app Deployment references it.
   # Pinned at v1.53.0 (the release that first published organizer-console-web to
@@ -180,9 +210,9 @@ images:
   # pin-bump, which pins all three bundles atomically (routed in bump-prod-pin.yml).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/organizer-console-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/organizer-console-web
-    newTag: v1.114.0 # commit 4ffedc2672f61642aa9c870d7703c181456349f3
+    newTag: v1.174.2 # commit 1451eab047161db39fa52990ff40f88b5cc7b096
   # reception-web (isolate-venue-reception): the reception app's own image,
   # published by the same frontend release and pinned by the same pin-bump.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/frontend/reception-web
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/frontend/reception-web
-    newTag: v1.114.0 # commit 4ffedc2672f61642aa9c870d7703c181456349f3
+    newTag: v1.174.2 # commit 1451eab047161db39fa52990ff40f88b5cc7b096

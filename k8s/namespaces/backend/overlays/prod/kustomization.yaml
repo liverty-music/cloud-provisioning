@@ -20,6 +20,8 @@ kind: Kustomization
 # Fridays-only patch), because prod's concert ingestion should be regular.
 resources:
   - ../../base
+  # fan-api candidate lane on the preview hostname (add-prod-preview-release, D1).
+  - fan-api/candidate.yaml
   # NOTE: the prod `cloud-sql-proxy` Deployment was removed
   # (optimize-prod-gke-cost D5). It was a dev-only tool (dev-db-local-access)
   # copied to prod: no Service, bound to 127.0.0.1, zero connections in 30 days,
@@ -49,10 +51,37 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.94.0"
+      app.kubernetes.io/version: "1.144.0"
     includeSelectors: false
     includeTemplates: true
 patches:
+  # Release version for telemetry (expand-product-analytics): every backend
+  # container reads TELEMETRY_SERVICE_VERSION from its own Pod's
+  # `app.kubernetes.io/version` label through the Downward API, so the
+  # OpenTelemetry resource and PostHog `app_version` carry the release without
+  # a second place to bump. Targeted by kind so new workloads are covered; the
+  # patch appends to `containers/0/env`, so each base container declares `env:`
+  # (an empty list when it has no other entry) or this build fails.
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: TELEMETRY_SERVICE_VERSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app.kubernetes.io/version']
+  - target:
+      kind: CronJob
+    patch: |-
+      - op: add
+        path: /spec/jobTemplate/spec/template/spec/containers/0/env/-
+        value:
+          name: TELEMETRY_SERVICE_VERSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['app.kubernetes.io/version']
   - path: serviceaccount_patch.yaml
     target:
       kind: ServiceAccount
@@ -96,6 +125,14 @@ patches:
   # At launch, restore HA: replicas: 2, a topologySpreadConstraint on
   # kubernetes.io/hostname with whenUnsatisfiable: ScheduleAnyway and
   # nodeTaintsPolicy: Honor, and a minAvailable: 1 PodDisruptionBudget.
+  #
+  # A release can still answer 503 for a few seconds on this single replica: GKE
+  # Autopilot's node scale-down may evict the fresh Pod right after a rollout
+  # (measured on fan-web, OpenSpec change add-prod-preview-release, 2026-11-25),
+  # and minReadySeconds cannot prevent that. A second replica is blocked by the
+  # database: db-f1-micro allows 25 connections and the budget table in
+  # src/gcp/components/postgres.ts is full (21 of 22), so two Pods need the
+  # larger tier first.
   - target:
       kind: Deployment
       name: fan-api
@@ -106,6 +143,16 @@ patches:
         name: fan-api
       spec:
         replicas: 1
+        # Rolling update without a gap (add-prod-preview-release, D1): the old Pod
+        # stays until the new one has been Ready for 45 s, because the NEG
+        # readiness gate does not wait for the load balancer in this cluster
+        # (measured: the new endpoint needs about 19 s to pass its health check).
+        minReadySeconds: 45
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxUnavailable: 0
+            maxSurge: 1
   - target:
       kind: Deployment
       name: fan-api
@@ -290,8 +337,8 @@ patches:
   # daily sales-phase discovery cron) pile up undelivered forever. Keeping one
   # replica always running holds the durables open so every event is consumed.
   # Long-lived streams created during earlier always-on periods (CONCERT,
-  # ARTIST, USER) survived by chance; SALES_PHASE, added later, exposed the
-  # deadlock. KEDA still scales up to maxReplicas under load.
+  # ARTIST, USER) survived by chance; the ticket sale stream, added later,
+  # exposed the deadlock. KEDA still scales up to maxReplicas under load.
   - target:
       kind: ScaledObject
       name: event-consumer
@@ -365,6 +412,14 @@ configMapGenerator:
     behavior: merge
     envs:
       - cronjob/official-site-refresh/configmap.env
+  - name: artist-refresh-job-config
+    behavior: merge
+    envs:
+      - cronjob/artist-refresh/configmap.env
+  - name: venue-coordinates-refresh-job-config
+    behavior: merge
+    envs:
+      - cronjob/venue-coordinates-refresh/configmap.env
   - name: sales-phase-discovery-job-config
     behavior: merge
     envs:
@@ -381,6 +436,10 @@ configMapGenerator:
     behavior: merge
     envs:
       - series-image-consumer/configmap.env
+  - name: identity-config
+    behavior: merge
+    envs:
+      - identity/configmap.env
 # Pin all backend images to the prod Artifact Registry with an
 # immutable semantic-version tag. Per OpenSpec `enable-prod-ar-immutable-tags`
 # + the `prod-image-tag-immutability` spec, prod uses semver tags (e.g.,
@@ -423,30 +482,55 @@ images:
   # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
+  # fan-api-candidate: the image of the candidate lane (fan-api/candidate.yaml),
+  # pinned apart from backend/api (OpenSpec change add-prod-preview-release,
+  # D1). A release bumps both pins; a GitHub pre-release bumps only this one.
+  - name: fan-api-candidate
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
+  # identity: the identity service, the only workload holding the
+  # identity-provider keys (OpenSpec change identity-service). Bumped with the
+  # other backend images by bump-prod-pin.yml.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/identity
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/identity
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
+  # worker: the workflow worker (OpenSpec change introduce-durable-workflows).
+  # Bumped with the other backend images by bump-prod-pin.yml.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/worker
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/worker
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/official-site-refresh
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/official-site-refresh
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-refresh
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-refresh
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
+  # venue-coordinates-refresh (OpenSpec change globalize-venues). Bumped with
+  # the other backend images by bump-prod-pin.yml.
+  - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/venue-coordinates-refresh
+    newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/venue-coordinates-refresh
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74
   # series-image-consumer: shipped from the shared backend AR repo
   # (backend/series-image-consumer). Pinned to the prod AR + semver tag; the
   # bump-prod-pin workflow keeps this in lock-step with the other backend images.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/series-image-consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/series-image-consumer
-    newTag: v1.94.0 # commit f4b2cdc089219ce373ff33c9e9950b1ada22134b
+    newTag: v1.144.0 # commit 22c2dfd522409980021feffb34a767d371a22c74

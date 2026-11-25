@@ -10,6 +10,8 @@ resources:
 - deployment.yaml
 - service.yaml
 - httproute.yaml
+- backend-policy.yaml
+- health-check-policy.yaml
 
 configurations:
 - kustomizeconfig.yaml

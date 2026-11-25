@@ -8,6 +8,14 @@
 > from PostHog's side; rotation is driven by our policy or by suspected
 > exposure.
 
+> **Error-tracking keys:** the frontend's source-map upload key
+> (`POSTHOG_SOURCEMAP_API_KEY`) and the key the prod stack manages PostHog
+> alerts with (`posthogManagementApiKey`), both from change
+> `capture-client-errors`, are two more PostHog keys, stored in Pulumi ESC rather
+> than Secret Manager. Rotate them with
+> [frontend-error-tracking.md](./frontend-error-tracking.md#rotate) on the same
+> schedule.
+
 ## When to use this runbook
 
 Use this when any of the following is true:

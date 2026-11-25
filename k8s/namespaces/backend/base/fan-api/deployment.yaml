@@ -13,7 +13,13 @@ spec:
     metadata:
       # Labels handled by commonLabels
     spec:
-      terminationGracePeriodSeconds: 75
+      # Drain, per the GKE guidance (OpenSpec change add-prod-preview-release, D9):
+      # terminationGracePeriod >= preStop + shutdown time, and preStop >=
+      # connectionDraining.drainingTimeoutSec (fan-api-policy, 60 s) + drain
+      # latency (GKE estimates one minute). The app gets SIGTERM only after the
+      # preStop, and SHUTDOWN_TIMEOUT (configmap.env, 60 s) must fit after it:
+      # 190 = 120 + 60 + 10 buffer.
+      terminationGracePeriodSeconds: 190
       serviceAccountName: fan-api
       volumes:
       - name: zkp-verification-key
@@ -30,10 +36,18 @@ spec:
           name: webhook
         env:
         # The API deployment this process runs as (backend API_WORKLOAD). Every
-        # API deployment runs the same binary; fan is the one that runs the
-        # lottery draw, issuance and settlement sweepers.
+        # API deployment runs the same binary; this decides the work only one
+        # deployment does (Organization provisioning runs on admin). No API
+        # deployment runs a periodic job: those are schedules of the workflow
+        # worker (OpenSpec change add-prod-preview-release, design D10).
         - name: API_WORKLOAD
           value: fan
+        # Identity service listener for this workload: confirming an email
+        # address with the code from its verification email, and nothing else.
+        # The fan API holds no identity-provider key (OpenSpec change
+        # fan-email-verification-in-app).
+        - name: IDENTITY_SERVICE_URL
+          value: http://identity:9102
         envFrom:
         - configMapRef:
             name: fan-api-config
@@ -49,9 +63,13 @@ spec:
           subPath: zkp-verification-key.json
           readOnly: true
         lifecycle:
+          # Keeps serving while the load balancer drops this Pod's endpoint:
+          # 60 s drain + 60 s estimated drain latency. A shorter sleep let the
+          # load balancer keep sending to a Pod that had already stopped (GKE
+          # docs, "Troubleshoot load balancing", 500 series errors with NEGs).
           preStop:
-            exec:
-              command: ["sleep", "5"]
+            sleep:
+              seconds: 120
         readinessProbe:
           grpc:
             port: 8080
