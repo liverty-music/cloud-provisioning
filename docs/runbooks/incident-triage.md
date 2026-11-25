@@ -74,7 +74,7 @@ To also stop dispatches at the source (e.g. a notification storm), remove
   (collapsed), which is there even when Claude produced nothing.
 - A **warning** at the top means the run did not succeed and names the stage: setup
   before Claude (checkout, GCP auth, GKE credentials, dependency install), Claude Code
-  failing to start, Claude not finishing (error or the `--max-turns 25` cap), or the job
+  failing to start, Claude not finishing (error or the `--max-turns 30` cap), or the job
   timing out. With a partial report it may be the early draft; otherwise the post says
   no report was produced.
 - **Report withheld** means the report contained the Claude OAuth token or a GCP access
