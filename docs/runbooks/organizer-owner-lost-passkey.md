@@ -83,9 +83,13 @@ OWNER_EMAIL='<the owner email>'
 
 ### 1. Get an `IAM_OWNER` access token
 
-Follow steps 1 and 2 of [`zitadel-break-glass.md`](zitadel-break-glass.md) with
-`--project=liverty-music-prod` and `ZITADEL=https://auth.liverty-music.app`.
-Before the sanity call at the end of the script, add two lines that keep the
+Follow steps 1 and 2 of [`zitadel-break-glass.md`](zitadel-break-glass.md), but
+for prod: that runbook is written for dev, so edit two values in what you copy.
+Use `--project=liverty-music-prod` in the `gcloud secrets` command, and change
+the `ZITADEL = "https://auth.dev.liverty-music.app"` constant in the Python
+script to `https://auth.liverty-music.app` (it is the JWT audience and the token
+endpoint; the shell variable `ZITADEL` below does not reach it). Before the
+sanity call at the end of the script, add two lines that keep the
 token in a file readable only by you, so it never appears in a command line:
 
 ```python
@@ -103,14 +107,14 @@ Every `curl` below passes it with `-H @/tmp/zitadel-token.hdr`. Delete
 curl -sS -X POST "$ZITADEL/v2/users" -H @/tmp/zitadel-token.hdr \
   -H 'Content-Type: application/json' \
   -d "{\"queries\":[{\"emailQuery\":{\"emailAddress\":\"$OWNER_EMAIL\"}}]}" \
-  | jq '.result[] | {userId, userName, orgId: .details.resourceOwner}'
+  | jq '.result[] | {userId, username, preferredLoginName, orgId: .details.resourceOwner}'
 ```
 
 (`POST /v2/users` with `emailQuery`; the query messages are in Zitadel's
 `user/v2/query.proto`.) The email can belong to several identities: a fan
 account and the owner identities of several Organizations. The owner identity's
-`userName` is the email followed by the Organizer's short name in parentheses
-(`ownerUserName` in the backend). Pick the entry whose `userName` carries the
+`username` is the email followed by the Organizer's short name in parentheses
+(`ownerUserName` in the backend). Pick the entry whose `username` carries the
 short name of the Organizer in question and note its `userId` and `orgId`:
 
 ```bash
