@@ -218,17 +218,26 @@ export class PostgresComponent extends pulumi.ComponentResource {
 		//   always on                 21
 		//   CronJobs: sales-reminders (2) every 15 minutes, plus one daily job (1 or 2)
 		//
-		// What actually exhausts the slots is a release, not the steady state:
-		// 7 days to 2026-11-25 averaged 12 connections for the application
-		// database and 4 for Zitadel, but a backend release rolls every workload
-		// at once and a surge Pod opens its own pool beside the old one. That is
-		// why admin-console-api, organizer-console-api and reception-api replace
-		// their Pod in place (`maxSurge: 0`). fan-api (+3) and fan-api-candidate
-		// (+2) keep a surge Pod so that fans, and the owner's preview, see no gap.
-		// At the ceilings a release therefore still peaks at 26 of 22: it holds
-		// only because pools open lazily and the surge Pods are nearly idle. If
-		// releases fail again, set `maxSurge: 0` on the candidate lane first (its
-		// gap is seen by the owner only), then raise the tier.
+		// What exhausts the slots is a release, not the steady state. 7 days to
+		// 2026-11-25 averaged 12 connections for the application database and 4
+		// for Zitadel, and the pools are close to what the workloads use (peak
+		// active connections: API Pods 2, event-consumer 2, workflow-worker 5,
+		// CronJobs 1), so there is little to trim. But a backend release rolls
+		// every workload at once, and an old Pod keeps its pool until it exits
+		// (a 120 s preStop, then `MaxConnIdleTime` 10 min) while the new Pod opens
+		// its own. On 2026-11-25 that failed 37 fan-api requests. A strategy of
+		// `maxSurge: 0` does not help: the replacement starts as soon as the old
+		// Pod begins to terminate, so the two pools still overlap.
+		//
+		// At the ceilings a release peaks at 26 of 22 (fan-api +3, candidate +2
+		// beyond the 21 always on), and it holds only because pools open lazily.
+		// Zitadel exports no pool metrics, so its 4 is judged from the connection
+		// count alone (hourly mean 4.1, which includes idle connections): if
+		// login slows, raise it to 5 first.
+		//
+		// To lower the peak of a release without a larger tier, stagger the
+		// rollouts (ArgoCD sync waves on the Deployments) or give the candidate
+		// lane `maxSurge: 0` (its gap is seen by the owner only).
 		//
 		// Restoring HA at launch (`replicas: 2`, overlays/prod/kustomization.yaml)
 		// doubles every pool above, so it needs the larger tier below.

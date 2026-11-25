@@ -6,27 +6,17 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 2
-  # Keeps an old Pod until the new one has been Ready for this long. The NEG
+  # Keeps the old Pod until the new one has been Ready for this long. The NEG
   # readiness gate does not wait for the load balancer in this cluster, so
   # without this the old Pod stops before the new endpoint passes the load
   # balancer's health check (about 19 s) and requests get 503 (OpenSpec change
   # add-prod-preview-release, D1 and D9; measured on fan-web). 45 s covers it.
-  # It only helps with two or more replicas: prod runs one until the launch HA
-  # step (overlays/prod/kustomization.yaml).
   minReadySeconds: 45
-  # Replace the Pod in place instead of starting a second one first. A surge Pod
-  # opens its own connection pool next to the old one, and every backend release
-  # rolls all workloads at once: on 2026-11-25 that took the database past its
-  # connection limit and failed requests of fan-api and others. With one replica
-  # the price is a gap of about a minute while the new Pod starts and passes the
-  # load balancer's health check, so do not release while this API is in use (a
-  # venue entry for reception-api). See the budget table in
-  # src/gcp/components/postgres.ts.
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 0
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       # `app: admin-console-api` (with selector) is applied by this sub-base's
