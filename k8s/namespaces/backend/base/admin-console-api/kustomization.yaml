@@ -6,6 +6,7 @@ resources:
 - deployment.yaml
 - service.yaml
 - health-check-policy.yaml
+- backend-policy.yaml
 - httproute.yaml
 # Stripe secret key for the admin OrderService.Refund, isolated from the
 # provisioner-key bundle (see the manifest for why).

@@ -14,7 +14,9 @@
 # measures, and a finished Pod is deleted by hand.
 #
 # Usage (from the repository root; the four values are substituted by envsubst):
-#   export MODE=api                           # api: POST ListTop, web: GET /
+#   export MODE=api                           # api: POST ListTop, health: POST the gRPC
+#                                             # health check (an API that needs sign-in),
+#                                             # web: GET /
 #   export TARGET_URL=https://api.liverty-music.app
 #   export CONTROL_URL=https://admin.liverty-music.app
 #   export DURATION_SEC=600
@@ -86,6 +88,11 @@ spec:
       if [ "$MODE" = api ]; then
         probe target -X POST -H 'content-type: application/json' -H 'connect-protocol-version: 1' \
           -d '{"limit":1}' "$TARGET_URL/liverty_music.rpc.artist.v1.ArtistService/ListTop" &
+      elif [ "$MODE" = health ]; then
+        # The console APIs answer every business RPC with 401 without a token;
+        # the health service needs none and goes through the same listener.
+        probe target -X POST -H 'content-type: application/json' -H 'connect-protocol-version: 1' \
+          -d '{}' "$TARGET_URL/grpc.health.v1.Health/Check" &
       else
         probe target "$TARGET_URL/" &
       fi

@@ -6,9 +6,17 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 2
+  # Keeps the old Pod until the new one has been Ready for this long. The NEG
+  # readiness gate does not wait for the load balancer in this cluster, so
+  # without this the old Pod stops before the new endpoint passes the load
+  # balancer's health check (about 19 s) and requests get 503 (OpenSpec change
+  # add-prod-preview-release, D1 and D9; measured on fan-web). 45 s covers it.
+  minReadySeconds: 45
   strategy:
+    type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       # `app: admin-console-api` (with selector) is applied by this sub-base's
@@ -19,7 +27,12 @@ spec:
       # can never route to them, and `admin-console-api-svc` (selector
       # `app: admin-console-api`) routes ONLY to these Pods.
     spec:
-      terminationGracePeriodSeconds: 75
+      # Drain, per the GKE guidance (D9): terminationGracePeriod >= preStop +
+      # shutdown time, and preStop >= drainingTimeoutSec (backend-policy.yaml,
+      # 60 s) + drain latency (GKE estimates one minute). The app gets SIGTERM
+      # only after the preStop, and SHUTDOWN_TIMEOUT (fan-api-config, 60 s) must
+      # fit after it: 190 = 120 + 60 + 10 buffer.
+      terminationGracePeriodSeconds: 190
       serviceAccountName: admin-console-api
       containers:
       - name: server
@@ -89,9 +102,11 @@ spec:
         - secretRef:
             name: api-stripe-secrets
         lifecycle:
+          # Keeps serving while the load balancer drops this Pod's endpoint:
+          # 60 s drain + 60 s estimated drain latency.
           preStop:
-            exec:
-              command: ["sleep", "5"]
+            sleep:
+              seconds: 120
         readinessProbe:
           grpc:
             port: 8090
