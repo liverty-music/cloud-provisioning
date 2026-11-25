@@ -300,65 +300,11 @@ jsonPayload.msg="message routed to poison queue"`,
 		)
 		this.alertPolicies.push(poisonQueueAlertPolicy)
 
-		// Checkout Needs Operator Alert (first-come-ticket-sales, design D7)
-		// Money was taken for a first-come checkout without its tickets: either a
-		// charged checkout still not issued 10 minutes after the charge, or a
-		// card authorization of an ended checkout that turned out to be charged. The
-		// fan-api sweepers log this ERROR on every run until it is resolved, so a
-		// dedicated policy with a short re-notification period pages the operator
-		// instead of the 12-hour workload ERROR alert above.
-		const checkoutNeedsOperatorAlertPolicy = new gcp.monitoring.AlertPolicy(
-			'alert-checkout-needs-operator',
-			{
-				displayName: 'Checkout Needs Operator',
-				project: projectId,
-				combiner: 'OR',
-				conditions: [
-					{
-						displayName:
-							'Money taken for a checkout without tickets',
-						conditionMatchedLog: {
-							filter: pulumi.interpolate`resource.type="k8s_container"
-resource.labels.project_id="${projectId}"
-resource.labels.location="${clusterLocation}"
-resource.labels.cluster_name="${clusterName}"
-resource.labels.namespace_name="backend"
-severity="ERROR"
-jsonPayload.msg="checkout needs an operator"`,
-							labelExtractors: {
-								checkout_id: 'EXTRACT(jsonPayload.checkout_id)',
-								card_authorization_id:
-									'EXTRACT(jsonPayload.card_authorization_id)',
-							},
-						},
-					},
-				],
-				alertStrategy: {
-					notificationRateLimit: {
-						period: '3600s', // 1 hour
-					},
-					autoClose: '3600s', // 1 hour
-				},
-				notificationChannels,
-				documentation: {
-					content: [
-						'## Checkout Needs Operator Alert',
-						'',
-						'A first-come checkout has money taken without its tickets. The sweepers log this on every run (each minute) until it is resolved.',
-						'',
-						'### Alert Labels',
-						'- `checkout_id`: the checkout (checkouts.id)',
-						"- `card_authorization_id`: the payment provider's ID for the card authorization (a Stripe PaymentIntent, pi_...)",
-						'',
-						'### Triage',
-						'Follow docs/runbooks/checkout-needs-operator.md: fix the cause so the next run issues the Order, or refund the PaymentIntent `card_authorization_id` manually in the Stripe dashboard.',
-					].join('\n'),
-					mimeType: 'text/markdown',
-				},
-			},
-			{ parent: this },
-		)
-		this.alertPolicies.push(checkoutNeedsOperatorAlertPolicy)
+		// The Checkout Needs Operator alert is gone: it matched a log line the
+		// fan-api sweepers wrote, and those were removed on 2026-11-03 (backend
+		// efd505e0). A first-come purchase that took money without issuing tickets
+		// is a workflow that ended ERROR or CANCELLED now, so Workflow Needs Admin
+		// below reports it (docs/runbooks/checkout-needs-operator.md).
 
 		// Atlas Operator Migration Failure Alert
 		this.atlasMigrationAlertPolicy = new gcp.monitoring.AlertPolicy(
