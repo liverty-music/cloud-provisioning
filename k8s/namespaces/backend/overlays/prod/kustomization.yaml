@@ -125,6 +125,14 @@ patches:
   # At launch, restore HA: replicas: 2, a topologySpreadConstraint on
   # kubernetes.io/hostname with whenUnsatisfiable: ScheduleAnyway and
   # nodeTaintsPolicy: Honor, and a minAvailable: 1 PodDisruptionBudget.
+  #
+  # A release can still answer 503 for a few seconds on this single replica: GKE
+  # Autopilot's node scale-down may evict the fresh Pod right after a rollout
+  # (measured on fan-web, OpenSpec change add-prod-preview-release, 2026-11-25),
+  # and minReadySeconds cannot prevent that. A second replica is blocked by the
+  # database: db-f1-micro allows 25 connections and the budget table in
+  # src/gcp/components/postgres.ts is full (21 of 22), so two Pods need the
+  # larger tier first.
   - target:
       kind: Deployment
       name: fan-api
