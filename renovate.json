@@ -61,6 +61,16 @@
         "OCIChart"
       ],
       "pinDigests": false
+    },
+    {
+      "description": "HOLD the Node.js major in .github/workflows/zitadel-login.yml at the one upstream builds the login app with (22). The comment above that `node-version` and zitadel-login/build.sh (\"Needs git, Node.js 22 with corepack\") both say the value mirrors upstream, so it moves with UPSTREAM_TAG, not with the latest Node. Renovate's Node 26 pull request (#726) changed it anyway: Node 25 and later no longer bundle Corepack, which build.sh calls, and the image tag hashes only the zitadel-login/ tree, so the change would not even have produced a new image. Its CI was green because the workflow only checks that the build runs. This is scoped to that file; `.nvmrc` and the other workflows keep following the latest Node. REMOVE THIS RULE when upstream's build moves to a newer Node major, in the same change that bumps UPSTREAM_TAG.",
+      "matchFileNames": [
+        ".github/workflows/zitadel-login.yml"
+      ],
+      "matchPackageNames": [
+        "node"
+      ],
+      "enabled": false
     }
   ],
   "customManagers": [
