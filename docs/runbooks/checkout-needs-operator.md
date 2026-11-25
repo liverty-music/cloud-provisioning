@@ -7,12 +7,14 @@ workflow that needs an admin: the alert **Workflow Needs Admin**
 ([workflow-needs-admin.md](workflow-needs-admin.md)). This page is what to look
 at for a purchase.
 
-The alert **Checkout Needs Operator** (`jsonPayload.msg="checkout needs an
-operator"`) comes from the time the fan-api sweepers finished purchases, one run
-a minute. Those sweepers were removed on 2026-11-03 (backend `efd505e0`, "issue
-a first-come checkout through the issue workflow"), and nothing in the backend
-logs that message any more (only the constant `LogKeyNeedsOperator` is left), so
-that alert does not fire. Do not wait for it.
+There used to be a separate alert, **Checkout Needs Operator**
+(`jsonPayload.msg="checkout needs an operator"`), for the time the fan-api
+sweepers finished purchases, one run a minute. Those sweepers were removed on
+2026-11-03 (backend `efd505e0`, "issue a first-come checkout through the issue
+workflow"), nothing in the backend logs that message any more, and the alert
+policy was deleted. Workflow Needs Admin is the only alert for a purchase now;
+it stays open until the workflow is resumed or deleted but notifies once, so
+look at it again if nobody has acted.
 
 Two cases, each one workflow per Order, named after the Order:
 
