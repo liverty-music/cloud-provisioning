@@ -252,6 +252,14 @@ spec:
       natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
       account: "$G"
       stream: "LOTTERY_ENTRY"
+      consumer: "mark-ticket-journey-lost"
+      lagThreshold: "1"
+      activationLagThreshold: "0"
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.nats.svc.cluster.local:8222"
+      account: "$G"
+      stream: "LOTTERY_ENTRY"
       consumer: "start-lottery-entry-workflow"
       lagThreshold: "1"
       activationLagThreshold: "0"
