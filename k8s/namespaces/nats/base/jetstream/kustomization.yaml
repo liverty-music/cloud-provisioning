@@ -50,6 +50,7 @@ resources:
 - consumer-send-resale-sold.yaml
 - consumer-mark-ticket-journey-paid.yaml
 - consumer-mark-ticket-journey-applied.yaml
+- consumer-mark-ticket-journey-lost.yaml
 - consumer-track-follow-hype-changed.yaml
 - consumer-track-order-paid.yaml
 - consumer-track-lottery-entry-result.yaml
