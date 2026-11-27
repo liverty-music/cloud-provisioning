@@ -15,7 +15,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.8",
+    "@biomejs/biome": "2.6.9",
     "@types/node": "26.6.5",
     "ts-node": "10.9.2",
     "typescript": "6.0.3",
