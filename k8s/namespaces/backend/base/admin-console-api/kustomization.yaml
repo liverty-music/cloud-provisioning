@@ -11,6 +11,8 @@ resources:
 # Stripe secret key for the admin OrderService.Refund, isolated from the
 # provisioner-key bundle (see the manifest for why).
 - external-secret-stripe.yaml
+# Introspection key of this API's ZITADEL API application, mounted only here.
+- external-secret-introspection-key.yaml
 
 configurations:
 - kustomizeconfig.yaml

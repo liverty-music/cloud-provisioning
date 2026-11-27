@@ -8,6 +8,8 @@ resources:
 - health-check-policy.yaml
 - backend-policy.yaml
 - httproute.yaml
+# Introspection key of this API's ZITADEL API application, mounted only here.
+- external-secret-introspection-key.yaml
 
 configurations:
 - kustomizeconfig.yaml

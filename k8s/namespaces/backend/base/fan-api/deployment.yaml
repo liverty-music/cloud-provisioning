@@ -25,6 +25,12 @@ spec:
       - name: zkp-verification-key
         configMap:
           name: fan-api-zkp-verification-key
+      # The introspection key of this API's ZITADEL API application. Not
+      # optional: until ESO has synced the Secret the pod waits in
+      # ContainerCreating, and the backend refuses to start without it.
+      - name: introspection-key
+        secret:
+          secretName: fan-api-introspection-key
       containers:
       - name: fan-api
         image: fan-api
@@ -44,10 +50,15 @@ spec:
           value: fan
         # Identity service listener for this workload: confirming an email
         # address with the code from its verification email, and nothing else.
-        # The fan API holds no identity-provider key (OpenSpec change
-        # fan-email-verification-in-app).
+        # The fan API holds no identity-provider management key (OpenSpec
+        # change fan-email-verification-in-app).
         - name: IDENTITY_SERVICE_URL
           value: http://identity:9102
+        # The key the fan API asks ZITADEL with whether a token is active
+        # (introspection). It cannot read or change identities: this API holds
+        # no identity-provider management key.
+        - name: ZITADEL_INTROSPECTION_KEY_FOR_FAN_API_PATH
+          value: /secrets/zitadel/zitadel-introspection-key-for-fan-api.json
         envFrom:
         - configMapRef:
             name: fan-api-config
@@ -61,6 +72,9 @@ spec:
         - name: zkp-verification-key
           mountPath: /configs/zkp/zkp-verification-key.json
           subPath: zkp-verification-key.json
+          readOnly: true
+        - name: introspection-key
+          mountPath: /secrets/zitadel
           readOnly: true
         lifecycle:
           # Keeps serving while the load balancer drops this Pod's endpoint:

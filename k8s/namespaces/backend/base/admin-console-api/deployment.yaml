@@ -34,6 +34,13 @@ spec:
       # fit after it: 190 = 120 + 60 + 10 buffer.
       terminationGracePeriodSeconds: 190
       serviceAccountName: admin-console-api
+      volumes:
+      # The introspection key of this API's ZITADEL API application. Not
+      # optional: until ESO has synced the Secret the pod waits in
+      # ContainerCreating, and the backend refuses to start without it.
+      - name: introspection-key
+        secret:
+          secretName: admin-console-api-introspection-key
       containers:
       - name: server
         image: server
@@ -55,9 +62,19 @@ spec:
           value: admin
         # Identity service listener for this workload: Organization
         # provisioning goes through it. The admin console API holds no
-        # identity-provider key (OpenSpec change identity-service).
+        # identity-provider management key (OpenSpec change identity-service).
         - name: IDENTITY_SERVICE_URL
           value: http://identity:9101
+        # The key the admin console API asks ZITADEL with whether a token is active
+        # (introspection). It cannot read or change identities: this API holds
+        # no identity-provider management key.
+        - name: ZITADEL_INTROSPECTION_KEY_FOR_ADMIN_CONSOLE_API_PATH
+          value: /secrets/zitadel/zitadel-introspection-key-for-admin-console-api.json
+        # Env-specific Zitadel admin-console project: the audience the admin
+        # console API requires in a token. Value is a Pulumi output
+        # (adminConsoleProjectId); set per overlay.
+        - name: ZITADEL_ADMIN_CONSOLE_PROJECT_ID
+          value: REPLACE_ME_IN_OVERLAY
         # Env-specific Zitadel organizer-console project (the organizer server's
         # role-claim check).
         # Value is a Pulumi output (organizerConsoleProjectId); set per overlay.
@@ -101,6 +118,10 @@ spec:
         # start outside local without them.
         - secretRef:
             name: api-stripe-secrets
+        volumeMounts:
+        - name: introspection-key
+          mountPath: /secrets/zitadel
+          readOnly: true
         lifecycle:
           # Keeps serving while the load balancer drops this Pod's endpoint:
           # 60 s drain + 60 s estimated drain latency.

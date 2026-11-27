@@ -28,7 +28,7 @@ spec:
         - containerPort: 8080
           name: health
         - containerPort: 9100
-          name: event-consumer
+          name: workflow-worker
         - containerPort: 9101
           name: admin-console
         - containerPort: 9102
