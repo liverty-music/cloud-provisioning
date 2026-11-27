@@ -595,6 +595,16 @@ jsonPayload.reason=~"TransientErr|BackoffLimitExceeded"`,
 						// autoClose only applies when the gauge stops reporting
 						// (the worker is down); a gauge back at 0 closes it at once.
 						autoClose: '3600s', // 1 hour
+						// The incident stays open until an admin acts, so one
+						// notification at opening is easy to miss: on 2026-11-20 a
+						// stuck workflow stayed open 7 days unnoticed. Remind every
+						// 24 hours, the longest interval the API accepts.
+						notificationChannelStrategies: [
+							{
+								notificationChannelNames: notificationChannels,
+								renotifyInterval: '86400s', // 24 hours
+							},
+						],
 					},
 					notificationChannels,
 					documentation: {
