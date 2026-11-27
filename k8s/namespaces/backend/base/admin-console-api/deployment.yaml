@@ -53,9 +53,9 @@ spec:
         # the identity service below.
         - name: API_WORKLOAD
           value: admin
-        # Identity service listener for this workload: fan identity removal and
-        # Organization provisioning go through it. The admin console API holds
-        # no identity-provider key (OpenSpec change identity-service).
+        # Identity service listener for this workload: Organization
+        # provisioning goes through it. The admin console API holds no
+        # identity-provider key (OpenSpec change identity-service).
         - name: IDENTITY_SERVICE_URL
           value: http://identity:9101
         # Env-specific Zitadel organizer-console project (the organizer server's

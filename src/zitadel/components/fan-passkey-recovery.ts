@@ -9,8 +9,8 @@ export interface FanPasskeyRecoveryComponentArgs {
 }
 
 /**
- * FanPasskeyRecoveryComponent provisions the dedicated machine user the event
- * consumer uses to issue passkey registration links for fans who lost their
+ * FanPasskeyRecoveryComponent provisions the dedicated machine user the
+ * identity service uses to issue passkey registration links for fans who lost their
  * passkeys (User v2 `CreatePasskeyRegistrationLink` with `returnCode`). See
  * OpenSpec change `fan-passkey-recovery-and-management`, design D2.
  *
@@ -26,9 +26,9 @@ export interface FanPasskeyRecoveryComponentArgs {
  *
  * The key is stored in Secret Manager as
  * `zitadel-machine-key-for-fan-passkey-recovery`, readable only by the ESO
- * controller, synced into its own Kubernetes Secret and mounted only on
- * `event-consumer`, which takes no inbound internet traffic. It is never
- * mounted on the internet-facing `fan-api`. Like the `backend-app` and
+ * controller, synced into the `identity-secrets` Kubernetes Secret and
+ * mounted only on the identity service, which takes no requests from outside
+ * the cluster. It is never mounted on the internet-facing `fan-api`. Like the `backend-app` and
  * `organizer-provisioner` keys it is effectively non-expiring (far-future
  * date): Zitadel machine keys have no native rotation, operational tokens are
  * short-lived (jwt-bearer grant), and force-replacing the MachineKey revokes
