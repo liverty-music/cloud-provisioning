@@ -334,6 +334,7 @@ const zitadel = workloadEnabled
 const zitadelMachineKey = zitadel?.machineKeyDetails
 const zitadelOrganizerProvisionerKey = zitadel?.organizerProvisionerKeyDetails
 const zitadelFanPasskeyRecoveryKey = zitadel?.fanPasskeyRecoveryKeyDetails
+const zitadelIntrospectionKeys = zitadel?.introspectionKeyDetails
 
 // 2. GCP Infrastructure (All Environments)
 const gcp = new Gcp({
@@ -355,6 +356,7 @@ const gcp = new Gcp({
 	zitadelEnabled: zitadel !== undefined,
 	zitadelOrganizerProvisionerKey,
 	zitadelFanPasskeyRecoveryKey,
+	zitadelIntrospectionKeys,
 	// HMAC signing key Zitadel generated for the login-event Target
 	// (PAYLOAD_TYPE_JSON). Plumbed to the backend as GSM secret
 	// `webhook-login-event-signing-key` so the login-event handler can verify
@@ -689,6 +691,16 @@ export const organizerConsoleClientId: string | pulumi.Output<string> =
 // contract as the other Zitadel exports. See OpenSpec change `organizer-accounts`.
 export const organizerConsoleProjectId: string | pulumi.Output<string> =
 	zitadel?.organizerConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
+
+// Product and admin console Zitadel project ids: the audience the fan API and
+// the admin console API require in a token's `aud` (`ZITADEL_PRODUCT_PROJECT_ID`
+// and `ZITADEL_ADMIN_CONSOLE_PROJECT_ID` in their ConfigMaps). The organizer
+// API uses `organizerConsoleProjectId` above. Same `DEV_SHUTDOWN_SENTINEL`
+// fallback contract. See OpenSpec change `verify-sign-in-tokens-with-introspection`.
+export const productProjectId: string | pulumi.Output<string> =
+	zitadel?.project.id ?? DEV_SHUTDOWN_SENTINEL
+export const adminConsoleProjectId: string | pulumi.Output<string> =
+	zitadel?.adminConsole.project.id ?? DEV_SHUTDOWN_SENTINEL
 
 // Served GCS bucket of ObjectStorageComponent, injected into the backend
 // workloads as `STORAGE_BUCKET`. The bucket is PRIVATE and served through an

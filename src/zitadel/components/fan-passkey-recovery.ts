@@ -66,10 +66,10 @@ export class FanPasskeyRecoveryComponent extends pulumi.ComponentResource {
 				userName: 'fan-passkey-recovery',
 				name: 'Fan Passkey Recovery',
 				description:
-					'Service account the event consumer uses to issue passkey ' +
+					'Service account the identity service uses to issue passkey ' +
 					'registration links for fans who lost their passkeys. Granted ' +
 					'ORG_OWNER on the product org (the only org role with ' +
-					'user.passkey.write); mounted only on event-consumer.',
+					'user.passkey.write); mounted only on the identity service.',
 				accessTokenType: 'ACCESS_TOKEN_TYPE_JWT',
 			},
 			resourceOptions,

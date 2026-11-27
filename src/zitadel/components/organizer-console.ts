@@ -42,7 +42,7 @@ export interface OrganizerConsoleComponentArgs {
  * `organizer-console` Project in the product org that every Organizer's
  * Organization shares via Project Grant, plus the OIDC client the console SPA
  * uses and the `backend-api` app that names the audience the organizer API
- * server validates.
+ * server validates and introspects tokens with.
  *
  * ## Why actor-named, shared, and in the product org
  *
@@ -66,6 +66,9 @@ export class OrganizerConsoleComponent extends pulumi.ComponentResource {
 	public readonly ownerRole: zitadel.ProjectRole
 	public readonly application: zitadel.ApplicationOidc
 	public readonly backendApi: zitadel.ApplicationApi
+	/** Key of `backendApi` (JSON with `keyId`, `key`, `clientId`), which the
+	 *  organizer API uses to introspect tokens. Store it in Secret Manager. */
+	public readonly backendApiKey: zitadel.ApplicationKey
 
 	constructor(
 		name: string,
@@ -163,20 +166,36 @@ export class OrganizerConsoleComponent extends pulumi.ComponentResource {
 			resourceOptions,
 		)
 
-		// Backend API application — names the audience the organizer API server
-		// validates. Its project id is requested into the access token by the
-		// organizer console (scope `urn:zitadel:iam:org:project:id:<id>:aud`), so
-		// the resource server can pin `aud`. BASIC auth method is the lightest
-		// choice; the backend validates tokens statelessly against JWKS and does
-		// not use this app's credential for introspection, so no secret is
-		// exported.
+		// Backend API application: names the audience the organizer API server
+		// checks (the organizer console requests this project's id into the
+		// access token with the scope `urn:zitadel:iam:org:project:id:<id>:aud`)
+		// and is the client the organizer API authenticates as when it asks
+		// ZITADEL whether a token is active (introspection, RFC 7662). It signs
+		// that request with the key below (private-key JWT), and ZITADEL only
+		// introspects tokens whose `aud` names this project. The key can do
+		// nothing else: an API application has no management API access. See
+		// OpenSpec change `verify-sign-in-tokens-with-introspection`.
 		this.backendApi = new zitadel.ApplicationApi(
 			'organizer-backend-api',
 			{
 				projectId: this.project.id,
 				orgId: productOrgId,
 				name: 'backend-api',
-				authMethodType: 'API_AUTH_METHOD_TYPE_BASIC',
+				authMethodType: 'API_AUTH_METHOD_TYPE_PRIVATE_KEY_JWT',
+			},
+			resourceOptions,
+		)
+
+		// Effectively non-expiring like the machine keys: replacing the key
+		// revokes the old one at once, and a rotation is a Pulumi replace.
+		this.backendApiKey = new zitadel.ApplicationKey(
+			'organizer-backend-api-key',
+			{
+				projectId: this.project.id,
+				orgId: productOrgId,
+				appId: this.backendApi.id,
+				keyType: 'KEY_TYPE_JSON',
+				expirationDate: '2099-01-01T00:00:00Z',
 			},
 			resourceOptions,
 		)
@@ -186,6 +205,7 @@ export class OrganizerConsoleComponent extends pulumi.ComponentResource {
 			ownerRole: this.ownerRole,
 			application: this.application,
 			backendApi: this.backendApi,
+			backendApiKey: this.backendApiKey,
 		})
 	}
 }

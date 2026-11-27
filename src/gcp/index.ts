@@ -112,6 +112,15 @@ export interface GcpArgs {
 	 *  (`zitadel-machine-key-for-fan-passkey-recovery`) with ESO-only access and
 	 *  mounted only on the identity service. */
 	zitadelFanPasskeyRecoveryKey?: pulumi.Output<string>
+	/** Introspection keys of the fan, admin console and organizer API servers
+	 *  (one ZITADEL API application key each). Stored in Secret Manager as
+	 *  `zitadel-introspection-key-for-<api>` with ESO-only access, each
+	 *  mounted only on its own API. */
+	zitadelIntrospectionKeys?: {
+		fanApi: pulumi.Output<string>
+		adminConsoleApi: pulumi.Output<string>
+		organizerConsoleApi: pulumi.Output<string>
+	}
 	/** Gate for the workload tier (GKE / Cloud SQL / monitoring / GSM
 	 *  Zitadel bootstrap secrets). When false (dev shutdown mode), these
 	 *  resources are not provisioned. See
@@ -218,6 +227,7 @@ export class Gcp {
 			zitadelEnabled,
 			zitadelOrganizerProvisionerKey,
 			zitadelFanPasskeyRecoveryKey,
+			zitadelIntrospectionKeys,
 			workloadEnabled,
 			postgresAvailabilityType,
 		} = args
@@ -733,6 +743,34 @@ export class Gcp {
 									name: 'zitadel-machine-key-for-fan-passkey-recovery',
 									value: pulumi.secret(
 										zitadelFanPasskeyRecoveryKey,
+									),
+								},
+							]
+						: []),
+					// Introspection keys, one per API server. Each lets its API ask
+					// ZITADEL whether a token issued for its own project is active,
+					// and nothing else. ESO syncs each into its own Kubernetes
+					// Secret, mounted only on that API (`fan-api` and its
+					// candidate share one). See OpenSpec change
+					// `verify-sign-in-tokens-with-introspection`.
+					...(zitadelIntrospectionKeys
+						? [
+								{
+									name: 'zitadel-introspection-key-for-fan-api',
+									value: pulumi.secret(
+										zitadelIntrospectionKeys.fanApi,
+									),
+								},
+								{
+									name: 'zitadel-introspection-key-for-admin-console-api',
+									value: pulumi.secret(
+										zitadelIntrospectionKeys.adminConsoleApi,
+									),
+								},
+								{
+									name: 'zitadel-introspection-key-for-organizer-console-api',
+									value: pulumi.secret(
+										zitadelIntrospectionKeys.organizerConsoleApi,
 									),
 								},
 							]
