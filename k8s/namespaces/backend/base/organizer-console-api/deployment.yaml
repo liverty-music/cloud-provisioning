@@ -34,9 +34,16 @@ spec:
       # fit after it: 190 = 120 + 60 + 10 buffer.
       terminationGracePeriodSeconds: 190
       serviceAccountName: organizer-console-api
-      # No identity-provider credential: the organizer workload routes nothing
-      # that uses one, and the backend does not require it here (OpenSpec change
-      # remove-identity-key-from-fan-api).
+      # No identity-provider management credential: the organizer workload
+      # routes nothing that uses one, and the backend does not require it here
+      # (OpenSpec change remove-identity-key-from-fan-api).
+      volumes:
+      # The introspection key of this API's ZITADEL API application. Not
+      # optional: until ESO has synced the Secret the pod waits in
+      # ContainerCreating, and the backend refuses to start without it.
+      - name: introspection-key
+        secret:
+          secretName: organizer-console-api-introspection-key
       containers:
       - name: server
         image: server
@@ -62,6 +69,11 @@ spec:
         # stack output `organizerConsoleProjectId`; set per overlay.
         - name: ORGANIZER_CONSOLE_PROJECT_ID
           value: REPLACE_ME_IN_OVERLAY
+        # The key the organizer API asks ZITADEL with whether a token is active
+        # (introspection). It cannot read or change identities: this API holds
+        # no identity-provider management key.
+        - name: ZITADEL_INTROSPECTION_KEY_FOR_ORGANIZER_CONSOLE_API_PATH
+          value: /secrets/zitadel/zitadel-introspection-key-for-organizer-console-api.json
         # Authenticate to Cloud SQL as this workload's OWN IAM DB user. An explicit
         # container `env` entry overrides the value supplied by `envFrom`
         # (fan-api-config, which carries the fan-api DATABASE_USER) — Kubernetes
@@ -88,6 +100,10 @@ spec:
         # start outside local without them.
         - secretRef:
             name: api-stripe-secrets
+        volumeMounts:
+        - name: introspection-key
+          mountPath: /secrets/zitadel
+          readOnly: true
         lifecycle:
           # Keeps serving while the load balancer drops this Pod's endpoint:
           # 60 s drain + 60 s estimated drain latency.

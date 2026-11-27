@@ -149,6 +149,10 @@ patches:
             env:
             - name: ORGANIZER_CONSOLE_PROJECT_ID
               value: "DEV_SHUTDOWN_workloadEnabled=false"
+            # Pulumi output adminConsoleProjectId; the DEV_SHUTDOWN sentinel
+            # while dev is stopped.
+            - name: ZITADEL_ADMIN_CONSOLE_PROJECT_ID
+              value: "DEV_SHUTDOWN_workloadEnabled=false"
             # Authenticate to Cloud SQL as admin-console-api's OWN IAM DB user
             # (overrides the backend-app DATABASE_USER from server-config via
             # envFrom). Dev is intentionally stopped, so this is inert, but kept

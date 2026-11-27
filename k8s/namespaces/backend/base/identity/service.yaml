@@ -10,7 +10,7 @@ spec:
   - port: 9100
     targetPort: 9100
     protocol: TCP
-    name: event-consumer
+    name: workflow-worker
     appProtocol: kubernetes.io/h2c
   - port: 9101
     targetPort: 9101

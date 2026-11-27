@@ -60,6 +60,10 @@ spec:
       - name: zkp-verification-key
         configMap:
           name: fan-api-zkp-verification-key
+      # The fan API's introspection key, shared with the stable Pods.
+      - name: introspection-key
+        secret:
+          secretName: fan-api-introspection-key
       containers:
       - name: fan-api
         # Its own image pin (images: `fan-api-candidate` in the overlay's
@@ -79,6 +83,8 @@ spec:
           value: fan
         - name: IDENTITY_SERVICE_URL
           value: http://identity:9102
+        - name: ZITADEL_INTROSPECTION_KEY_FOR_FAN_API_PATH
+          value: /secrets/zitadel/zitadel-introspection-key-for-fan-api.json
         # Overrides fan-api-config for this Pod only (an env entry wins over
         # envFrom). Two, not one: DBOS (the durable workflow client) shares this
         # pool and holds one connection for its LISTEN loop for good, so with a
@@ -102,6 +108,9 @@ spec:
         - name: zkp-verification-key
           mountPath: /configs/zkp/zkp-verification-key.json
           subPath: zkp-verification-key.json
+          readOnly: true
+        - name: introspection-key
+          mountPath: /secrets/zitadel
           readOnly: true
         lifecycle:
           preStop:

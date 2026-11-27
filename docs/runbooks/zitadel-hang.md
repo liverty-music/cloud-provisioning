@@ -18,7 +18,18 @@ is manual, from user reports (the OIDCService latency alert in
 
 Prod runs a **single `zitadel-api` replica** (commit `4836646`,
 OpenSpec change `optimize-prod-gke-cost` D3), so a `rollout restart` is a
-brief login outage, not a rolling no-op.
+brief outage of sign-in and, once the APIs' reused answers expire, of
+signed-in calls; not a rolling no-op.
+
+**A wedged or stopped Zitadel also stops signed-in calls of the apps.**
+The fan, admin console and organizer APIs ask Zitadel whether each token
+is active (introspection, OpenSpec change
+`verify-sign-in-tokens-with-introspection`) and reuse an answer for at
+most 60 seconds. Within a minute of Zitadel stopping to answer, every
+call that needs a sign-in fails with `Unavailable` (each ask gives up
+after 5 seconds); calls open to everyone keep working and nobody is
+signed out. The APIs' `sign_in.introspection.duration` metric with
+`outcome=error` shows it. The fix is the same restart.
 
 1. **Confirm the wedge with the auth-flow probe** (§Detection). Do not
    trust `/debug/healthz` or `/ui/v2/login/loginname`; both stay fast.
