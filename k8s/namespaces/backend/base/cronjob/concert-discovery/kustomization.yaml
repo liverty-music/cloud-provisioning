@@ -3,6 +3,8 @@ kind: Kustomization
 
 resources:
 - cronjob.yaml
+# TEMPORARY: measure-official-page-change-detection, see the file header.
+- official-page-check.yaml
 
 labels:
 - includeSelectors: true
