@@ -35,8 +35,8 @@ export interface AdminConsoleComponentArgs {
  * (`AdminOrgConfigComponent.adminLoginPolicy`). Because only Google
  * Workspace accounts can complete that flow, authentication itself is the
  * access boundary — no separate authorization layer is needed for the
- * foundation. This component therefore provisions ONLY the project + app;
- * it must NOT declare a LoginPolicy/LabelPolicy (the admin org already
+ * foundation. This component therefore provisions ONLY the project, its
+ * role and its apps; it must NOT declare a LoginPolicy/LabelPolicy (the admin org already
  * owns those). See OpenSpec change `add-admin-console`, design D1.
  *
  * ## Project
@@ -44,13 +44,19 @@ export interface AdminConsoleComponentArgs {
  * Zitadel apps belong to a project, and the admin org has no existing
  * project (the consumer `liverty-music` Project lives in the product
  * org). A minimal `admin-console` project is created here to host the
- * app. Role assertion/checks are left off — the foundation has no admin
- * roles yet (deferred to a follow-up change).
+ * console's OIDC app, its `admin` role, and a `backend-api` API application
+ * whose key the admin console API uses to introspect tokens.
  */
 export class AdminConsoleComponent extends pulumi.ComponentResource {
 	public readonly project: zitadel.Project
 	public readonly application: zitadel.ApplicationOidc
 	public readonly adminRole: zitadel.ProjectRole
+	/** API application the admin console API authenticates as to introspect
+	 *  tokens issued for this project. */
+	public readonly backendApi: zitadel.ApplicationApi
+	/** Key of `backendApi` (JSON with `keyId`, `key`, `clientId`). Store it in
+	 *  Secret Manager. */
+	public readonly backendApiKey: zitadel.ApplicationKey
 
 	constructor(
 		name: string,
@@ -154,10 +160,43 @@ export class AdminConsoleComponent extends pulumi.ComponentResource {
 			resourceOptions,
 		)
 
+		// Backend API application: the client the admin console API
+		// authenticates as when it asks ZITADEL whether a token is active
+		// (introspection, RFC 7662), signing the request with the key below
+		// (private-key JWT). ZITADEL only introspects tokens whose `aud` names
+		// this project, and an API application has no management API access.
+		// See OpenSpec change `verify-sign-in-tokens-with-introspection`.
+		this.backendApi = new zitadel.ApplicationApi(
+			'admin-console-backend-api',
+			{
+				projectId: this.project.id,
+				orgId: adminOrgId,
+				name: 'backend-api',
+				authMethodType: 'API_AUTH_METHOD_TYPE_PRIVATE_KEY_JWT',
+			},
+			resourceOptions,
+		)
+
+		// Effectively non-expiring like the machine keys: replacing the key
+		// revokes the old one at once, and a rotation is a Pulumi replace.
+		this.backendApiKey = new zitadel.ApplicationKey(
+			'admin-console-backend-api-key',
+			{
+				projectId: this.project.id,
+				orgId: adminOrgId,
+				appId: this.backendApi.id,
+				keyType: 'KEY_TYPE_JSON',
+				expirationDate: '2099-01-01T00:00:00Z',
+			},
+			resourceOptions,
+		)
+
 		this.registerOutputs({
 			project: this.project,
 			application: this.application,
 			adminRole: this.adminRole,
+			backendApi: this.backendApi,
+			backendApiKey: this.backendApiKey,
 		})
 	}
 }

@@ -179,6 +179,11 @@ export class Zitadel {
 	public readonly adminOrg: zitadel.Org
 	public readonly productOrg: zitadel.Org
 	public readonly project: zitadel.Project
+	/** API application of the product project that the fan API authenticates
+	 *  as to introspect tokens issued for the fan app. */
+	public readonly productBackendApi: zitadel.ApplicationApi
+	/** Key of `productBackendApi` (JSON with `keyId`, `key`, `clientId`). */
+	public readonly productBackendApiKey: zitadel.ApplicationKey
 	public readonly frontend: FrontendComponent
 	/** Internal admin console OIDC surface in the admin role org. */
 	public readonly adminConsole: AdminConsoleComponent
@@ -223,6 +228,16 @@ export class Zitadel {
 	/** JWT profile JSON for the fan-passkey-recovery machine user. Store in
 	 *  Secret Manager (`zitadel-machine-key-for-fan-passkey-recovery`). */
 	public readonly fanPasskeyRecoveryKeyDetails: pulumi.Output<string>
+
+	/** Introspection keys of the three API applications, one per API server.
+	 *  Store each in Secret Manager (`zitadel-introspection-key-for-<api>`)
+	 *  and mount it only on that API. See OpenSpec change
+	 *  `verify-sign-in-tokens-with-introspection`. */
+	public readonly introspectionKeyDetails: {
+		fanApi: pulumi.Output<string>
+		adminConsoleApi: pulumi.Output<string>
+		organizerConsoleApi: pulumi.Output<string>
+	}
 
 	constructor(name: string, args: ZitadelArgs) {
 		const {
@@ -412,6 +427,36 @@ export class Zitadel {
 			{ provider: this.provider, dependsOn: [this.productOrg] },
 		)
 
+		// Backend API application of the product project: the client the fan
+		// API authenticates as when it asks ZITADEL whether a token is active
+		// (introspection, RFC 7662), signing the request with the key below
+		// (private-key JWT). ZITADEL only introspects tokens whose `aud` names
+		// this project, and an API application has no management API access.
+		// See OpenSpec change `verify-sign-in-tokens-with-introspection`.
+		this.productBackendApi = new zitadel.ApplicationApi(
+			'product-backend-api',
+			{
+				projectId: this.project.id,
+				orgId: this.productOrg.id,
+				name: 'backend-api',
+				authMethodType: 'API_AUTH_METHOD_TYPE_PRIVATE_KEY_JWT',
+			},
+			{ provider: this.provider },
+		)
+		// Effectively non-expiring like the machine keys: replacing the key
+		// revokes the old one at once, and a rotation is a Pulumi replace.
+		this.productBackendApiKey = new zitadel.ApplicationKey(
+			'product-backend-api-key',
+			{
+				projectId: this.project.id,
+				orgId: this.productOrg.id,
+				appId: this.productBackendApi.id,
+				keyType: 'KEY_TYPE_JSON',
+				expirationDate: '2099-01-01T00:00:00Z',
+			},
+			{ provider: this.provider },
+		)
+
 		this.frontend = new FrontendComponent(name, {
 			env,
 			orgId: this.productOrg.id,
@@ -521,6 +566,12 @@ export class Zitadel {
 			productOrgId: this.productOrg.id,
 			provider: this.provider,
 		})
+
+		this.introspectionKeyDetails = {
+			fanApi: this.productBackendApiKey.keyDetails,
+			adminConsoleApi: this.adminConsole.backendApiKey.keyDetails,
+			organizerConsoleApi: this.organizerConsole.backendApiKey.keyDetails,
+		}
 
 		// Dedicated provisioner machine user (IAM_ORG_MANAGER at instance
 		// level) — the credential the backend uses at runtime to create
