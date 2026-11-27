@@ -1,0 +1,54 @@
+# TEMPORARY (OpenSpec change measure-official-page-change-detection, design D1
+# and D5): reads the official pages of the followed artists the concert search
+# would search, one hour before the daily search, and logs a digest of each
+# page, to measure whether official pages change before new concerts are
+# found. It calls no Gemini API and writes nothing to the database. It runs
+# the concert-discovery image in its official-page-check mode, with the same
+# ConfigMap and secrets, and shares the pod label app: concert-discovery so
+# the existing ERROR-log alert of that workload covers it.
+#
+# Remove this file and its kustomization.yaml entry after the measurement
+# (8 daily runs, at most 16; task 4.2 of the change). Deleting it stops all of
+# its traffic.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: official-page-check
+spec:
+  schedule: "0 8 * * *" # 17:00 JST daily, one hour before concert-discovery
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      # A failed run is not retried; the next day's run is the retry.
+      backoffLimit: 0
+      # About 1,900 pages, 4 sites at a time with a 5 s timeout per page.
+      activeDeadlineSeconds: 7200
+      template:
+        spec:
+          terminationGracePeriodSeconds: 120
+          serviceAccountName: backend-app
+          restartPolicy: Never
+          containers:
+          - name: concert-discovery
+            image: concert-discovery
+            imagePullPolicy: Always
+            args: ["-mode=official-page-check"]
+            # Each overlay appends TELEMETRY_SERVICE_VERSION here (Downward API).
+            env: []
+            envFrom:
+            - configMapRef:
+                name: concert-discovery-job-config
+            - secretRef:
+                name: backend-secrets
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+                ephemeral-storage: 100Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+                ephemeral-storage: 100Mi
