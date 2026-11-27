@@ -6,7 +6,8 @@ Alert: **Workflow Needs Admin** (Cloud Monitoring, metric
 
 A durable workflow ended in a state that no retry will leave. The workflow
 worker (Deployment `workflow-worker`, namespace `backend`) counts these every 5
-minutes into the gauge and logs each one once. The alert stays open until the
+minutes into the gauge and logs each one once. The alert notifies when it
+opens and again every 24 hours while it is open. It stays open until the
 gauge returns to 0, that is until every such workflow is resumed, forked or
 deleted. Nothing deletes them on its own: the daily `delete-old-workflows`
 schedule removes only workflows that ended successfully.
