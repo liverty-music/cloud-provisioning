@@ -33,9 +33,9 @@ export class HogFunction extends pulumi.CustomResource {
     }
 
     /**
-     * Description of the Hog function.
+     * Description of the Hog function. When omitted, the function keeps the description it has in PostHog; a new function created from a template gets the template's. Set it to an empty string to clear it. To clear a template's description, first create the function without <span pulumi-lang-nodejs="`description`" pulumi-lang-dotnet="`Description`" pulumi-lang-go="`description`" pulumi-lang-python="`description`" pulumi-lang-yaml="`description`" pulumi-lang-java="`description`" pulumi-lang-hcl="`description`">`description`</span>: creating it with an empty string fails, because PostHog fills in the template's.
      */
-    declare public readonly description: pulumi.Output<string | undefined>;
+    declare public readonly description: pulumi.Output<string>;
     /**
      * Whether the Hog function is enabled. Defaults to true.
      */
@@ -151,7 +151,7 @@ export class HogFunction extends pulumi.CustomResource {
  */
 export interface HogFunctionState {
     /**
-     * Description of the Hog function.
+     * Description of the Hog function. When omitted, the function keeps the description it has in PostHog; a new function created from a template gets the template's. Set it to an empty string to clear it. To clear a template's description, first create the function without <span pulumi-lang-nodejs="`description`" pulumi-lang-dotnet="`Description`" pulumi-lang-go="`description`" pulumi-lang-python="`description`" pulumi-lang-yaml="`description`" pulumi-lang-java="`description`" pulumi-lang-hcl="`description`">`description`</span>: creating it with an empty string fails, because PostHog fills in the template's.
      */
     description?: pulumi.Input<string | undefined>;
     /**
@@ -217,7 +217,7 @@ export interface HogFunctionState {
  */
 export interface HogFunctionArgs {
     /**
-     * Description of the Hog function.
+     * Description of the Hog function. When omitted, the function keeps the description it has in PostHog; a new function created from a template gets the template's. Set it to an empty string to clear it. To clear a template's description, first create the function without <span pulumi-lang-nodejs="`description`" pulumi-lang-dotnet="`Description`" pulumi-lang-go="`description`" pulumi-lang-python="`description`" pulumi-lang-yaml="`description`" pulumi-lang-java="`description`" pulumi-lang-hcl="`description`">`description`</span>: creating it with an empty string fails, because PostHog fills in the template's.
      */
     description?: pulumi.Input<string | undefined>;
     /**
