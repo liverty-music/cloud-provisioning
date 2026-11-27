@@ -34,7 +34,7 @@ export class Provider extends pulumi.ProviderResource {
      */
     declare public readonly host: pulumi.Output<string | undefined>;
     /**
-     * Default organization to target. Accepts an organization UUID, an organization slug, or the literal `@current` (the authenticated user's organization). Slugs and `@current` are resolved to a UUID for API calls. Can be set via `POSTHOG_ORGANIZATION_ID` environment variable.
+     * Default organization to target. Accepts an organization UUID or slug; slugs are resolved to a UUID for API calls. `@current` is not accepted. Can be set via `POSTHOG_ORGANIZATION_ID` environment variable.
      */
     declare public readonly organizationId: pulumi.Output<string | undefined>;
     /**
@@ -88,7 +88,7 @@ export interface ProviderArgs {
      */
     host?: pulumi.Input<string | undefined>;
     /**
-     * Default organization to target. Accepts an organization UUID, an organization slug, or the literal `@current` (the authenticated user's organization). Slugs and `@current` are resolved to a UUID for API calls. Can be set via `POSTHOG_ORGANIZATION_ID` environment variable.
+     * Default organization to target. Accepts an organization UUID or slug; slugs are resolved to a UUID for API calls. `@current` is not accepted. Can be set via `POSTHOG_ORGANIZATION_ID` environment variable.
      */
     organizationId?: pulumi.Input<string | undefined>;
     /**

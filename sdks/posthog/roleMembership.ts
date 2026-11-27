@@ -37,7 +37,7 @@ export class RoleMembership extends pulumi.CustomResource {
      */
     declare public /*out*/ readonly joinedAt: pulumi.Output<string>;
     /**
-     * Organization for this resource. Overrides the provider-level organization_id. Accepts an organization UUID, an organization slug, or the literal `@current` (the authenticated user's organization); slugs and `@current` are resolved to a UUID for API calls while your original value is preserved in state.
+     * Organization for this resource. Overrides the provider-level organization_id. Accepts an organization UUID or slug; slugs are resolved to a UUID for API calls while your original value is preserved in state. `@current` is not accepted.
      */
     declare public readonly organizationId: pulumi.Output<string>;
     /**
@@ -99,7 +99,7 @@ export interface RoleMembershipState {
      */
     joinedAt?: pulumi.Input<string | undefined>;
     /**
-     * Organization for this resource. Overrides the provider-level organization_id. Accepts an organization UUID, an organization slug, or the literal `@current` (the authenticated user's organization); slugs and `@current` are resolved to a UUID for API calls while your original value is preserved in state.
+     * Organization for this resource. Overrides the provider-level organization_id. Accepts an organization UUID or slug; slugs are resolved to a UUID for API calls while your original value is preserved in state. `@current` is not accepted.
      */
     organizationId?: pulumi.Input<string | undefined>;
     /**
@@ -121,7 +121,7 @@ export interface RoleMembershipState {
  */
 export interface RoleMembershipArgs {
     /**
-     * Organization for this resource. Overrides the provider-level organization_id. Accepts an organization UUID, an organization slug, or the literal `@current` (the authenticated user's organization); slugs and `@current` are resolved to a UUID for API calls while your original value is preserved in state.
+     * Organization for this resource. Overrides the provider-level organization_id. Accepts an organization UUID or slug; slugs are resolved to a UUID for API calls while your original value is preserved in state. `@current` is not accepted.
      */
     organizationId?: pulumi.Input<string | undefined>;
     /**
