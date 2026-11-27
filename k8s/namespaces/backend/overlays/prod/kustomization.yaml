@@ -51,7 +51,7 @@ namespace: backend
 #   on Deployments / CronJobs so Pods carry it for Prometheus / OTel scraping.
 labels:
   - pairs:
-      app.kubernetes.io/version: "1.154.0"
+      app.kubernetes.io/version: "1.155.0"
     includeSelectors: false
     includeTemplates: true
 patches:
@@ -487,55 +487,55 @@ images:
   # `component:backend` pin-bump (bump-prod-pin.yml IMAGES list).
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/api
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   # fan-api-candidate: the image of the candidate lane (fan-api/candidate.yaml),
   # pinned apart from backend/api (OpenSpec change add-prod-preview-release,
   # D1). A release bumps both pins; a GitHub pre-release bumps only this one.
   - name: fan-api-candidate
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/api
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   # server + fan-api pins removed (unify-workload-naming): fan-api + admin-console-api
   # now pull backend/api, so nothing renders backend/server or backend/fan-api.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/consumer
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   # identity: the identity service, the only workload holding the
   # identity-provider keys (OpenSpec change identity-service). Bumped with the
   # other backend images by bump-prod-pin.yml.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/identity
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/identity
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   # worker: the workflow worker (OpenSpec change introduce-durable-workflows).
   # Bumped with the other backend images by bump-prod-pin.yml.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/worker
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/worker
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/concert-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/concert-discovery
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-image-sync
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-image-sync
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/official-site-refresh
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/official-site-refresh
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/artist-refresh
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/artist-refresh
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-phase-discovery
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-phase-discovery
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/sales-reminders
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/sales-reminders
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   # venue-coordinates-refresh (OpenSpec change globalize-venues). Bumped with
   # the other backend images by bump-prod-pin.yml.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/venue-coordinates-refresh
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/venue-coordinates-refresh
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
   # series-image-consumer: shipped from the shared backend AR repo
   # (backend/series-image-consumer). Pinned to the prod AR + semver tag; the
   # bump-prod-pin workflow keeps this in lock-step with the other backend images.
   - name: asia-northeast2-docker.pkg.dev/liverty-music-dev/backend/series-image-consumer
     newName: asia-northeast2-docker.pkg.dev/liverty-music-prod/backend/series-image-consumer
-    newTag: v1.154.0 # commit 71614ac81da57d7f5b7d0aee0ae4eeabd01c820f
+    newTag: v1.155.0 # commit d776c6fd57be4b72bbec2937a543f354fa15b690
