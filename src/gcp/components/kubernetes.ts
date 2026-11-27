@@ -61,7 +61,7 @@ export interface KubernetesComponentArgs {
 	 * Secrets provisioned in GCP Secret Manager with ESO-only access (no backend-app SA binding).
 	 * Used for secrets consumed only through an ExternalSecret: by non-backend workloads
 	 * (e.g., ArgoCD), or by a single backend workload whose secret no workload Service
-	 * Account may read directly (e.g., the fan-passkey-recovery key on event-consumer).
+	 * Account may read directly (e.g., the fan-passkey-recovery key on the identity service).
 	 */
 	esoOnlySecrets?: SecretConfig[]
 }

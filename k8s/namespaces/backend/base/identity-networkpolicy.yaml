@@ -6,7 +6,7 @@ metadata:
   # for the kubelet probes. Everything else, including every other pod, is
   # denied. Enforced by Dataplane V2. OpenSpec changes `identity-service`
   # (design D3), `fan-email-verification-in-app` (design D3) and
-  # `delete-fan-accounts` (design D3).
+  # `retry-account-deletion-until-done`.
   name: identity-ingress
 spec:
   podSelector:
@@ -29,10 +29,9 @@ spec:
     ports:
     - protocol: TCP
       port: 9101
-  # The fan API's listener serves VerifyEmail, which needs a code only the
-  # address owner has, and DeleteIdentity for a fan deleting their own account,
-  # after the fan API checks that fan's fresh sign-in (OpenSpec change
-  # delete-fan-accounts, design D3).
+  # The fan API's listener serves only VerifyEmail, which needs a code only the
+  # address owner has. Fan identities are removed by the workflow worker
+  # through 9100 (OpenSpec change retry-account-deletion-until-done).
   # The prod fan-api candidate lane serves the preview hostname with the same
   # handlers (OpenSpec change add-prod-preview-release), so it calls identity too.
   - from:

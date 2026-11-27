@@ -217,7 +217,7 @@ export class Zitadel {
 	public readonly machineKeyDetails: pulumi.Output<string>
 
 	/** Dedicated `fan-passkey-recovery` machine user (ORG_OWNER on the product
-	 *  org) the event consumer uses to issue passkey registration links. */
+	 *  org) the identity service uses to issue passkey registration links. */
 	public readonly fanPasskeyRecovery: FanPasskeyRecoveryComponent
 
 	/** JWT profile JSON for the fan-passkey-recovery machine user. Store in
@@ -498,8 +498,8 @@ export class Zitadel {
 		// Dedicated passkey-recovery machine user (ORG_OWNER on the product org,
 		// the only org role with `user.passkey.write`). Its key flows to GSM
 		// (`zitadel-machine-key-for-fan-passkey-recovery`) via the parent stack
-		// and is mounted only on `event-consumer`, never on the internet-facing
-		// `fan-api`. See OpenSpec change `fan-passkey-recovery-and-management`,
+		// and is mounted only on the identity service, never on the
+		// internet-facing `fan-api`. See OpenSpec change `fan-passkey-recovery-and-management`,
 		// design D2.
 		this.fanPasskeyRecovery = new FanPasskeyRecoveryComponent(name, {
 			orgId: this.productOrg.id,
