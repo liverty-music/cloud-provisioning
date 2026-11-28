@@ -37,18 +37,22 @@ merged for you). No row means the command can go ahead.
 
 ## 2. Run the command
 
-First check that no job that writes artist details is running: a job reads its
-batch of artists, then writes what it finds for each one, and a write that
-starts before the correction would put the namesake's details back.
+Get prod credentials first: [prod-cluster-credentials.md](prod-cluster-credentials.md).
+
+Then check that no job that writes artist details is running: a job reads its
+batch of artists and then writes what it finds for each one, so a write that
+starts before the correction would put the namesake's details back. The jobs
+run at 04:00 (`official-site-refresh`), 05:00 (`artist-refresh`) and 19:00
+(`artist-image-sync`) JST, each for a few minutes. List only running Pods
+(finished Jobs stay listed for a day):
 
 ```bash
-kubectl get jobs -n backend | grep -E 'artist-refresh|artist-image-sync|official-site-refresh'
+kubectl get pods -n backend --field-selector=status.phase=Running \
+  | grep -E 'artist-refresh|artist-image-sync|official-site-refresh'
 ```
 
-Run the command when none of them is active (they run in the early morning,
-Japan time; see their CronJobs).
+Run the command when this prints nothing.
 
-Get prod credentials first: [prod-cluster-credentials.md](prod-cluster-credentials.md).
 The command runs in the workflow worker's Pod, as its database identity, like
 the `workflow` commands of [workflow-needs-admin.md](workflow-needs-admin.md).
 
@@ -102,10 +106,12 @@ right person's again.
 
 ## 4. Check
 
-The next morning, after those jobs have run once, check again that the name,
-`activity_ended`, images and official site still belong to the right person. If
-a job that was already running put the namesake's details back, run the command
-to another MBID and back to the right one (step 3): that clears them again.
+After all three jobs have run once (that is after 19:00 JST on the next day),
+check again that the name, `activity_ended`, images and official site still
+belong to the right person. If a job that was already running put the
+namesake's details back, run the command to the namesake's MBID (`<old_mbid>`,
+after the duplicate check of step 3) and back to the right one: that clears them
+again.
 
 Read-only, with the personal login:
 
