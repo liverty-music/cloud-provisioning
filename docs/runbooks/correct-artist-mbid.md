@@ -27,13 +27,13 @@ Check that no other row holds it, read-only (personal login:
 
 ```sql
 SELECT id, name, mbid, other_mbids FROM artists
-WHERE mbid = '<mbid>' OR other_mbids @> ARRAY['<mbid>'];
+WHERE (mbid = '<mbid>' OR other_mbids @> ARRAY['<mbid>']) AND id <> '<artist_id>';
 ```
 
 A row means the right artist is already registered under another id (for
 example a duplicate registered by a search after an earlier hand fix). The
 command refuses with `AlreadyExists`; resolve that duplicate first (it is not
-merged for you).
+merged for you). No row means the command can go ahead.
 
 ## 2. Run the command
 
@@ -81,10 +81,24 @@ with the same MBID: it changes nothing stored and reads the catalog again.
 ## 3. Record a hand-fixed artist's old MBID
 
 An artist whose MBID was changed directly in the database has the namesake's
-MBID in no `other_mbids`. After step 1 shows that no row holds the namesake's
-MBID, run the command to the namesake's MBID and then back to the right one: the
-first run records the right MBID as an other MBID, the second makes it the
-artist's MBID again and leaves the namesake's recorded.
+MBID in no `other_mbids`, so a search that returns it would register a second
+row. The namesake's MBID (`<namesake_mbid>`) is the one the artist carried before
+the hand fix, or the MBID of the other same-named artist you found in step 1.
+
+First check, read-only, that no other row holds it:
+
+```sql
+SELECT id, name, mbid, other_mbids FROM artists
+WHERE (mbid = '<namesake_mbid>' OR other_mbids @> ARRAY['<namesake_mbid>']) AND id <> '<artist_id>';
+```
+
+A row is a duplicate registered by a search since the hand fix; the owner
+resolves it first, because the first run below would fail with `AlreadyExists`.
+With no row, run the command to the namesake's MBID and then back to the right
+one: the first run records the right MBID as an other MBID, the second makes it
+the artist's MBID again and leaves the namesake's recorded. The first run reads
+the namesake's name and `activity_ended` for a moment; the second reads the
+right person's again.
 
 ## 4. Check
 
@@ -97,8 +111,12 @@ Read-only, with the personal login:
 
 ```sql
 SELECT id, name, mbid, other_mbids, activity_ended FROM artists WHERE id = '<artist_id>';
-SELECT count(*) FROM artists WHERE mbid = '<old_mbid>' OR other_mbids @> ARRAY['<old_mbid>'];  -- 1
+SELECT count(*) FROM artists WHERE mbid = '<old_mbid>' OR other_mbids @> ARRAY['<old_mbid>'];
 ```
+
+`<old_mbid>` is the MBID that was replaced (the namesake's). The count is 1: only
+the corrected artist holds it, among its other MBIDs. A count of 2 means a second
+row was registered with it before the correction.
 
 ## Background
 
