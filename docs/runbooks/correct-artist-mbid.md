@@ -37,6 +37,17 @@ merged for you).
 
 ## 2. Run the command
 
+First check that no job that writes artist details is running: a job reads its
+batch of artists, then writes what it finds for each one, and a write that
+starts before the correction would put the namesake's details back.
+
+```bash
+kubectl get jobs -n backend | grep -E 'artist-refresh|artist-image-sync|official-site-refresh'
+```
+
+Run the command when none of them is active (they run in the early morning,
+Japan time; see their CronJobs).
+
 Get prod credentials first: [prod-cluster-credentials.md](prod-cluster-credentials.md).
 The command runs in the workflow worker's Pod, as its database identity, like
 the `workflow` commands of [workflow-needs-admin.md](workflow-needs-admin.md).
@@ -76,6 +87,11 @@ first run records the right MBID as an other MBID, the second makes it the
 artist's MBID again and leaves the namesake's recorded.
 
 ## 4. Check
+
+The next morning, after those jobs have run once, check again that the name,
+`activity_ended`, images and official site still belong to the right person. If
+a job that was already running put the namesake's details back, run the command
+to another MBID and back to the right one (step 3): that clears them again.
 
 Read-only, with the personal login:
 
