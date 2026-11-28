@@ -26,7 +26,13 @@ spec:
     # the connection. The client logs in as the developer's own Cloud SQL IAM
     # user with a `gcloud sql generate-login-token` password (or as `postgres`
     # for break-glass).
-    - INSTANCE_CONNECTION_NAME # set by overlay
+    - INSTANCE_CONNECTION_NAME # set by overlay (args/3: keep it the fourth entry)
+    # A short-lived tunnel needs no connection metrics. Without this flag the
+    # proxy exports them, fails (the db-proxy service account has no
+    # roles/monitoring.metricWriter) and logs an ERROR on every start, which
+    # shows up in prod error-log checks.
+    # Kept after the instance so the overlays' args/3 still points at it.
+    - --enable-builtin-metrics=false
     ports:
     - containerPort: 5432
       name: postgres
